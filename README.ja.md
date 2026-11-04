@@ -54,7 +54,7 @@ irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 
 ### macOS アプリ
 
-[Releases](https://github.com/SteelCrab/westerm/releases/latest) から `westerm-macos-app.zip`(Apple シリコン、Intel 共通)を取得して展開し、**westerm.app** をアプリケーションフォルダへ移動します。同じダッシュボードを専用ウィンドウで開きます。
+[Releases](https://github.com/SteelCrab/westerm/releases/latest) から `westerm-macos-app.dmg`(Apple シリコン、Intel 共通)を取得して開きます。表示されたウィンドウで **westerm** をアプリケーションフォルダへドラッグし、ディスクイメージを取り出します。アプリは同じダッシュボードを専用ウィンドウで開きます。
 
 - ポート 4317 で westerm がすでに動いていれば(ターミナルから起動したものなど)、アプリはそれを開くので、両方で同じセッションが見えます。なければアプリが自分で起動します。
 - アプリを終了しても、シェルは CLI と同じく動き続けます。保存して止めるには `/Applications/westerm.app/Contents/MacOS/westerm stop` を実行します。

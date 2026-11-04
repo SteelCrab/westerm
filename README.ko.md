@@ -54,7 +54,7 @@ irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 
 ### macOS 앱
 
-[Releases](https://github.com/SteelCrab/westerm/releases/latest)에서 `westerm-macos-app.zip`(Apple Silicon, Intel 공용)을 받아 압축을 풀고, **westerm.app**을 응용 프로그램 폴더로 옮깁니다. 같은 대시보드를 앱 창으로 엽니다.
+[Releases](https://github.com/SteelCrab/westerm/releases/latest)에서 `westerm-macos-app.dmg`(Apple Silicon, Intel 공용)를 받아 엽니다. 열린 창에서 **westerm**을 응용 프로그램 폴더로 드래그한 뒤, 디스크 이미지를 꺼냅니다. 앱은 같은 대시보드를 앱 창으로 엽니다.
 
 - 4317 포트에 westerm이 이미 실행 중이면(예: 터미널에서 실행) 앱이 그 westerm을 엽니다. 그래서 두 곳에 같은 세션이 보입니다. 없으면 앱이 직접 실행합니다.
 - 앱을 종료해도 셸은 CLI처럼 계속 실행됩니다. 저장하고 끄려면 `/Applications/westerm.app/Contents/MacOS/westerm stop`을 실행합니다.
