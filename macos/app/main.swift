@@ -6,11 +6,13 @@
 //   any free port when another program holds it.
 // - Quitting stops only a server the app started. The PTY host keeps
 //   running in its own session, so shells survive as they do with the CLI.
+// - Check for Updates replaces the whole app (Updater.swift); the page's
+//   update button asks for it through the "westerm" message handler.
 
 import AppKit
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private let port = Int(ProcessInfo.processInfo.environment["PORT"] ?? "") ?? 4317
     private let logURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/westerm.log")
@@ -20,11 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var server: Process?
     private var dashboard: URL?
     private var serverOutput = ""
+    private var updating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMenu()
         makeWindow()
-        showMessage("Starting westerm…")
+        showMessage(L.starting)
         NSApp.activate(ignoringOtherApps: true)
         connect()
     }
@@ -61,7 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     if let url {
                         self.open(url)
                     } else {
-                        self.showMessage("westerm could not start. See \(self.logURL.path).")
+                        self.showMessage(L.cannotStart(self.logURL.path))
                     }
                 }
             }
@@ -122,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 report(nil)
                 guard let self, self.server === process else { return }
                 self.server = nil
-                self.showMessage("westerm stopped. See \(self.logURL.path).")
+                self.showMessage(L.stopped(self.logURL.path))
             }
         }
         do {
@@ -181,6 +184,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     private func makeWindow() {
         let configuration = WKWebViewConfiguration()
+        // The page's update button posts {type: "update"} here.
+        configuration.userContentController.add(self, name: "westerm")
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -262,7 +267,136 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if let dashboard { webView.load(URLRequest(url: dashboard)) }
     }
 
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], body["type"] as? String == "update" else { return }
+        checkForUpdates(userInitiated: true)
+    }
+
+    // MARK: Updates
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }
+
+    @objc private func checkForUpdates(_ sender: Any?) {
+        checkForUpdates(userInitiated: true)
+    }
+
+    private func checkForUpdates(userInitiated: Bool) {
+        guard !updating else { return }
+        Updater.latest { release, error in
+            DispatchQueue.main.async {
+                guard let release else {
+                    if userInitiated { self.alert(L.checkFailed, error?.localizedDescription ?? "") }
+                    return
+                }
+                if Updater.isNewer(release.version, than: self.appVersion) {
+                    self.offer(release)
+                } else if userInitiated {
+                    self.alert(L.upToDate(self.appVersion), "")
+                }
+            }
+        }
+    }
+
+    private func offer(_ release: AppRelease) {
+        let alert = NSAlert()
+        alert.messageText = L.available(release.version)
+        alert.informativeText = L.availableDetail(appVersion)
+        alert.addButton(withTitle: L.install)
+        alert.addButton(withTitle: L.later)
+        if release.page != nil { alert.addButton(withTitle: L.releaseNotes) }
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: install(release)
+        case .alertThirdButtonReturn: if let page = release.page { NSWorkspace.shared.open(page) }
+        default: break
+        }
+    }
+
+    /// Downloads and checks the new app off the main thread, then swaps the
+    /// bundle and opens the new copy.
+    private func install(_ release: AppRelease) {
+        let bundle = Bundle.main.bundleURL
+        let folder = bundle.deletingLastPathComponent().path
+        // A downloaded app opened in place runs from a read-only copy.
+        if bundle.path.contains("/AppTranslocation/") {
+            alert(L.updateFailed, L.moveToApplications)
+            return
+        }
+        guard FileManager.default.isWritableFile(atPath: folder) else {
+            alert(L.updateFailed, L.cannotWrite(folder))
+            return
+        }
+        updating = true
+        window.title = "westerm — \(L.updating)"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let prepared = Result { try Updater.prepare(release) }
+            DispatchQueue.main.async {
+                self.updating = false
+                self.window.title = "westerm"
+                switch prepared {
+                case .failure(let error): self.alert(L.updateFailed, error.localizedDescription)
+                case .success(let newApp): self.relaunch(into: newApp, at: bundle)
+                }
+            }
+        }
+    }
+
+    private func relaunch(into newApp: URL, at bundle: URL) {
+        // Stop the dashboard this app started, so the new copy starts its own
+        // instead of finding this one.
+        if let server, server.isRunning {
+            self.server = nil
+            server.terminate()
+            server.waitUntilExit()
+        }
+        do {
+            try Updater.swap(newApp, into: bundle)
+        } catch {
+            alert(L.updateFailed, error.localizedDescription)
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: bundle, configuration: configuration) { _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    self.alert(L.updateFailed, error.localizedDescription)
+                } else {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
+
+    private func alert(_ title: String, _ detail: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = detail
+        alert.runModal()
+    }
+
     // MARK: Menu
+
+    /// Tab and pane switching. The page handles these keys itself (see
+    /// src/shortcuts.ts); the menu items show them and work by click.
+    @objc private func sendSwitch(_ sender: NSMenuItem) {
+        guard let command = sender.representedObject as? String else { return }
+        webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('westerm:command', { detail: \(command) }))")
+    }
+
+    private func switchItem(_ title: String, _ command: String, key: String, _ modifiers: NSEvent.ModifierFlags) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(sendSwitch(_:)), keyEquivalent: key)
+        item.keyEquivalentModifierMask = modifiers
+        item.representedObject = command
+        item.target = self
+        return item
+    }
+
+    /// The page opens its settings when it hears this event.
+    @objc private func openSettings(_ sender: Any?) {
+        webView.evaluateJavaScript("window.dispatchEvent(new Event('westerm:settings'))")
+    }
 
     @objc private func reload(_ sender: Any?) {
         if let dashboard { webView.load(URLRequest(url: dashboard)) }
@@ -276,41 +410,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let main = NSMenu()
 
         let app = NSMenu()
-        app.addItem(withTitle: "About westerm", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        app.addItem(withTitle: L.about, action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        app.addItem(withTitle: L.checkForUpdates, action: #selector(checkForUpdates(_:)), keyEquivalent: "").target = self
         app.addItem(.separator())
-        app.addItem(withTitle: "Hide westerm", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        app.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: L.settings, action: #selector(openSettings(_:)), keyEquivalent: ",").target = self
+        app.addItem(.separator())
+        app.addItem(withTitle: L.hide, action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: L.hideOthers, action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
             .keyEquivalentModifierMask = [.command, .option]
-        app.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        app.addItem(withTitle: L.showAll, action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         app.addItem(.separator())
-        app.addItem(withTitle: "Quit westerm", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        app.addItem(withTitle: L.quit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         main.addItem(submenu(app, title: "westerm"))
 
         // Copy and paste reach the terminal through the web view's own handlers.
-        let edit = NSMenu(title: "Edit")
-        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        let edit = NSMenu(title: L.edit)
+        edit.addItem(withTitle: L.undo, action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: L.redo, action: Selector(("redo:")), keyEquivalent: "z")
             .keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(.separator())
-        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        main.addItem(submenu(edit, title: "Edit"))
+        edit.addItem(withTitle: L.cut, action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: L.copy, action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: L.paste, action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: L.selectAll, action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        main.addItem(submenu(edit, title: L.edit))
 
-        let view = NSMenu(title: "View")
-        view.addItem(withTitle: "Reload", action: #selector(reload(_:)), keyEquivalent: "r").target = self
-        view.addItem(withTitle: "Open in Browser", action: #selector(openInBrowser(_:)), keyEquivalent: "").target = self
+        let view = NSMenu(title: L.view)
+        view.addItem(withTitle: L.reload, action: #selector(reload(_:)), keyEquivalent: "r").target = self
+        view.addItem(withTitle: L.openInBrowser, action: #selector(openInBrowser(_:)), keyEquivalent: "").target = self
         view.addItem(.separator())
-        view.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        view.addItem(withTitle: L.fullScreen, action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
             .keyEquivalentModifierMask = [.command, .control]
-        main.addItem(submenu(view, title: "View"))
+        main.addItem(submenu(view, title: L.view))
 
-        let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
-        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        main.addItem(submenu(windowMenu, title: "Window"))
+        let windowMenu = NSMenu(title: L.window)
+        windowMenu.addItem(withTitle: L.minimize, action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: L.zoom, action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(withTitle: L.close, action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(.separator())
+        windowMenu.addItem(switchItem(L.nextTab, #"{"type":"tabStep","delta":1}"#, key: "]", [.command, .shift]))
+        windowMenu.addItem(switchItem(L.previousTab, #"{"type":"tabStep","delta":-1}"#, key: "[", [.command, .shift]))
+        windowMenu.addItem(switchItem(L.nextPane, #"{"type":"paneStep","delta":1}"#, key: "]", .command))
+        windowMenu.addItem(switchItem(L.previousPane, #"{"type":"paneStep","delta":-1}"#, key: "[", .command))
+        let tabs = NSMenu(title: L.goToTab)
+        for number in 1...9 {
+            let title = number == 9 ? L.lastTab : L.tabNumber(number)
+            tabs.addItem(switchItem(title, #"{"type":"tab","number":\#(number)}"#, key: String(number), .command))
+        }
+        windowMenu.addItem(submenu(tabs, title: L.goToTab))
+        main.addItem(submenu(windowMenu, title: L.window))
         NSApp.windowsMenu = windowMenu
 
         return main

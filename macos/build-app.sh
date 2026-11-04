@@ -34,7 +34,7 @@ for arch in $archs; do
   cargo build --release --locked --target "$target" --manifest-path native/Cargo.toml
   binaries="$binaries native/target/$target/release/westerm"
   say "app window for $arch"
-  swiftc -O -swift-version 5 -target "$arch-apple-macos12.0" macos/app/main.swift -o "$work/westerm-app-$arch"
+  swiftc -O -swift-version 5 -target "$arch-apple-macos12.0" macos/app/*.swift -o "$work/westerm-app-$arch"
   launchers="$launchers $work/westerm-app-$arch"
 done
 
