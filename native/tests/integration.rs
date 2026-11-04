@@ -41,7 +41,34 @@ async fn connect(state: &Path) -> Stream {
     tokio::net::windows::named_pipe::ClientOptions::new().open(name).unwrap()
 }
 
-fn start_host(state: &Path) -> Child {
+/// A child process that is killed when it goes out of scope, so a test that
+/// fails half way leaves nothing running in the background.
+struct Spawned(Child);
+
+impl Drop for Spawned {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Runs `westerm stop` for a state folder when it goes out of scope. It stops
+/// a host the test did not start itself: the dashboard starts its host in a
+/// separate session, so killing the dashboard leaves the host running.
+struct StopHostOnDrop<'a>(&'a Path);
+
+impl Drop for StopHostOnDrop<'_> {
+    fn drop(&mut self) {
+        let _ = Command::new(BIN)
+            .arg("stop")
+            .env("WESTERM_STATE_DIR", self.0)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
+fn start_host(state: &Path) -> Spawned {
     let child = Command::new(BIN)
         .arg("host")
         .env("WESTERM_STATE_DIR", state)
@@ -55,7 +82,7 @@ fn start_host(state: &Path) -> Child {
         assert!(Instant::now() < deadline, "host endpoint appears");
         std::thread::sleep(Duration::from_millis(30));
     }
-    child
+    Spawned(child)
 }
 
 async fn http(state: &Path, method: &str, path: &str) -> String {
@@ -67,10 +94,10 @@ async fn http(state: &Path, method: &str, path: &str) -> String {
     response
 }
 
-async fn stop_host(state: &Path, mut child: Child) {
+async fn stop_host(state: &Path, mut host: Spawned) {
     let _ = http(state, "POST", "/shutdown").await;
     let deadline = Instant::now() + Duration::from_secs(10);
-    while child.try_wait().unwrap().is_none() {
+    while host.0.try_wait().unwrap().is_none() {
         assert!(Instant::now() < deadline, "host exits");
         tokio::time::sleep(Duration::from_millis(30)).await;
     }
@@ -103,9 +130,17 @@ impl Viewer {
     }
 
     async fn take(&mut self, bytes: &[u8]) {
-        self.output.push_str(&String::from_utf8_lossy(bytes));
+        let text = String::from_utf8_lossy(bytes);
+        // Answer "where is the cursor?" (DSR 6) as a terminal does. Windows
+        // ConPTY asks once at start and holds the shell until it gets a reply;
+        // in the dashboard, wterm answers it.
+        let questions = text.matches("\x1b[6n").count();
+        self.output.push_str(&text);
         let ack = format!(r#"{{"type":"ack","bytes":{}}}"#, bytes.len());
         let _ = self.ws.send(Message::text(ack)).await;
+        for _ in 0..questions {
+            let _ = self.ws.send(Message::text(r#"{"type":"input","data":"\u001b[1;1R"}"#)).await;
+        }
     }
 
     async fn wait_for(&mut self, needle: &str) {
@@ -197,15 +232,17 @@ async fn a_second_window_takes_over_and_the_first_is_told() {
 #[tokio::test]
 async fn the_dashboard_only_accepts_its_own_origin() {
     let state = tempfile::tempdir().unwrap();
+    // Dropped in reverse order: the dashboard is killed, then its host stopped.
+    let _host = StopHostOnDrop(state.path());
     let port = 40000 + (std::process::id() % 20000) as u16;
-    let mut server = Command::new(BIN)
+    let _server = Spawned(Command::new(BIN)
         .args(["serve", "--port", &port.to_string()])
         .env("WESTERM_STATE_DIR", state.path())
         .env("SHELL", "/bin/sh")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .unwrap();
+        .unwrap());
 
     let upgrade = |origin: Option<&str>| {
         let origin = origin.map(|o| format!("Origin: {o}\r\n")).unwrap_or_default();
@@ -230,30 +267,25 @@ async fn the_dashboard_only_accepts_its_own_origin() {
     assert_eq!(status(upgrade(Some("http://evil.example"))).await.as_deref(), Some("403"));
     let own = format!("http://127.0.0.1:{port}");
     assert_eq!(status(upgrade(Some(&own))).await.as_deref(), Some("101"));
-
-    let _ = server.kill();
-    // The dashboard started a host for that session; stop it.
-    let _ = http(state.path(), "POST", "/shutdown").await;
 }
 
 #[tokio::test]
 async fn a_second_host_refuses_to_start_while_one_is_running() {
     let state = tempfile::tempdir().unwrap();
     let first = start_host(state.path());
-    let mut second = Command::new(BIN)
+    let mut second = Spawned(Command::new(BIN)
         .arg("host")
         .env("WESTERM_STATE_DIR", state.path())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .unwrap();
+        .unwrap());
     let deadline = Instant::now() + Duration::from_secs(5);
     let status = loop {
-        if let Some(status) = second.try_wait().unwrap() {
+        if let Some(status) = second.0.try_wait().unwrap() {
             break status;
         }
         if Instant::now() > deadline {
-            let _ = second.kill();
             panic!("the second host kept running and took over the endpoint");
         }
         tokio::time::sleep(Duration::from_millis(30)).await;
