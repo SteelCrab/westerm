@@ -2,19 +2,18 @@
 //! to save and stop first; its shells are then revived from saved screens.
 
 use std::fs;
-use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 
 use crate::host::HOST_BUILD;
-use crate::state_dir::{host_socket, legacy_state_dir, state_dir};
+use crate::ipc;
+use crate::state_dir::{legacy_state_dir, private_file, state_dir};
 
+/// Caches the state directory of a host known to run the current build.
 #[derive(Default)]
 pub struct HostClient {
     ready: Mutex<Option<PathBuf>>,
@@ -46,10 +45,10 @@ fn parse_response(raw: &[u8]) -> Option<(u16, String)> {
     }
 }
 
-/// One HTTP/1.1 request over the host socket. Returns (status, body).
-async fn request(socket: &Path, method: &str, path: &str) -> Option<(u16, String)> {
+/// One HTTP/1.1 request to the host of the state directory `dir`. Returns (status, body).
+async fn request(dir: &Path, method: &str, path: &str) -> Option<(u16, String)> {
     let exchange = async {
-        let mut stream = UnixStream::connect(socket).await.ok()?;
+        let mut stream = ipc::connect(dir).await.ok()?;
         let head = format!("{method} {path} HTTP/1.1\r\nHost: host\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
         stream.write_all(head.as_bytes()).await.ok()?;
         let mut response = Vec::new();
@@ -59,8 +58,8 @@ async fn request(socket: &Path, method: &str, path: &str) -> Option<(u16, String
     tokio::time::timeout(Duration::from_millis(1500), exchange).await.ok().flatten()
 }
 
-async fn running_build(socket: &Path) -> Option<String> {
-    let (status, body) = request(socket, "GET", "/health").await?;
+async fn running_build(dir: &Path) -> Option<String> {
+    let (status, body) = request(dir, "GET", "/health").await?;
     if status != 200 {
         return None;
     }
@@ -69,14 +68,15 @@ async fn running_build(socket: &Path) -> Option<String> {
 }
 
 impl HostClient {
+    /// The state directory of a running host, started if needed; pass it to `ipc::connect`.
     pub async fn ensure(&self) -> Result<PathBuf, String> {
         let mut ready = self.ready.lock().await;
-        if let Some(socket) = ready.as_ref() {
-            return Ok(socket.clone());
+        if let Some(dir) = ready.as_ref() {
+            return Ok(dir.clone());
         }
-        let socket = start().await?;
-        *ready = Some(socket.clone());
-        Ok(socket)
+        let dir = start().await?;
+        *ready = Some(dir.clone());
+        Ok(dir)
     }
 
     /// Forget the cached host, e.g. after a failed connection.
@@ -90,16 +90,9 @@ impl HostClient {
 /// its shells come back with their screens ("revived") under the new name.
 pub async fn migrate_legacy_state() {
     let Some(legacy) = legacy_state_dir() else { return };
-    let socket = host_socket(&legacy);
-    if running_build(&socket).await.is_some() {
+    if running_build(&legacy).await.is_some() {
         println!("> stopping the PTY host in {} to move its sessions", legacy.display());
-        let _ = request(&socket, "POST", "/shutdown").await;
-        for _ in 0..50 {
-            if !socket.exists() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
+        stop_and_wait(&legacy).await;
     }
     match state_dir().and_then(|new| move_legacy_files(&legacy, &new)) {
         Ok(0) => {}
@@ -137,28 +130,45 @@ fn move_legacy_files(legacy: &Path, new: &Path) -> std::io::Result<usize> {
     Ok(moved)
 }
 
+/// Stops the host of this user's state directory. False when none was running.
+pub async fn stop_running() -> std::io::Result<bool> {
+    let dir = state_dir()?;
+    if running_build(&dir).await.is_none() {
+        return Ok(false);
+    }
+    stop_and_wait(&dir).await;
+    if ipc::is_gone(&dir) {
+        Ok(true)
+    } else {
+        Err(std::io::Error::other("the PTY host did not stop within 5 s"))
+    }
+}
+
+/// Asks the host to save and stop, and waits up to 5 s for its endpoint to go.
+async fn stop_and_wait(dir: &Path) {
+    let _ = request(dir, "POST", "/shutdown").await;
+    for _ in 0..50 {
+        if ipc::is_gone(dir) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 async fn start() -> Result<PathBuf, String> {
     let dir = state_dir().map_err(|e| e.to_string())?;
-    let socket = host_socket(&dir);
-    match running_build(&socket).await {
-        Some(build) if build == HOST_BUILD => return Ok(socket),
+    match running_build(&dir).await {
+        Some(build) if build == HOST_BUILD => return Ok(dir),
         Some(build) => {
             println!("> pty host {build} is outdated; restarting it as {HOST_BUILD}");
-            let _ = request(&socket, "POST", "/shutdown").await;
-            for _ in 0..50 {
-                if !socket.exists() {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
+            stop_and_wait(&dir).await;
         }
         None => {}
     }
 
-    let log = fs::OpenOptions::new()
+    let log = private_file()
         .create(true)
         .append(true)
-        .mode(0o600)
         .open(dir.join("host.log"))
         .map_err(|e| e.to_string())?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -168,23 +178,50 @@ async fn start() -> Result<PathBuf, String> {
         .stdin(Stdio::null())
         .stdout(log.try_clone().map_err(|e| e.to_string())?)
         .stderr(log);
-    // Its own session: closing the terminal that started the dashboard must
-    // not hang up the host and its shells.
+    let child = spawn_detached(&mut command).map_err(|e| format!("could not start the PTY host: {e}"))?;
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if running_build(&dir).await.as_deref() == Some(HOST_BUILD) {
+            println!("> pty host {HOST_BUILD} started (pid {})", child.id());
+            return Ok(dir);
+        }
+    }
+    Err(format!("the PTY host did not start; see {}", dir.join("host.log").display()))
+}
+
+/// Starts the host apart from the dashboard: closing the terminal that runs
+/// the dashboard must not end the host and its shells.
+#[cfg(unix)]
+fn spawn_detached(command: &mut std::process::Command) -> std::io::Result<std::process::Child> {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: setsid is async-signal-safe and touches no memory of the parent.
     unsafe {
         command.pre_exec(|| {
             libc::setsid();
             Ok(())
         });
     }
-    let child = command.spawn().map_err(|e| format!("could not start the PTY host: {e}"))?;
-    for _ in 0..100 {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        if running_build(&socket).await.as_deref() == Some(HOST_BUILD) {
-            println!("> pty host {HOST_BUILD} started (pid {})", child.id());
-            return Ok(socket);
+    command.spawn()
+}
+
+/// Starts the host with no console and in its own process group. It also
+/// leaves the parent's job when the job allows that, so a terminal that ends
+/// its job on close does not take the host along.
+#[cfg(windows)]
+fn spawn_detached(command: &mut std::process::Command) -> std::io::Result<std::process::Child> {
+    use std::os::windows::process::CommandExt;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+    command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB);
+    match command.spawn() {
+        Ok(child) => Ok(child),
+        // A job without breakaway rights refuses that flag.
+        Err(_) => {
+            command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+            command.spawn()
         }
     }
-    Err(format!("the PTY host did not start; see {}", dir.join("host.log").display()))
 }
 
 #[cfg(test)]

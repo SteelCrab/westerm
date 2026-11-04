@@ -1,17 +1,45 @@
 //! The real binary, in a temp state dir: a shell survives a dropped
 //! connection and a host restart, and the dashboard enforces its origin.
+//! Runs on macOS, Linux (Unix socket), and Windows (named pipe).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::UnixStream;
 use tokio_tungstenite::tungstenite::Message;
 
 const BIN: &str = env!("CARGO_BIN_EXE_westerm");
 const QUERY: &str = "session=stest1&kind=shell&cols=80&rows=24&width=640&height=408&lang=ko";
+
+/// Prints MARK_42 only when the shell runs it: the typed line itself does not contain that text.
+#[cfg(unix)]
+const MARK_INPUT: &str = r#"{"type":"input","data":"echo MARK_$((40+2))\r"}"#;
+#[cfg(windows)]
+const MARK_INPUT: &str = r#"{"type":"input","data":"echo ('MARK_' + (40+2))\r"}"#;
+
+#[cfg(unix)]
+type Stream = tokio::net::UnixStream;
+#[cfg(windows)]
+type Stream = tokio::net::windows::named_pipe::NamedPipeClient;
+
+/// The file that appears once the host listens.
+fn endpoint(state: &Path) -> std::path::PathBuf {
+    state.join(if cfg!(windows) { "host.pipe" } else { "host.sock" })
+}
+
+#[cfg(unix)]
+async fn connect(state: &Path) -> Stream {
+    tokio::net::UnixStream::connect(endpoint(state)).await.unwrap()
+}
+
+#[cfg(windows)]
+async fn connect(state: &Path) -> Stream {
+    let record = std::fs::read_to_string(endpoint(state)).unwrap();
+    let name = record.lines().next().unwrap();
+    tokio::net::windows::named_pipe::ClientOptions::new().open(name).unwrap()
+}
 
 fn start_host(state: &Path) -> Child {
     let child = Command::new(BIN)
@@ -22,17 +50,16 @@ fn start_host(state: &Path) -> Child {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    let socket = state.join("host.sock");
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !socket.exists() {
-        assert!(Instant::now() < deadline, "host socket appears");
+    while !endpoint(state).exists() {
+        assert!(Instant::now() < deadline, "host endpoint appears");
         std::thread::sleep(Duration::from_millis(30));
     }
     child
 }
 
-async fn http(socket: &Path, method: &str, path: &str) -> String {
-    let mut stream = UnixStream::connect(socket).await.unwrap();
+async fn http(state: &Path, method: &str, path: &str) -> String {
+    let mut stream = connect(state).await;
     let head = format!("{method} {path} HTTP/1.1\r\nHost: host\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
     stream.write_all(head.as_bytes()).await.unwrap();
     let mut response = String::new();
@@ -41,7 +68,7 @@ async fn http(socket: &Path, method: &str, path: &str) -> String {
 }
 
 async fn stop_host(state: &Path, mut child: Child) {
-    let _ = http(&state.join("host.sock"), "POST", "/shutdown").await;
+    let _ = http(state, "POST", "/shutdown").await;
     let deadline = Instant::now() + Duration::from_secs(10);
     while child.try_wait().unwrap().is_none() {
         assert!(Instant::now() < deadline, "host exits");
@@ -50,13 +77,13 @@ async fn stop_host(state: &Path, mut child: Child) {
 }
 
 struct Viewer {
-    ws: tokio_tungstenite::WebSocketStream<UnixStream>,
+    ws: tokio_tungstenite::WebSocketStream<Stream>,
     output: String,
 }
 
 impl Viewer {
-    async fn attach(socket: &Path) -> (Self, serde_json::Value) {
-        let stream = UnixStream::connect(socket).await.unwrap();
+    async fn attach(state: &Path) -> (Self, serde_json::Value) {
+        let stream = connect(state).await;
         let (mut ws, _) = tokio_tungstenite::client_async(format!("ws://host/session?{QUERY}"), stream).await.unwrap();
         ws.send(Message::text(r#"{"type":"resize","cols":80,"rows":24,"width":640,"height":408}"#)).await.unwrap();
         let mut viewer = Self { ws, output: String::new() };
@@ -82,7 +109,8 @@ impl Viewer {
     }
 
     async fn wait_for(&mut self, needle: &str) {
-        let deadline = Instant::now() + Duration::from_secs(10);
+        // PowerShell on a fresh CI machine can take several seconds to start.
+        let deadline = Instant::now() + Duration::from_secs(30);
         while !self.output.contains(needle) {
             let left = deadline.saturating_duration_since(Instant::now());
             assert!(!left.is_zero(), "output contains {needle:?}; got {:?}", self.output);
@@ -114,18 +142,17 @@ fn session_files(state: &Path) -> Vec<String> {
 #[tokio::test]
 async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
     let state = tempfile::tempdir().unwrap();
-    let socket: PathBuf = state.path().join("host.sock");
     let host = start_host(state.path());
 
-    let (mut first, ready) = Viewer::attach(&socket).await;
+    let (mut first, ready) = Viewer::attach(state.path()).await;
     assert_eq!(ready["mode"], "new");
     let pid = ready["pid"].clone();
-    first.send(r#"{"type":"input","data":"echo MARK_$((40+2))\r"}"#).await;
+    first.send(MARK_INPUT).await;
     first.wait_for("MARK_42").await;
     first.detach().await;
 
     // Same process; the screen is replayed from the host's copy.
-    let (mut second, ready) = Viewer::attach(&socket).await;
+    let (mut second, ready) = Viewer::attach(state.path()).await;
     assert_eq!(ready["mode"], "reattached");
     assert_eq!(ready["pid"], pid, "the same shell process");
     second.wait_for("MARK_42").await;
@@ -135,7 +162,7 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
     stop_host(state.path(), host).await;
     assert!(session_files(state.path()).contains(&"stest1.screen".to_owned()), "screen saved on shutdown");
     let host = start_host(state.path());
-    let (mut third, ready) = Viewer::attach(&socket).await;
+    let (mut third, ready) = Viewer::attach(state.path()).await;
     assert_eq!(ready["mode"], "revived");
     assert_ne!(ready["pid"], pid, "a new process");
     third.wait_for("MARK_42").await;
@@ -152,10 +179,9 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
 #[tokio::test]
 async fn a_second_window_takes_over_and_the_first_is_told() {
     let state = tempfile::tempdir().unwrap();
-    let socket = state.path().join("host.sock");
     let host = start_host(state.path());
-    let (mut first, _) = Viewer::attach(&socket).await;
-    let (_second, ready) = Viewer::attach(&socket).await;
+    let (mut first, _) = Viewer::attach(state.path()).await;
+    let (_second, ready) = Viewer::attach(state.path()).await;
     assert_eq!(ready["mode"], "reattached");
     let code = loop {
         match tokio::time::timeout(Duration::from_secs(5), first.ws.next()).await.unwrap() {
@@ -207,13 +233,12 @@ async fn the_dashboard_only_accepts_its_own_origin() {
 
     let _ = server.kill();
     // The dashboard started a host for that session; stop it.
-    let _ = http(&state.path().join("host.sock"), "POST", "/shutdown").await;
+    let _ = http(state.path(), "POST", "/shutdown").await;
 }
 
 #[tokio::test]
 async fn a_second_host_refuses_to_start_while_one_is_running() {
     let state = tempfile::tempdir().unwrap();
-    let socket = state.path().join("host.sock");
     let first = start_host(state.path());
     let mut second = Command::new(BIN)
         .arg("host")
@@ -229,12 +254,12 @@ async fn a_second_host_refuses_to_start_while_one_is_running() {
         }
         if Instant::now() > deadline {
             let _ = second.kill();
-            panic!("the second host kept running and took over the socket");
+            panic!("the second host kept running and took over the endpoint");
         }
         tokio::time::sleep(Duration::from_millis(30)).await;
     };
     assert!(!status.success(), "the second host exits with an error");
-    // The first host still owns the socket and answers.
-    assert!(http(&socket, "GET", "/health").await.contains("\"build\""));
+    // The first host still owns the endpoint and answers.
+    assert!(http(state.path(), "GET", "/health").await.contains("\"build\""));
     stop_host(state.path(), first).await;
 }

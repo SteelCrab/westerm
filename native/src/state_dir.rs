@@ -1,9 +1,11 @@
-//! Private state directory (mode 0700): the host socket, saved screens, and
-//! the dashboard layout. WESTERM_STATE_DIR overrides it (tests use a temp dir).
+//! Private state directory: the host endpoint, saved screens, and the
+//! dashboard layout. WESTERM_STATE_DIR overrides it (tests use a temp dir).
+//!
+//! - macOS and Linux: $XDG_STATE_HOME/westerm or ~/.local/state/westerm, mode 0700.
+//! - Windows: %LOCALAPPDATA%\westerm, which only the user can open.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub fn state_dir() -> std::io::Result<PathBuf> {
     let dir = match std::env::var_os("WESTERM_STATE_DIR") {
@@ -11,11 +13,19 @@ pub fn state_dir() -> std::io::Result<PathBuf> {
         None => state_base().join("westerm"),
     };
     fs::create_dir_all(&dir)?;
-    fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
+    }
     Ok(dir)
 }
 
 fn state_base() -> PathBuf {
+    #[cfg(windows)]
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        return PathBuf::from(local);
+    }
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home_dir().join(".local").join("state"))
@@ -30,10 +40,25 @@ pub fn legacy_state_dir() -> Option<PathBuf> {
     Some(state_base().join("wterm-dashboard")).filter(|dir| dir.is_dir())
 }
 
-pub fn host_socket(dir: &Path) -> PathBuf {
-    dir.join("host.sock")
+/// The user's home: %USERPROFILE% on Windows (where OpenSSH looks), $HOME elsewhere.
+pub fn home_dir() -> PathBuf {
+    let order: &[&str] = if cfg!(windows) { &["USERPROFILE", "HOME"] } else { &["HOME"] };
+    order
+        .iter()
+        .find_map(|key| std::env::var_os(key))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-pub fn home_dir() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+/// Options for a file only the user may read: mode 0600 on Unix. On Windows
+/// the state directory's own permissions already keep others out.
+pub fn private_file() -> fs::OpenOptions {
+    #[allow(unused_mut)]
+    let mut options = fs::OpenOptions::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
 }

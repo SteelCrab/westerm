@@ -1,4 +1,6 @@
-//! Starting PTY processes: login shells, ssh, terminal-browser, terminal-code.
+//! Starting PTY processes: shells, ssh, terminal-browser, terminal-code.
+//! macOS and Linux start everything through a login shell; Windows starts
+//! programs directly (ConPTY) with PowerShell as the shell.
 
 use std::path::PathBuf;
 
@@ -63,6 +65,7 @@ pub struct LaunchSpec {
     pub cwd: PathBuf,
 }
 
+#[cfg(unix)]
 fn login_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into())
 }
@@ -70,6 +73,7 @@ fn login_shell() -> String {
 /// Every kind starts through a login shell so PATH matches the user's
 /// terminal. URLs and ssh destinations are positional parameters, never part
 /// of the script, so they cannot inject shell syntax.
+#[cfg(unix)]
 pub fn command_for(kind: SessionKind, url: Option<&str>, target: Option<&str>) -> Result<(String, Vec<String>), String> {
     let shell = login_shell();
     let args: Vec<String> = match kind {
@@ -99,6 +103,46 @@ pub fn command_for(kind: SessionKind, url: Option<&str>, target: Option<&str>) -
         SessionKind::Editor => vec!["-l".into(), "-c".into(), "exec tode .".into(), "tode".into()],
     };
     Ok((shell, args))
+}
+
+/// PowerShell 7 when installed, else Windows PowerShell, which every
+/// Windows 10 and later has.
+#[cfg(windows)]
+fn windows_shell() -> String {
+    let has_pwsh = std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()));
+    if has_pwsh { "pwsh.exe" } else { "powershell.exe" }.into()
+}
+
+/// Characters that cmd.exe reads as syntax. Tools installed as .cmd shims
+/// (npm, scoop) run through cmd.exe, so arguments must not contain them.
+#[cfg(windows)]
+const CMD_SYNTAX: &str = "\"&|<>^%!";
+
+/// Programs start directly with an argument list; there is no script.
+#[cfg(windows)]
+pub fn command_for(kind: SessionKind, url: Option<&str>, target: Option<&str>) -> Result<(String, Vec<String>), String> {
+    Ok(match kind {
+        SessionKind::Shell => (windows_shell(), vec!["-NoLogo".into()]),
+        SessionKind::Ssh => {
+            let target = target.ok_or("ssh needs a destination")?;
+            ("ssh".into(), vec!["--".into(), target.into()])
+        }
+        SessionKind::Browser => {
+            let mut args: Vec<String> = vec!["open".into(), "--no-merge".into()];
+            if let Some(target) = target {
+                args.extend(["--ssh".into(), target.into()]);
+            }
+            if let Some(url) = url {
+                if url.contains(|c| CMD_SYNTAX.contains(c)) {
+                    return Err(format!("this URL cannot be passed safely on Windows; remove {CMD_SYNTAX}"));
+                }
+                args.push(url.into());
+            }
+            ("terminal-browser".into(), args)
+        }
+        SessionKind::Editor => ("tode".into(), vec![".".into()]),
+    })
 }
 
 pub fn pty_size(size: PtySize) -> portable_pty::PtySize {
@@ -132,6 +176,7 @@ pub fn spawn(spec: &LaunchSpec, size: PtySize) -> Result<Pty, String> {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn destinations_are_arguments_not_script() {
         let (_, args) = command_for(SessionKind::Ssh, None, Some("prod")).unwrap();
@@ -141,6 +186,19 @@ mod tests {
         assert_eq!(args[2..], [r#"exec terminal-browser open --no-merge --ssh "$1" "$2""#, "terminal-browser", "prod", "localhost:3000"]);
         let (_, args) = command_for(SessionKind::Browser, Some("example.com; rm -rf ~"), None).unwrap();
         assert_eq!(args.last().unwrap(), "example.com; rm -rf ~");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_programs_get_argument_lists() {
+        let (program, args) = command_for(SessionKind::Ssh, None, Some("prod")).unwrap();
+        assert_eq!(program, "ssh");
+        assert_eq!(args, ["--", "prod"]);
+        let (_, args) = command_for(SessionKind::Browser, Some("localhost:3000"), Some("prod")).unwrap();
+        assert_eq!(args, ["open", "--no-merge", "--ssh", "prod", "localhost:3000"]);
+        assert!(command_for(SessionKind::Browser, Some("example.com/?a=1&b=2"), None).is_err(), "cmd.exe syntax");
+        let (shell, _) = command_for(SessionKind::Shell, None, None).unwrap();
+        assert!(shell.ends_with(".exe"));
     }
 
     #[test]

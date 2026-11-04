@@ -9,6 +9,8 @@ use std::hash::{Hash, Hasher};
 const HOST_SOURCES: &[&str] = &[
     "src/protocol.rs",
     "src/i18n.rs",
+    "src/ipc.rs",
+    "src/time.rs",
     "src/spawn.rs",
     "src/cwd.rs",
     "src/state_dir.rs",

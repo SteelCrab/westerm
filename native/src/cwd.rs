@@ -1,4 +1,6 @@
 //! Current directory of a process: proc_pidinfo on macOS, /proc on Linux.
+//! Windows has no public API for another process's directory; a new editor
+//! then opens the home folder.
 
 use std::path::PathBuf;
 
@@ -44,6 +46,7 @@ pub fn process_cwd(_pid: u32) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
     fn reads_this_process_directory() {
         let here = std::env::current_dir().unwrap();

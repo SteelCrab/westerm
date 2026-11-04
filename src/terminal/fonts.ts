@@ -21,7 +21,7 @@ export const NERD_FONT_FALLBACKS = [
 
 /** CJK glyphs for fonts without them, per script. */
 const CJK_FALLBACKS = {
-  ko: ["D2Coding", "Apple SD Gothic Neo", "Noto Sans Mono CJK KR"],
+  ko: ["D2Coding", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans Mono CJK KR"],
   ja: ["Noto Sans Mono CJK JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "MS Gothic"],
   zh: ["Noto Sans Mono CJK SC", "PingFang SC", "Microsoft YaHei"],
 };
@@ -36,7 +36,7 @@ export function cjkFallbacks(locale: Locale): string[] {
   const order = [first, ...(["ko", "ja", "zh"] as const).filter((script) => script !== first)];
   return order.flatMap((script) => CJK_FALLBACKS[script]);
 }
-const DEFAULT_FAMILIES = ["Menlo", "Monaco", "Consolas", "DejaVu Sans Mono"];
+const DEFAULT_FAMILIES = ["Menlo", "Monaco", "Cascadia Mono", "Consolas", "DejaVu Sans Mono"];
 const EMOJI_FALLBACKS = ["Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"];
 const GENERIC = new Set(["monospace", "ui-monospace", "sans-serif", "serif", "system-ui"]);
 

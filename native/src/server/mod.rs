@@ -18,7 +18,6 @@ use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
 use rust_embed::RustEmbed;
-use tokio::net::UnixStream;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::Message as HostMessage;
 
@@ -45,8 +44,32 @@ struct AppState {
 
 type Shared = Arc<AppState>;
 
+/// `westerm stop`: the host saves every session and exits. Shells come back
+/// as "restored" when westerm starts again.
+pub async fn stop_host() -> std::io::Result<()> {
+    if host_client::stop_running().await? {
+        println!("westerm: the PTY host saved its sessions and stopped");
+    } else {
+        println!("westerm: no PTY host is running");
+    }
+    Ok(())
+}
+
 pub async fn run(options: Options) -> std::io::Result<()> {
-    let mut origins = vec![format!("http://127.0.0.1:{}", options.port), format!("http://localhost:{}", options.port)];
+    // Local shells must never listen on a public interface. Port 0 asks the
+    // OS for any free port; the origins below use the port actually bound.
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", options.port)).await.map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AddrInUse {
+            std::io::Error::new(
+                error.kind(),
+                format!("port {} is in use; choose another with --port N, or --port 0 for any free port", options.port),
+            )
+        } else {
+            error
+        }
+    })?;
+    let port = listener.local_addr()?.port();
+    let mut origins = vec![format!("http://127.0.0.1:{port}"), format!("http://localhost:{port}")];
     origins.extend(options.allow_origins);
     // Before the rename the state lived elsewhere; move it before serving.
     host_client::migrate_legacy_state().await;
@@ -63,9 +86,7 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         .route("/ws/session", get(session))
         .fallback(asset)
         .with_state(state);
-    // Local shells must never listen on a public interface.
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", options.port)).await?;
-    println!("> westerm: http://127.0.0.1:{}", options.port);
+    println!("> westerm: http://127.0.0.1:{port}");
     axum::serve(listener, app).await
 }
 
@@ -119,8 +140,8 @@ async fn session(
     let Some(request) = AttachRequest::from_query(&query).filter(|_| origin_allowed(&state, &headers)) else {
         return StatusCode::FORBIDDEN.into_response();
     };
-    let socket = match state.host.ensure().await {
-        Ok(socket) => socket,
+    let dir = match state.host.ensure().await {
+        Ok(dir) => dir,
         Err(error) => {
             eprintln!("> {error}");
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
@@ -128,7 +149,7 @@ async fn session(
     };
     // Only validated fields reach the host.
     let query = request.to_query();
-    ws.max_message_size(MAX_MESSAGE).on_upgrade(move |browser| relay(browser, socket, query, state))
+    ws.max_message_size(MAX_MESSAGE).on_upgrade(move |browser| relay(browser, dir, query, state))
 }
 
 /// Codes a server may send in a close frame; others become 1011.
@@ -138,9 +159,9 @@ fn sendable(code: u16) -> u16 {
 
 /// Pipes a browser pane to its host session, frame for frame. A closed
 /// browser only detaches: the host keeps text sessions running.
-async fn relay(browser: WebSocket, socket: PathBuf, query: String, state: Shared) {
+async fn relay(browser: WebSocket, dir: PathBuf, query: String, state: Shared) {
     let host = async {
-        let stream = UnixStream::connect(&socket).await.ok()?;
+        let stream = crate::ipc::connect(&dir).await.ok()?;
         let config = WebSocketConfig::default().max_message_size(None).max_frame_size(None);
         let url = format!("ws://host/session?{query}");
         tokio_tungstenite::client_async_with_config(url, stream, Some(config)).await.ok().map(|(ws, _)| ws)

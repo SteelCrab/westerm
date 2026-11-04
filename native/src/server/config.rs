@@ -3,7 +3,6 @@
 
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -195,11 +194,10 @@ pub fn write_workspace(state_dir: &Path, body: &[u8]) -> bool {
     }
     let path = workspace_path(state_dir);
     let temp = path.with_extension("json.tmp");
-    let written = fs::OpenOptions::new()
+    let written = crate::state_dir::private_file()
         .write(true)
         .create(true)
         .truncate(true)
-        .mode(0o600)
         .open(&temp)
         .and_then(|mut file| file.write_all(&serde_json::to_vec(&value).unwrap_or_default()))
         .and_then(|()| fs::rename(&temp, &path));

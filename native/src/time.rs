@@ -45,13 +45,24 @@ fn parse_iso(text: &str) -> Option<i64> {
 /// "2026-11-04 23:01" in local time, or the raw text when it does not parse.
 pub fn local_label(iso: &str) -> String {
     let Some(epoch) = parse_iso(iso) else { return iso.to_owned() };
+    let Some(tm) = local_tm(epoch) else { return iso.to_owned() };
+    format!("{:04}-{:02}-{:02} {:02}:{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min)
+}
+
+#[cfg(unix)]
+fn local_tm(epoch: i64) -> Option<libc::tm> {
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     let time = epoch as libc::time_t;
     // SAFETY: localtime_r only writes into `tm`.
-    if unsafe { libc::localtime_r(&time, &mut tm) }.is_null() {
-        return iso.to_owned();
-    }
-    format!("{:04}-{:02}-{:02} {:02}:{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min)
+    (!unsafe { libc::localtime_r(&time, &mut tm) }.is_null()).then_some(tm)
+}
+
+#[cfg(windows)]
+fn local_tm(epoch: i64) -> Option<libc::tm> {
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    let time = epoch as libc::time_t;
+    // SAFETY: localtime_s only writes into `tm`; it returns 0 on success.
+    (unsafe { libc::localtime_s(&mut tm, &time) } == 0).then_some(tm)
 }
 
 #[cfg(test)]
