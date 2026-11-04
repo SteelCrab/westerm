@@ -3,7 +3,7 @@
 // transparent mask, and places it on Apple's icon grid (an 824 px body with
 // a 100 px transparent margin).
 //
-//   swift macos/make-icon.swift macos/icon-source.jpg macos/AppIcon.png
+//   swift macos/make-icon.swift macos/icon-source.png macos/AppIcon.png
 
 import AppKit
 
