@@ -5,7 +5,7 @@ import { useI18n } from "../i18n/index.tsx";
 import { KindIcon, LAUNCHERS } from "../kinds.tsx";
 import type { TerminalFont } from "../terminal/fonts.ts";
 import type { ColorScheme } from "../theme.ts";
-import { activeTab, sessionTab, type Workspace, type WorkspaceAction } from "../workspace.ts";
+import { activeTab, sessionTab, takenOver, type Workspace, type WorkspaceAction } from "../workspace.ts";
 import type { RenameTarget } from "./InlineRename.tsx";
 import { Pane } from "./Pane.tsx";
 import { SplitDividers } from "./SplitDividers.tsx";
@@ -39,6 +39,7 @@ export function PaneLayer(props: PaneLayerProps) {
   const current = activeTab(state);
   const layerRef = useRef<HTMLDivElement>(null);
   const tabRects = new Map(state.tabs.map((tab) => [tab.id, rects(tab.layout)]));
+  const away = takenOver(state);
 
   const inner = useCallback(() => {
     const rect = layerRef.current?.getBoundingClientRect();
@@ -74,6 +75,7 @@ export function PaneLayer(props: PaneLayerProps) {
             renaming={props.renaming}
             onRename={props.onRename}
             dragging={dragging}
+            away={away}
             onDragPane={props.onDragPane}
             dispatch={props.dispatch}
           />

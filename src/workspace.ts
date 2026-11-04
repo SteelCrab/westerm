@@ -96,6 +96,12 @@ export type WorkspaceAction =
   | { type: "renameSession"; id: string; name: string }
   /** `manual`: the user pressed restart, so the reconnect budget starts over. */
   | { type: "restart"; id: string; manual?: boolean }
+  /**
+   * This window takes every session back from another window. That window
+   * may have changed the layout, so the saved one replaces this one when
+   * there is one; then every pane connects again.
+   */
+  | { type: "reclaim"; saved: SavedWorkspace | null }
   | { type: "newTab"; id: string }
   | { type: "selectTab"; id: string }
   /** An empty name returns the tab to its automatic name. */
@@ -154,6 +160,14 @@ export function tabSessions(state: Workspace, tabId: string): Session[] {
   if (!tab) return [];
   const byId = new Map(state.sessions.map((session) => [session.id, session]));
   return tab.paneIds.flatMap((id) => byId.get(id) ?? []);
+}
+
+/**
+ * Another window took every session (close code CLOSE_TAKEN_OVER). The host
+ * tells each pane, so one pane told stands for the whole window.
+ */
+export function takenOver(state: Workspace): boolean {
+  return state.sessions.some((session) => session.notice === "takenOver");
 }
 
 export function sessionTab(state: Workspace, sessionId: string): Tab | null {
@@ -393,6 +407,24 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
         retries: action.manual ? 0 : session.retries,
         generation: session.generation + 1,
       });
+    }
+    case "reclaim": {
+      if (!takenOver(state)) return state;
+      const next = action.saved ? workspaceReducer(state, { type: "hydrate", saved: action.saved }) : state;
+      // A new generation mounts a new terminal, which connects again.
+      const generations = new Map(state.sessions.map((session) => [session.id, session.generation]));
+      return {
+        ...next,
+        sessions: next.sessions.map((session) => ({
+          ...session,
+          status: "connecting",
+          detail: null,
+          notice: null,
+          pid: null,
+          retries: 0,
+          generation: (generations.get(session.id) ?? session.generation) + 1,
+        })),
+      };
     }
     case "newTab":
       if (state.tabs.some((tab) => tab.id === action.id)) return state;

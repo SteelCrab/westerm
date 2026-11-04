@@ -15,6 +15,7 @@ import {
   tabLabel,
   tabLead,
   tabSessions,
+  takenOver,
   workspaceReducer,
   type Workspace,
 } from "../src/workspace.ts";
@@ -320,4 +321,32 @@ test("pane switching follows reading order and the layout", () => {
   assert.equal(paneToward(state, "left"), null);
   state = workspaceReducer(state, { type: "newTab", id: "t2" });
   assert.equal(stepPane(state, 1), null, "an empty tab has no panes");
+});
+
+test("taking the sessions back loads the other window's layout and connects every pane", () => {
+  let state = open(open(start(), "a"), "b");
+  state = workspaceReducer(state, { type: "ready", id: "a", pid: 1, mode: "new" });
+  assert.equal(takenOver(state), false);
+  state = workspaceReducer(state, { type: "status", id: "a", status: "error", notice: "takenOver" });
+  assert.equal(takenOver(state), true, "one pane told is the whole window");
+  const generation = state.sessions[0].generation;
+
+  // Meanwhile the other window closed "b" and saved its layout.
+  const saved = toSaved(workspaceReducer(state, { type: "close", id: "b" }));
+  state = workspaceReducer(state, { type: "reclaim", saved });
+  assert.equal(takenOver(state), false);
+  assert.deepEqual(state.sessions.map((session) => session.id), ["a"]);
+  assert.equal(state.sessions[0].status, "connecting");
+  assert.equal(state.sessions[0].generation, generation + 1, "a new terminal connects again");
+  assert.equal(workspaceReducer(state, { type: "reclaim", saved }), state, "only a window that was taken over");
+});
+
+test("taking the sessions back without a saved layout keeps this one", () => {
+  let state = open(open(start(), "a"), "b");
+  state = workspaceReducer(state, { type: "status", id: "b", status: "error", notice: "takenOver" });
+  state = workspaceReducer(state, { type: "reclaim", saved: null });
+  assert.deepEqual(state.sessions.map((session) => [session.id, session.status, session.generation]), [
+    ["a", "connecting", 1],
+    ["b", "connecting", 1],
+  ]);
 });
