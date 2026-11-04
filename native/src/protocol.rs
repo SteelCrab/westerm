@@ -12,7 +12,8 @@ use crate::i18n::Lang;
 pub const FLOW_HIGH_WATER: u64 = 8 * 1024 * 1024;
 pub const FLOW_LOW_WATER: u64 = 2 * 1024 * 1024;
 
-/// Another window attached to the same session; the old one must not reconnect.
+/// Another window took this session, or every session; the old one must not
+/// reconnect until it is used again.
 pub const CLOSE_TAKEN_OVER: u16 = 4001;
 
 pub const MAX_COLS: u16 = 1024;
@@ -185,6 +186,8 @@ pub struct AttachRequest {
     pub size: PtySize,
     /// UI language for text the host writes (restore notice, errors).
     pub lang: Lang,
+    /// The page that asks. One window at a time owns every session.
+    pub window: Option<String>,
 }
 
 impl AttachRequest {
@@ -219,7 +222,12 @@ impl AttachRequest {
             None
         };
         let lang = Lang::parse(query.get("lang").map(String::as_str));
-        Some(Self { id, kind, url, target, cwd_from, size, lang })
+        let window = match query.get("window") {
+            Some(id) if is_id(id) => Some(id.clone()),
+            Some(_) => return None,
+            None => None,
+        };
+        Some(Self { id, kind, url, target, cwd_from, size, lang, window })
     }
 
     /// The same request as a query string, from validated fields only.
@@ -241,6 +249,9 @@ impl AttachRequest {
         }
         if let Some(cwd_from) = &self.cwd_from {
             pairs.push(("cwdFrom", cwd_from.clone()));
+        }
+        if let Some(window) = &self.window {
+            pairs.push(("window", window.clone()));
         }
         pairs
             .into_iter()
@@ -315,6 +326,7 @@ mod tests {
             ("url", "localhost:3000"),
             ("target", "prod"),
             ("lang", "ja"),
+            ("window", "wabc1"),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_owned(), v.to_owned()))
@@ -324,6 +336,11 @@ mod tests {
         assert!(request.to_query().contains("url=localhost%3A3000"));
         assert_eq!(request.lang, Lang::Ja);
         assert!(request.to_query().contains("lang=ja"));
+        assert_eq!(request.window.as_deref(), Some("wabc1"));
+        assert!(request.to_query().contains("window=wabc1"));
+        let mut bad_window = query.clone();
+        bad_window.insert("window".into(), "../x".into());
+        assert!(AttachRequest::from_query(&bad_window).is_none(), "window ids are checked");
         let mut ssh = query.clone();
         ssh.insert("kind".into(), "ssh".into());
         ssh.remove("target");

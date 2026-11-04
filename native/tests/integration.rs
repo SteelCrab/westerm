@@ -108,10 +108,19 @@ struct Viewer {
     output: String,
 }
 
+/// A shell pane in the page `window`, as the dashboard asks for one.
+fn window_query(session: &str, window: &str) -> String {
+    format!("session={session}&kind=shell&cols=80&rows=24&width=640&height=408&lang=ko&window={window}")
+}
+
 impl Viewer {
     async fn attach(state: &Path) -> (Self, serde_json::Value) {
+        Self::attach_query(state, QUERY).await
+    }
+
+    async fn attach_query(state: &Path, query: &str) -> (Self, serde_json::Value) {
         let stream = connect(state).await;
-        let (mut ws, _) = tokio_tungstenite::client_async(format!("ws://host/session?{QUERY}"), stream).await.unwrap();
+        let (mut ws, _) = tokio_tungstenite::client_async(format!("ws://host/session?{query}"), stream).await.unwrap();
         ws.send(Message::text(r#"{"type":"resize","cols":80,"rows":24,"width":640,"height":408}"#)).await.unwrap();
         let mut viewer = Self { ws, output: String::new() };
         let ready = viewer.next_json().await;
@@ -157,6 +166,17 @@ impl Viewer {
 
     async fn send(&mut self, json: &str) {
         self.ws.send(Message::text(json)).await.unwrap();
+    }
+
+    /// The close code the host sends, skipping output before it.
+    async fn close_code(&mut self) -> u16 {
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), self.ws.next()).await.unwrap() {
+                Some(Ok(Message::Close(Some(frame)))) => return u16::from(frame.code),
+                Some(Ok(_)) => continue,
+                other => panic!("expected a close frame, got {other:?}"),
+            }
+        }
     }
 
     async fn detach(mut self) {
@@ -226,6 +246,31 @@ async fn a_second_window_takes_over_and_the_first_is_told() {
         }
     };
     assert_eq!(code, 4001);
+    stop_host(state.path(), host).await;
+}
+
+#[tokio::test]
+async fn one_window_at_a_time_owns_every_session() {
+    let state = tempfile::tempdir().unwrap();
+    let host = start_host(state.path());
+    let (mut app_one, _) = Viewer::attach_query(state.path(), &window_query("sone1", "wapp")).await;
+    let (mut app_two, ready) = Viewer::attach_query(state.path(), &window_query("stwo1", "wapp")).await;
+    let two_pid = ready["pid"].clone();
+    // More panes in the same window keep the ones before them.
+    app_one.send(MARK_INPUT).await;
+    app_one.wait_for("MARK_42").await;
+
+    // Another window opens one of them and takes both.
+    let (mut web, ready) = Viewer::attach_query(state.path(), &window_query("sone1", "wweb")).await;
+    assert_eq!(ready["mode"], "reattached");
+    assert_eq!(app_one.close_code().await, 4001);
+    assert_eq!(app_two.close_code().await, 4001, "a session the new window did not open");
+
+    // Back in the first window: the shells kept running, and the other window is told.
+    let (_app, ready) = Viewer::attach_query(state.path(), &window_query("stwo1", "wapp")).await;
+    assert_eq!(ready["mode"], "reattached");
+    assert_eq!(ready["pid"], two_pid, "the same shell process");
+    assert_eq!(web.close_code().await, 4001, "a session this window did not open");
     stop_host(state.path(), host).await;
 }
 

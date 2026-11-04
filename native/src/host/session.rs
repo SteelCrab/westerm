@@ -36,7 +36,10 @@ const READ_CHUNK: usize = 64 * 1024;
 const REPLAY_CHUNK: usize = 64 * 1024;
 
 pub enum Command {
-    Attach { ws: WebSocket, size: PtySize, mode: AttachMode },
+    /// `window`: the page the viewer is in.
+    Attach { ws: WebSocket, size: PtySize, mode: AttachMode, window: Option<String> },
+    /// Window `owner` took every session: close a viewer in any other window.
+    Evict { owner: String },
     /// `forget`: the user closed the pane; also delete the saved screen.
     End { forget: bool },
     SaveNow { reply: oneshot::Sender<()> },
@@ -74,6 +77,7 @@ enum ViewerEvent {
 struct Viewer {
     generation: u64,
     out: mpsc::UnboundedSender<Message>,
+    window: Option<String>,
 }
 
 impl Viewer {
@@ -262,8 +266,15 @@ impl Session {
 
     fn command(&mut self, command: Command) -> Flow {
         match command {
-            Command::Attach { ws, size, mode } => {
-                self.attach(ws, size, mode);
+            Command::Attach { ws, size, mode, window } => {
+                self.attach(ws, size, mode, window);
+                Flow::Continue
+            }
+            Command::Evict { owner } => {
+                if let Some(viewer) = self.viewer.as_ref().filter(|viewer| viewer.window.as_ref() != Some(&owner)) {
+                    viewer.close(CLOSE_TAKEN_OVER, "opened in another window");
+                    self.detached();
+                }
                 Flow::Continue
             }
             Command::End { forget } => self.end(forget),
@@ -280,7 +291,7 @@ impl Session {
         }
     }
 
-    fn attach(&mut self, ws: WebSocket, size: PtySize, mode: AttachMode) {
+    fn attach(&mut self, ws: WebSocket, size: PtySize, mode: AttachMode, window: Option<String>) {
         if let Some(old) = self.viewer.take() {
             old.close(CLOSE_TAKEN_OVER, "opened in another window");
         }
@@ -313,7 +324,7 @@ impl Session {
             let _ = events.send((generation, ViewerEvent::Closed));
         });
 
-        self.viewer = Some(Viewer { generation, out });
+        self.viewer = Some(Viewer { generation, out, window });
         self.in_flight = 0;
         self.paused = false;
         self.send_json(&ServerMessage::Ready { pid: self.pid, mode });
@@ -353,19 +364,23 @@ impl Session {
                 Some(ClientMessage::Close) => return self.end(true),
                 None => {}
             },
-            ViewerEvent::Closed => {
-                self.viewer = None;
-                self.held = None;
-                self.awaiting = None;
-                self.paused = false;
-                if self.kind.is_text() {
-                    self.save_at = Some(Instant::now());
-                } else {
-                    self.kill();
-                }
-            }
+            ViewerEvent::Closed => self.detached(),
         }
         Flow::Continue
+    }
+
+    /// The viewer left or was closed: a text session saves soon and keeps
+    /// running; a pixel app stops.
+    fn detached(&mut self) {
+        self.viewer = None;
+        self.held = None;
+        self.awaiting = None;
+        self.paused = false;
+        if self.kind.is_text() {
+            self.save_at = Some(Instant::now());
+        } else {
+            self.kill();
+        }
     }
 
     fn output(&mut self, bytes: Bytes) {
