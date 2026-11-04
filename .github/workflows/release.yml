@@ -25,6 +25,10 @@ jobs:
             echo "::error::tag v$tag does not match native/Cargo.toml ($cargo) and package.json ($npm)"
             exit 1
           fi
+      - name: CHANGELOG.md has notes for this version
+        run: |
+          sh scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > notes.md
+          cat notes.md
 
   build:
     needs: check
@@ -63,7 +67,7 @@ jobs:
         run: |
           name="westerm-${{ matrix.target }}"
           mkdir -p "release/$name"
-          cp "native/target/${{ matrix.target }}/release/westerm" README.md "release/$name/"
+          cp "native/target/${{ matrix.target }}/release/westerm" README.md CHANGELOG.md "release/$name/"
           if [ -f LICENSE ]; then cp LICENSE "release/$name/"; fi
           tar -C release -czf "$name.tar.gz" "$name"
           if command -v sha256sum >/dev/null; then sum="sha256sum"; else sum="shasum -a 256"; fi
@@ -74,7 +78,7 @@ jobs:
         run: |
           $name = "westerm-${{ matrix.target }}"
           New-Item -ItemType Directory -Force "release/$name" | Out-Null
-          Copy-Item "native/target/${{ matrix.target }}/release/westerm.exe", README.md "release/$name/"
+          Copy-Item "native/target/${{ matrix.target }}/release/westerm.exe", README.md, CHANGELOG.md "release/$name/"
           if (Test-Path LICENSE) { Copy-Item LICENSE "release/$name/" }
           Compress-Archive -Path "release/$name" -DestinationPath "$name.zip"
           $hash = (Get-FileHash -Algorithm SHA256 "$name.zip").Hash.ToLower()
@@ -118,10 +122,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: assets
           merge-multiple: true
+      - name: Release notes from CHANGELOG.md
+        run: sh scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > notes.md
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -129,7 +136,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" assets/*
           --repo "$GITHUB_REPOSITORY"
           --title "westerm $GITHUB_REF_NAME"
-          --generate-notes
+          --notes-file notes.md
           --verify-tag
 
   # Installs the published release with the scripts from this tag, the way
