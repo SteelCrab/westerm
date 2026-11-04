@@ -4,7 +4,9 @@
 
 [English](README.md) · **한국어** · [日本語](README.ja.md) · [中文](README.zh-CN.md)
 
-![westerm 데모](docs/demo.gif)
+![westerm 데모](assets/demo.gif)
+
+![westerm: terminal-browser, 셸, terminal-code를 한 탭에 분할 배치한 화면](assets/screenshot.png)
 
 ## 설치
 
@@ -20,7 +22,7 @@ Windows(PowerShell):
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS 앱: [Releases](https://github.com/SteelCrab/westerm/releases/latest)에서 `westerm-macos-app.zip`을 받아 압축을 풀고, **westerm.app**을 응용 프로그램 폴더로 옮깁니다.
+macOS 앱: [Releases](https://github.com/SteelCrab/westerm/releases/latest)에서 `westerm-macos-app.dmg`를 받아 열고, **westerm**을 응용 프로그램 폴더로 드래그합니다.
 
 다른 설치 방법과 macOS에서 앱의 첫 실행을 허용하는 방법: [docs/install.md](docs/install.md)
 

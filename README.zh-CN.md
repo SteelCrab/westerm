@@ -4,7 +4,9 @@
 
 [English](README.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · **中文**
 
-![westerm 演示](docs/demo.gif)
+![westerm 演示](assets/demo.gif)
+
+![westerm：在一个标签页中分屏排列 terminal-browser、Shell 和 terminal-code](assets/screenshot.png)
 
 ## 安装
 
@@ -20,7 +22,7 @@ Windows（PowerShell）：
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS 应用：从 [Releases](https://github.com/SteelCrab/westerm/releases/latest) 下载 `westerm-macos-app.zip`，解压后把 **westerm.app** 移到“应用程序”文件夹。
+macOS 应用：从 [Releases](https://github.com/SteelCrab/westerm/releases/latest) 下载 `westerm-macos-app.dmg` 并打开，把 **westerm** 拖到“应用程序”文件夹。
 
 其他安装方式，以及在 macOS 上允许应用首次打开的方法：[docs/install.md](docs/install.md)（英语）
 

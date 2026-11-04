@@ -4,7 +4,9 @@
 
 **English** · [한국어](README.ko.md) · [日本語](README.ja.md) · [中文](README.zh-CN.md)
 
-![westerm demo](docs/demo.gif)
+![westerm demo](assets/demo.gif)
+
+![westerm: terminal-browser, a shell, and terminal-code split in one tab](assets/screenshot.png)
 
 ## Install
 
@@ -20,7 +22,7 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS app: download `westerm-macos-app.zip` from [Releases](https://github.com/SteelCrab/westerm/releases/latest), unzip it, and move **westerm.app** to Applications.
+macOS app: download `westerm-macos-app.dmg` from [Releases](https://github.com/SteelCrab/westerm/releases/latest), open it, and drag **westerm** onto the Applications folder.
 
 Other ways, and how to allow the app's first open on macOS: [docs/install.md](docs/install.md).
 
