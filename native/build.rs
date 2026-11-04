@@ -31,4 +31,6 @@ fn main() {
         }
     }
     println!("cargo:rustc-env=WESTERM_HOST_BUILD=rs-{:016x}", hasher.finish());
+    // Which release archive an update downloads (src/update.rs).
+    println!("cargo:rustc-env=WESTERM_TARGET={}", std::env::var("TARGET").unwrap_or_default());
 }

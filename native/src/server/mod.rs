@@ -4,6 +4,7 @@
 
 mod config;
 mod host_client;
+mod updates;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -40,9 +41,14 @@ struct AppState {
     host: HostClient,
     origins: Vec<String>,
     state_dir: PathBuf,
+    updates: updates::UpdateCheck,
 }
 
 type Shared = Arc<AppState>;
+
+/// The port this dashboard listens on; a restart after an update keeps it,
+/// also when it was chosen with --port 0.
+static BOUND_PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
 
 /// `westerm stop`: the host saves every session and exits. Shells come back
 /// as "restored" when westerm starts again.
@@ -58,22 +64,19 @@ pub async fn stop_host() -> std::io::Result<()> {
 pub async fn run(options: Options) -> std::io::Result<()> {
     // Local shells must never listen on a public interface. Port 0 asks the
     // OS for any free port; the origins below use the port actually bound.
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", options.port)).await.map_err(|error| {
-        if error.kind() == std::io::ErrorKind::AddrInUse {
-            std::io::Error::new(
-                error.kind(),
-                format!("port {} is in use; choose another with --port N, or --port 0 for any free port", options.port),
-            )
-        } else {
-            error
-        }
-    })?;
+    let listener = bind(options.port).await?;
     let port = listener.local_addr()?.port();
+    let _ = BOUND_PORT.set(port);
     let mut origins = vec![format!("http://127.0.0.1:{port}"), format!("http://localhost:{port}")];
     origins.extend(options.allow_origins);
     // Before the rename the state lived elsewhere; move it before serving.
     host_client::migrate_legacy_state().await;
-    let state = Arc::new(AppState { host: HostClient::default(), origins, state_dir: state_dir()? });
+    let state = Arc::new(AppState {
+        host: HostClient::default(),
+        origins,
+        state_dir: state_dir()?,
+        updates: updates::UpdateCheck::default(),
+    });
     // Start the PTY host now so the first pane does not wait for it.
     if let Err(error) = state.host.ensure().await {
         eprintln!("> {error}");
@@ -81,6 +84,7 @@ pub async fn run(options: Options) -> std::io::Result<()> {
 
     let app = Router::new()
         .route("/api/terminal-config", get(terminal_config))
+        .route("/api/update", get(updates::get_update).post(updates::post_update))
         .route("/api/workspace", get(get_workspace).put(put_workspace))
         .route("/api/ssh-hosts", get(ssh_hosts))
         .route("/ws/session", get(session))
@@ -88,6 +92,29 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         .with_state(state);
     println!("> westerm: http://127.0.0.1:{port}");
     axum::serve(listener, app).await
+}
+
+/// Binds 127.0.0.1:`port`. After an update on Windows the new process starts
+/// before the old one has let go of the port, so it waits a little.
+async fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
+    let restarting = std::env::var_os("WESTERM_RESTARTING").is_some();
+    let mut attempts = 0;
+    loop {
+        match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+            Ok(listener) => return Ok(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse && restarting && attempts < 25 => {
+                attempts += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                return Err(std::io::Error::new(
+                    error.kind(),
+                    format!("port {port} is in use; choose another with --port N, or --port 0 for any free port"),
+                ));
+            }
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 /// A page on any other site can reach 127.0.0.1. Only the dashboard's own
