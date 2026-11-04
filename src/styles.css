@@ -1,0 +1,1335 @@
+:root {
+  --bg: #0d0f12;
+  --surface: #14171c;
+  --surface-2: #1a1e24;
+  --border: #252a32;
+  --border-strong: #343b46;
+  --text: #d7dce3;
+  --text-muted: #8b94a1;
+  --text-faint: #5d6672;
+  --accent: #6aa9ff;
+  --accent-soft: rgba(106, 169, 255, 0.14);
+  --browser: #58d0a8;
+  --browser-soft: rgba(88, 208, 168, 0.14);
+  --editor: #a78bfa;
+  --editor-soft: rgba(167, 139, 250, 0.16);
+  --ssh: #f0a35e;
+  --ssh-soft: rgba(240, 163, 94, 0.16);
+  --ok: #4fc27a;
+  --warn: #e5b454;
+  --danger: #ef6b6b;
+  --on-accent: #062218;
+  --pane-bg: #1e1e1e;
+  --overlay: rgba(13, 15, 18, 0.78);
+  --backdrop: rgba(5, 6, 8, 0.55);
+  --shadow: rgba(0, 0, 0, 0.5);
+  --radius: 8px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  color-scheme: dark;
+}
+
+/* Light scheme follows the OS; terminals switch with it (src/theme.ts). */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #eef0f3;
+    --surface: #f7f8fa;
+    --surface-2: #e8ebef;
+    --border: #d9dde3;
+    --border-strong: #c3c9d2;
+    --text: #1f2329;
+    --text-muted: #5b6470;
+    --text-faint: #8a929d;
+    --accent: #2f6fde;
+    --accent-soft: rgba(47, 111, 222, 0.12);
+    --browser: #11906a;
+    --browser-soft: rgba(17, 144, 106, 0.12);
+    --editor: #7c4ddb;
+    --editor-soft: rgba(124, 77, 219, 0.12);
+    --ssh: #c26a1a;
+    --ssh-soft: rgba(194, 106, 26, 0.12);
+    --ok: #23a058;
+    --warn: #c48a12;
+    --danger: #d64545;
+    --on-accent: #ffffff;
+    --pane-bg: #fafafa;
+    --overlay: rgba(247, 248, 250, 0.82);
+    --backdrop: rgba(30, 35, 41, 0.28);
+    --shadow: rgba(31, 35, 41, 0.18);
+    color-scheme: light;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---- App shell ------------------------------------------------------- */
+
+.app {
+  --sidebar-width: 240px;
+  display: grid;
+  grid-template-columns: 52px var(--sidebar-width) minmax(0, 1fr);
+  height: 100%;
+}
+
+.app.sidebar-collapsed {
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+
+/* ---- Activity bar ---------------------------------------------------- */
+
+.activity-bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.activity-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.activity-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    transform 120ms ease;
+}
+
+.activity-button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.activity-button:active {
+  transform: scale(0.94);
+}
+
+.activity-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Each launcher kind has its own tint: browser green, editor violet. */
+.activity-button[data-kind="browser"] {
+  --kind: var(--browser);
+  --kind-soft: var(--browser-soft);
+}
+
+.activity-button[data-kind="editor"] {
+  --kind: var(--editor);
+  --kind-soft: var(--editor-soft);
+}
+
+.activity-button[data-kind="ssh"] {
+  --kind: var(--ssh);
+  --kind-soft: var(--ssh-soft);
+}
+
+.activity-button[data-kind="browser"]:hover,
+.activity-button[data-kind="editor"]:hover,
+.activity-button[data-kind="ssh"]:hover {
+  background: var(--kind-soft);
+  color: var(--kind);
+}
+
+.activity-badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--border-strong);
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
+
+.activity-button[data-kind="browser"] .activity-badge,
+.activity-button[data-kind="editor"] .activity-badge,
+.activity-button[data-kind="ssh"] .activity-badge {
+  background: var(--kind);
+  color: var(--on-accent);
+}
+
+.activity-tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  z-index: 20;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-4px, -50%);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.activity-button:hover .activity-tooltip,
+.activity-button:focus-visible .activity-tooltip {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+/* ---- Session panel --------------------------------------------------- */
+
+.sidebar-slot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.session-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.session-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kind-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.kind-icon.kind-browser {
+  color: var(--browser);
+}
+
+.kind-icon.kind-editor {
+  color: var(--editor);
+}
+
+.kind-icon.kind-ssh {
+  color: var(--ssh);
+}
+
+/* ---- Status ---------------------------------------------------------- */
+
+.status-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.status-dot.running {
+  background: var(--ok);
+}
+
+.status-dot.connecting {
+  background: var(--warn);
+}
+
+.status-dot.disconnected {
+  background: var(--warn);
+  animation: status-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes status-pulse {
+  to {
+    opacity: 0.3;
+  }
+}
+
+.status-dot.error {
+  background: var(--danger);
+}
+
+/* ---- Buttons --------------------------------------------------------- */
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.icon-button.subtle {
+  opacity: 0;
+}
+
+.tree-row:hover .icon-button.subtle,
+.icon-button.subtle:focus-visible {
+  opacity: 1;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: var(--text-faint);
+}
+
+.button.primary {
+  border-color: transparent;
+  background: var(--browser);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.button.primary:hover {
+  filter: brightness(1.08);
+}
+
+/* ---- Workspace ------------------------------------------------------- */
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  container-type: inline-size;
+}
+
+/* Narrow workspace: give the room to the tabs. */
+@container (max-width: 720px) {
+  .workspace-meta,
+  .font-name {
+    display: none;
+  }
+}
+
+@container (max-width: 480px) {
+  .font-control {
+    display: none;
+  }
+}
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 40px;
+  padding: 0 16px 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.workspace-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.workspace-empty {
+  display: grid;
+  flex: 1;
+  place-content: center;
+  gap: 14px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.workspace-empty p {
+  margin: 0;
+}
+
+.workspace-empty-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Every pane of every tab lives in one layer and is positioned in its tab's
+   grid cell with CSS. Its DOM node never moves, so tab switches and moves
+   keep the terminal alive. Hidden tabs keep their cell size. */
+.pane-layer {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.layer-empty {
+  position: absolute;
+  inset: 0;
+}
+
+/* ---- Pane ------------------------------------------------------------ */
+
+/* --x/--y/--w/--h are the pane's rectangle in the tab's split tree, as
+   fractions of the layer minus its 4px padding. Each pane is inset 4px, so
+   neighbors are 8px apart and the outer margin is 8px. */
+.pane {
+  position: absolute;
+  left: calc(4px + var(--x) * (100% - 8px) + 4px);
+  top: calc(4px + var(--y) * (100% - 8px) + 4px);
+  width: calc(var(--w) * (100% - 8px) - 8px);
+  height: calc(var(--h) * (100% - 8px) - 8px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--pane-bg);
+  transition: border-color 120ms ease;
+}
+
+.pane.focused {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+/* A maximized pane covers the grid; the others keep their size underneath so
+   their PTYs are not resized while hidden. */
+.pane.maximized {
+  left: 8px;
+  top: 8px;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  z-index: 5;
+}
+
+/* Panes of other tabs, and panes behind a maximized one, stay mounted so their
+   terminals keep running. Hide them in place: they keep their size, and they
+   must not paint over the visible tab (they come later in the DOM). */
+.pane.covered {
+  visibility: hidden;
+}
+
+.pane.drag-source {
+  opacity: 0.45;
+}
+
+/* Where a dragged pane will land: half the pane for a side, all of it to swap. */
+.drop-preview {
+  position: absolute;
+  z-index: 7;
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  pointer-events: none;
+  transition:
+    left 90ms ease,
+    top 90ms ease,
+    width 90ms ease,
+    height 90ms ease;
+}
+
+.drop-preview.center {
+  inset: 4px;
+}
+
+.drop-preview.left {
+  inset: 4px 50% 4px 4px;
+}
+
+.drop-preview.right {
+  inset: 4px 4px 4px 50%;
+}
+
+.drop-preview.top {
+  inset: 4px 4px 50% 4px;
+}
+
+.drop-preview.bottom {
+  inset: 50% 4px 4px 4px;
+}
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px 0 4px;
+  cursor: grab;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  user-select: none;
+}
+
+.pane-title {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-kind,
+.pane-detail {
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.pane-grip {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.pane-header:hover .pane-grip {
+  color: var(--text-muted);
+}
+
+.pane-title {
+  cursor: text;
+}
+
+.pane-spacer {
+  flex: 1;
+}
+
+.pane-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.pane-terminal.wterm {
+  position: absolute;
+  inset: 0;
+  height: auto !important;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 6px 8px;
+}
+
+.pane-message {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.pane-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  background: var(--overlay);
+  text-align: center;
+  backdrop-filter: blur(2px);
+}
+
+.pane-overlay p {
+  margin: 0;
+  color: var(--text);
+}
+
+.pane-overlay-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
+
+/* ---- Font control ---------------------------------------------------- */
+
+.workspace-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+}
+
+.font-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.font-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 160px;
+  margin-right: 4px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-size {
+  min-width: 40px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.font-size.overridden {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.font-size.overridden:hover {
+  background: var(--border);
+}
+
+.icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.icon-button:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* ---- Tabs ------------------------------------------------------------ */
+
+.tab-bar {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+}
+
+.tab-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 64px;
+  max-width: 200px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-muted);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.tab:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tab.active {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tab.active::after {
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  content: "";
+}
+
+.tab-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tab-select:focus-visible,
+.tab-close:focus-visible,
+.tab-new:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.tab-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-index {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  background: var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tab-count {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tab-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tab:hover .tab-close,
+.tab.active .tab-close,
+.tab-close:focus-visible {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.tab-new {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tab-new:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* ---- Sidebar tree ---------------------------------------------------- */
+
+.session-counts {
+  display: inline-flex;
+  flex: 1;
+  gap: 4px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.tree {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-tab-node + .tree-tab-node {
+  margin-top: 2px;
+}
+
+.tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 2px 0 4px;
+  border-radius: 6px;
+}
+
+.tree-row:hover {
+  background: var(--surface-2);
+}
+
+.tree-tab {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.tree-tab.active {
+  color: var(--text);
+}
+
+.tree-session.active {
+  background: var(--accent-soft);
+}
+
+.tree-chevron {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.tree-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.tree-chevron:hover {
+  color: var(--text);
+}
+
+.tree-select {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tree-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-count {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Children sit under the tab with a guide line, like a file tree. */
+.tree-children {
+  position: relative;
+  margin: 1px 0 4px 11px !important;
+  padding-left: 11px !important;
+}
+
+.tree-children::before {
+  position: absolute;
+  top: 2px;
+  bottom: 6px;
+  left: 0;
+  width: 1px;
+  background: var(--border);
+  content: "";
+}
+
+.tree-session {
+  color: var(--text);
+}
+
+.tree-session::before {
+  position: absolute;
+  top: 50%;
+  left: -11px;
+  width: 8px;
+  height: 1px;
+  background: var(--border);
+  content: "";
+}
+
+.tree-empty {
+  padding: 5px 4px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.tree-row .status-dot {
+  margin: 0 2px;
+}
+
+/* Drop markers: a line before/after, or an outline for "into". */
+.tree-row.drop-before::after,
+.tree-row.drop-after::after {
+  position: absolute;
+  right: 4px;
+  left: 4px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  content: "";
+}
+
+.tree-row.drop-before::after {
+  top: -1px;
+}
+
+.tree-row.drop-after::after {
+  bottom: -1px;
+}
+
+.tree-row.drop-into {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* ---- Rename fields --------------------------------------------------- */
+
+.inline-rename {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  outline: none;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.inline-rename::placeholder {
+  color: var(--text-faint);
+}
+
+.tab-rename {
+  width: 140px;
+  margin: 0 2px 0 6px;
+}
+
+.pane-rename {
+  max-width: 260px;
+}
+
+/* ---- Tab drag and drop ----------------------------------------------- */
+
+.tab.drop-before::before,
+.tab.drop-after::before {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  content: "";
+}
+
+.tab.drop-before::before {
+  left: -3px;
+}
+
+.tab.drop-after::before {
+  right: -3px;
+}
+
+.tab.drop-into,
+.tab-new.drop-into {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--text);
+}
+
+/* ---- Sidebar resizer ------------------------------------------------- */
+
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  z-index: 10;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar-resizer::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  content: "";
+  transition: background-color 120ms ease;
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+body.resizing-sidebar .sidebar-resizer::after {
+  background: var(--accent);
+}
+
+.sidebar-resizer:focus-visible {
+  outline: none;
+}
+
+/* While resizing, terminals must not take the pointer or start selections. */
+body.resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.resizing-sidebar .pane-layer {
+  pointer-events: none;
+}
+
+/* ---- Command palette ------------------------------------------------- */
+
+.palette-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.palette-button:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.palette-button kbd,
+.palette-hint {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+@container (max-width: 560px) {
+  .palette-button kbd {
+    display: none;
+  }
+}
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: var(--backdrop);
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, 100%);
+  max-height: min(480px, 70vh);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 24px 60px var(--shadow);
+  animation: palette-in 120ms ease-out;
+}
+
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+
+.palette-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
+.palette-input {
+  flex: 1;
+  height: 46px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.palette-input::placeholder {
+  color: var(--text-faint);
+}
+
+.palette-results {
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.palette-item.selected {
+  background: var(--accent-soft);
+}
+
+.palette-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  color: var(--text-muted);
+}
+
+.palette-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-group {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.palette-empty {
+  padding: 18px 10px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+/* ---- Split dividers ------------------------------------------------- */
+
+.split-dividers {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+/* Handles are 10px, centered in the 8px gap on their boundary, spanning the
+   split they belong to. */
+.split-divider {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.split-divider.vertical {
+  left: calc(4px + var(--at) * (100% - 8px) - 5px);
+  top: calc(4px + var(--y) * (100% - 8px) + 4px);
+  width: 10px;
+  height: calc(var(--h) * (100% - 8px) - 8px);
+  cursor: col-resize;
+}
+
+.split-divider.horizontal {
+  top: calc(4px + var(--at) * (100% - 8px) - 5px);
+  left: calc(4px + var(--x) * (100% - 8px) + 4px);
+  width: calc(var(--w) * (100% - 8px) - 8px);
+  height: 10px;
+  cursor: row-resize;
+}
+
+.split-divider::after {
+  position: absolute;
+  border-radius: 1px;
+  background: transparent;
+  content: "";
+  transition: background-color 120ms ease;
+}
+
+.split-divider.vertical::after {
+  top: 6px;
+  bottom: 6px;
+  left: 4px;
+  width: 2px;
+}
+
+.split-divider.horizontal::after {
+  top: 4px;
+  right: 6px;
+  left: 6px;
+  height: 2px;
+}
+
+.split-divider:hover::after,
+.split-divider:focus-visible::after,
+.split-divider:active::after {
+  background: var(--accent);
+}
+
+.split-divider:focus-visible {
+  outline: none;
+}
+
+body.resizing-columns,
+body.resizing-columns * {
+  cursor: col-resize !important;
+}
+
+body.resizing-rows,
+body.resizing-rows * {
+  cursor: row-resize !important;
+}
+
+body.resizing-columns,
+body.resizing-rows {
+  user-select: none;
+}
+
+body.resizing-columns .pane,
+body.resizing-rows .pane {
+  pointer-events: none;
+}
