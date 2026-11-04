@@ -1,0 +1,164 @@
+name: Release
+
+# Push a version tag such as v0.2.0. Each platform is tested and built, the
+# macOS app is bundled, and a GitHub release is published with the archives
+# and their SHA-256 sums.
+# install.sh and install.ps1 download from that release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches the package versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' native/Cargo.toml | head -n 1)
+          npm=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$cargo" ] || [ "$tag" != "$npm" ]; then
+            echo "::error::tag v$tag does not match native/Cargo.toml ($cargo) and package.json ($npm)"
+            exit 1
+          fi
+
+  build:
+    needs: check
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          # Cross-built on Apple silicon, so its tests do not run here.
+          - { target: x86_64-apple-darwin, os: macos-latest, cross: true }
+          # musl: one static binary for every Linux distribution.
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: npm ci
+      - run: npx vite build
+      - name: Test
+        if: ${{ !matrix.cross }}
+        run: cargo test --release --locked --target ${{ matrix.target }} --manifest-path native/Cargo.toml
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} --manifest-path native/Cargo.toml
+
+      - name: Package (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: |
+          name="westerm-${{ matrix.target }}"
+          mkdir -p "release/$name"
+          cp "native/target/${{ matrix.target }}/release/westerm" README.md "release/$name/"
+          if [ -f LICENSE ]; then cp LICENSE "release/$name/"; fi
+          tar -C release -czf "$name.tar.gz" "$name"
+          if command -v sha256sum >/dev/null; then sum="sha256sum"; else sum="shasum -a 256"; fi
+          $sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "westerm-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force "release/$name" | Out-Null
+          Copy-Item "native/target/${{ matrix.target }}/release/westerm.exe", README.md "release/$name/"
+          if (Test-Path LICENSE) { Copy-Item LICENSE "release/$name/" }
+          Compress-Archive -Path "release/$name" -DestinationPath "$name.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 "$name.zip").Hash.ToLower()
+          Set-Content -Path "$name.zip.sha256" -Value "$hash  $name.zip" -NoNewline
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: westerm-${{ matrix.target }}.*
+          if-no-files-found: error
+
+  app:
+    needs: check
+    name: build (macOS app)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - run: npm ci
+      - name: Build westerm.app (universal)
+        run: sh macos/build-app.sh
+      - name: Checksum
+        run: |
+          mv dist-app/westerm-macos-app.zip .
+          shasum -a 256 westerm-macos-app.zip > westerm-macos-app.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: westerm-macos-app.zip*
+          if-no-files-found: error
+
+  release:
+    needs: [build, app]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" assets/*
+          --repo "$GITHUB_REPOSITORY"
+          --title "westerm $GITHUB_REF_NAME"
+          --generate-notes
+          --verify-tag
+
+  # Installs the published release with the scripts from this tag, the way
+  # users do, on every system.
+  verify:
+    needs: release
+    name: install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, ubuntu-24.04-arm, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh
+        if: runner.os != 'Windows'
+        env:
+          WESTERM_VERSION: ${{ github.ref_name }}
+          WESTERM_INSTALL_DIR: ${{ runner.temp }}/westerm-bin
+        run: |
+          sh install.sh
+          "$WESTERM_INSTALL_DIR/westerm" --version | grep -F "westerm ${GITHUB_REF_NAME#v} "
+      - name: install.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WESTERM_VERSION: ${{ github.ref_name }}
+          WESTERM_INSTALL_DIR: ${{ runner.temp }}\westerm-bin
+        run: |
+          Get-Content install.ps1 -Raw | Invoke-Expression
+          $version = & (Join-Path $env:WESTERM_INSTALL_DIR 'westerm.exe') --version
+          if ($version -notlike "westerm $($env:GITHUB_REF_NAME.TrimStart('v')) *") { throw "unexpected version: $version" }
