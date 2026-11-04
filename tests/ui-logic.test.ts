@@ -43,7 +43,9 @@ test("drop indexes account for the moving item's own slot", () => {
 });
 
 test("sidebar width is bounded", () => {
-  assert.equal(clampSidebar(10), 160);
+  assert.equal(clampSidebar(10), 56, "narrow drags snap to icons only");
+  assert.equal(clampSidebar(119), 56);
+  assert.equal(clampSidebar(120), 160, "between icons only and the minimum it holds the minimum");
   assert.equal(clampSidebar(9999), 480);
   assert.equal(clampSidebar(Number.NaN), 240);
   assert.equal(clampSidebar(300.6), 301);

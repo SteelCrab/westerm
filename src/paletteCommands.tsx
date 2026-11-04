@@ -3,6 +3,7 @@ import {
   ArrowRightToLine,
   MoveLeft,
   MoveRight,
+  CircleArrowUp,
   Globe,
   Languages,
   Maximize2,
@@ -10,6 +11,7 @@ import {
   PanelLeft,
   Pencil,
   Plus,
+  Settings,
   RotateCcw,
   SquarePlus,
   X,
@@ -21,7 +23,17 @@ import { LOCALE_NAMES, LOCALES, type Locale, type Messages } from "./i18n/messag
 import { KindIcon, LAUNCHERS } from "./kinds.tsx";
 import { normalizeBrowserUrl, normalizeSshTarget } from "../shared/protocol.ts";
 import type { SshHost } from "./useSshHosts.ts";
-import { activeTab, sessionLabel, sessionTab, tabLabel, type Workspace, type WorkspaceAction } from "./workspace.ts";
+import { shortcutLabel, type SwitchCommand } from "./shortcuts.ts";
+import { appBridge } from "./useUpdate.ts";
+import {
+  activeTab,
+  sessionLabel,
+  sessionTab,
+  stepPane,
+  tabLabel,
+  type Workspace,
+  type WorkspaceAction,
+} from "./workspace.ts";
 
 export const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 export const PALETTE_SHORTCUT = IS_MAC ? "⌘K" : "Ctrl+Shift+K";
@@ -49,6 +61,12 @@ export interface PaletteContext {
   t: Messages;
   locale: Locale;
   setLocale: (locale: Locale) => void;
+  /** Asks GitHub again and shows the result. */
+  checkUpdates: () => void;
+  /** A newer release, when there is one. */
+  newVersion: string | null;
+  showUpdate: () => void;
+  openSettings: () => void;
 }
 
 /** Each language named in all four, so the switch is found from any UI language. */
@@ -61,6 +79,8 @@ const LANGUAGE_KEYWORDS: Record<Locale, string> = {
 
 export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
   const { state, dispatch, t } = ctx;
+  const inApp = appBridge() !== null;
+  const keys = (command: SwitchCommand) => shortcutLabel(command, inApp, IS_MAC);
   const g = t.palette.groups;
   const label = (tab: Workspace["tabs"][number]) => tabLabel(state, tab, t.tabs.untitled);
   const tab = activeTab(state);
@@ -100,6 +120,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       {
         id: "next-tab",
         title: t.palette.nextTab,
+        hint: keys({ type: "tabStep", delta: 1 }),
         group: g.tab,
         icon: <ArrowLeftRight size={14} />,
         keywords: "next tab",
@@ -108,6 +129,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       {
         id: "previous-tab",
         title: t.palette.previousTab,
+        hint: keys({ type: "tabStep", delta: -1 }),
         group: g.tab,
         icon: <ArrowLeftRight size={14} />,
         keywords: "previous prev tab",
@@ -144,6 +166,34 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     run: () => dispatch({ type: "closeTab", id: tab.id, fallbackId: ctx.newTabId() }),
   });
 
+  if (tab.paneIds.length > 1) {
+    commands.push(
+      {
+        id: "next-pane",
+        title: t.palette.nextPane,
+        hint: keys({ type: "paneStep", delta: 1 }),
+        group: g.session,
+        icon: <ArrowLeftRight size={14} />,
+        keywords: "next pane focus switch",
+        run: () => {
+          const id = stepPane(state, 1);
+          if (id) dispatch({ type: "focus", id });
+        },
+      },
+      {
+        id: "previous-pane",
+        title: t.palette.previousPane,
+        hint: keys({ type: "paneStep", delta: -1 }),
+        group: g.session,
+        icon: <ArrowLeftRight size={14} />,
+        keywords: "previous prev pane focus switch",
+        run: () => {
+          const id = stepPane(state, -1);
+          if (id) dispatch({ type: "focus", id });
+        },
+      },
+    );
+  }
   if (focused) {
     commands.push(
       {
@@ -224,6 +274,34 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       keywords: "font size reset default",
       run: ctx.resetFontSize,
     },
+    ...(ctx.newVersion
+      ? [
+          {
+            id: "install-update",
+            title: t.palette.installUpdate(ctx.newVersion),
+            group: g.app,
+            icon: <CircleArrowUp size={14} />,
+            keywords: "update upgrade new version release",
+            run: ctx.showUpdate,
+          },
+        ]
+      : []),
+    {
+      id: "open-settings",
+      title: t.palette.openSettings,
+      group: g.app,
+      icon: <Settings size={14} />,
+      keywords: "settings preferences options config theme font",
+      run: ctx.openSettings,
+    },
+    {
+      id: "check-updates",
+      title: t.palette.checkUpdates,
+      group: g.app,
+      icon: <CircleArrowUp size={14} />,
+      keywords: "update upgrade version release check",
+      run: ctx.checkUpdates,
+    },
     ...LOCALES.filter((locale) => locale !== ctx.locale).map((locale) => ({
       id: `language-${locale}`,
       title: t.palette.setLanguage(LOCALE_NAMES[locale]),
@@ -238,7 +316,13 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     commands.push({
       id: `go-tab-${item.id}`,
       title: label(item),
-      hint: t.palette.tabHint(index + 1),
+      // The key that reaches it: 1–8 by position, 9 for the last tab.
+      hint:
+        index < 8
+          ? keys({ type: "tab", number: index + 1 })
+          : index === state.tabs.length - 1
+            ? keys({ type: "tab", number: 9 })
+            : t.palette.tabHint(index + 1),
       group: g.goTab,
       icon: <span className="tab-index">{index + 1}</span>,
       keywords: "go switch tab",

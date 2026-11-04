@@ -6,6 +6,10 @@ import {
   createWorkspace,
   focusedShellId,
   MAX_RECONNECTS,
+  paneToward,
+  stepPane,
+  stepTab,
+  tabByNumber,
   toSaved,
   sessionLabel,
   tabLabel,
@@ -293,4 +297,27 @@ test("a saved workspace round-trips names, order, and focus", () => {
   assert.equal(restored.sessions[0].pid, null);
   assert.equal(tabLabel(restored, restored.tabs[1], UNTITLED), "서버");
   assert.deepEqual(restored.tabs[0].layout, state.tabs[0].layout, "split sizes survive a reload");
+});
+
+test("keyboard switching counts tabs like browsers and wraps around", () => {
+  let state = open(start(), "a");
+  for (const id of ["t2", "t3"]) state = workspaceReducer(state, { type: "newTab", id });
+  assert.equal(tabByNumber(state, 1)?.id, "t1");
+  assert.equal(tabByNumber(state, 9)?.id, "t3", "9 is the last tab");
+  assert.equal(tabByNumber(state, 5), null);
+  assert.equal(stepTab(state, 1).id, "t1", "after the last comes the first");
+  assert.equal(stepTab(state, -1).id, "t2");
+});
+
+test("pane switching follows reading order and the layout", () => {
+  let state = open(open(start(), "a"), "b", "browser");
+  assert.equal(activeTab(state).focusedId, "b");
+  assert.equal(stepPane(state, 1), "a", "wraps around");
+  assert.equal(stepPane(state, -1), "a");
+  const [left, right] = activeTab(state).paneIds;
+  state = workspaceReducer(state, { type: "focus", id: left });
+  assert.equal(paneToward(state, "right"), right);
+  assert.equal(paneToward(state, "left"), null);
+  state = workspaceReducer(state, { type: "newTab", id: "t2" });
+  assert.equal(stepPane(state, 1), null, "an empty tab has no panes");
 });

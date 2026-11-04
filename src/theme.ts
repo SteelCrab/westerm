@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type { TerminalThemeColors } from "@wterm/core";
 
 export type ColorScheme = "dark" | "light";
+/** "system" follows the OS; the others pin the theme (Settings ▸ Theme). */
+export type ThemeChoice = "system" | ColorScheme;
 
 const QUERY = "(prefers-color-scheme: light)";
 
@@ -9,16 +11,24 @@ function current(): ColorScheme {
   return typeof matchMedia === "function" && matchMedia(QUERY).matches ? "light" : "dark";
 }
 
-/** Follows the OS appearance live, as macOS switches between light and dark. */
-export function useColorScheme(): ColorScheme {
-  const [scheme, setScheme] = useState<ColorScheme>(current);
+/**
+ * The scheme in use: the OS appearance, followed live, unless `choice` pins
+ * one. A pinned choice sets <html data-theme>, which the stylesheet follows.
+ */
+export function useColorScheme(choice: ThemeChoice = "system"): ColorScheme {
+  const [system, setSystem] = useState<ColorScheme>(current);
   useEffect(() => {
     const media = matchMedia(QUERY);
-    const update = () => setScheme(media.matches ? "light" : "dark");
+    const update = () => setSystem(media.matches ? "light" : "dark");
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
-  return scheme;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (choice === "system") delete root.dataset.theme;
+    else root.dataset.theme = choice;
+  }, [choice]);
+  return choice === "system" ? system : choice;
 }
 
 /**

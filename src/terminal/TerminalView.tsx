@@ -73,6 +73,11 @@ function useGhosttyCore(kind: SessionKind): { core: GhosttyCore | null; error: s
   return { core, error };
 }
 
+/** A dialog such as Settings keeps the keyboard; a terminal that reloads must not take it. */
+function modalOpen(): boolean {
+  return document.querySelector('[aria-modal="true"]') !== null;
+}
+
 export function TerminalView(props: TerminalViewProps) {
   const { sessionId, kind, url, cwdFrom, target, label, font, scheme, focused, focusNonce, visible } = props;
   const { core, error } = useGhosttyCore(kind);
@@ -97,7 +102,7 @@ export function TerminalView(props: TerminalViewProps) {
   );
 
   useEffect(() => {
-    if (focused) terminalRef.current?.focus();
+    if (focused && !modalOpen()) terminalRef.current?.focus();
   }, [focused, focusNonce]);
 
   // Live light/dark switch: repaints history and keeps app color overrides.
@@ -131,7 +136,7 @@ export function TerminalView(props: TerminalViewProps) {
         onOutput: (bytes) => wt.write(bytes),
         onEvent: (event) => callbacks.current.onEvent(event),
       });
-      if (callbacks.current.focused) wt.focus();
+      if (callbacks.current.focused && !modalOpen()) wt.focus();
     },
     [sessionId, kind, url, cwdFrom, target],
   );

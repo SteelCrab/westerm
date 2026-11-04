@@ -49,6 +49,24 @@ export const CLOSE_TAKEN_OVER = 4001;
 export const CONFIG_PATH = "/api/terminal-config";
 /** Concrete Host aliases from ~/.ssh/config. */
 export const SSH_HOSTS_PATH = "/api/ssh-hosts";
+/** GET: whether a newer release exists. POST (dashboard origin only): install it and restart. */
+export const UPDATE_PATH = "/api/update";
+
+/** binary: an installed executable · mac-app: inside westerm.app · source: built from source */
+export type UpdateChannel = "binary" | "mac-app" | "source";
+
+export interface UpdateStatus {
+  current: string;
+  channel: UpdateChannel;
+  latest?: string;
+  newer?: boolean;
+  /** The release page with its notes. */
+  page?: string;
+  /** Why the check failed. */
+  error?: string;
+  /** WESTERM_NO_UPDATE_CHECK is set. */
+  disabled?: boolean;
+}
 
 /** Terminal typography read from the user's Ghostty config. */
 export interface TerminalConfig {

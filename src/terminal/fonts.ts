@@ -82,12 +82,14 @@ export interface TerminalFont {
   size: number;
 }
 
+/** `familyOverride` (Settings ▸ Font) replaces the Ghostty font families when not empty. */
 export function terminalFont(
   config: TerminalConfig | null,
   sizeOverride: number | null,
   locale: Locale = "en",
+  familyOverride: string[] = [],
 ): TerminalFont {
-  const families = config?.fontFamilies ?? [];
+  const families = familyOverride.length ? familyOverride : (config?.fontFamilies ?? []);
   // On macOS Ghostty's points equal CSS pixels.
   const size = clampFontSize(sizeOverride ?? config?.fontSize ?? DEFAULT_FONT_SIZE);
   return { label: families[0] ?? DEFAULT_FAMILIES[0], stack: fontStack(families, locale), size };

@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { handles, moveShare, nodeAt, type Handle, type LayoutNode } from "../../shared/layout.ts";
+import { onDragEnd } from "../dragEnd.ts";
 import { useI18n } from "../i18n/index.tsx";
 
 interface SplitDividersProps {
@@ -62,6 +63,7 @@ export function SplitDividers({ layout, inner, onResize }: SplitDividersProps) {
               event.currentTarget.setPointerCapture(event.pointerId);
               drag.current = { start: vertical ? event.clientX : event.clientY, sizes: sizesOf(layout, handle), frame: 0 };
               document.body.classList.add(vertical ? "resizing-columns" : "resizing-rows");
+              onDragEnd(end);
             }}
             onPointerMove={(event) => {
               const state = drag.current;
@@ -81,6 +83,7 @@ export function SplitDividers({ layout, inner, onResize }: SplitDividersProps) {
               end();
             }}
             onPointerCancel={end}
+            onLostPointerCapture={end}
             onDoubleClick={equalize}
             onKeyDown={(event) => {
               const back = vertical ? "ArrowLeft" : "ArrowUp";

@@ -24,6 +24,8 @@ interface SessionListProps {
   /** A pane dropped on another session row swaps places with it. */
   onSwapPanes: (paneId: string, withId: string) => void;
   onDragPane: (id: string | null) => void;
+  /** Icons only: tab numbers and session icons, names in tooltips. */
+  compact: boolean;
 }
 
 type Place = "before" | "after" | "into";
@@ -58,14 +60,18 @@ export function SessionList(props: SessionListProps) {
     });
 
   return (
-    <aside className="session-panel" aria-label={t.sidebar.workspace}>
+    <aside className={`session-panel${props.compact ? " compact" : ""}`} aria-label={t.sidebar.workspace}>
       <header className="session-panel-header">
-        <span>{t.sidebar.workspace}</span>
-        <span className="session-counts">
-          <span title={t.sidebar.tabs}>{state.tabs.length}</span>
-          <span aria-hidden="true">·</span>
-          <span title={t.sidebar.sessions}>{state.sessions.length}</span>
-        </span>
+        {!props.compact && (
+          <>
+            <span>{t.sidebar.workspace}</span>
+            <span className="session-counts">
+              <span title={t.sidebar.tabs}>{state.tabs.length}</span>
+              <span aria-hidden="true">·</span>
+              <span title={t.sidebar.sessions}>{state.sessions.length}</span>
+            </span>
+          </>
+        )}
         <button
           type="button"
           className="icon-button"
@@ -83,7 +89,8 @@ export function SessionList(props: SessionListProps) {
             {...props}
             tab={tab}
             index={index}
-            expanded={!collapsed.has(tab.id)}
+            // Icons only: just the tab in view lists its sessions.
+            expanded={props.compact ? tab.id === state.activeTabId : !collapsed.has(tab.id)}
             onToggle={() => toggle(tab.id)}
           />
         ))}
@@ -139,50 +146,64 @@ function TabNode(props: TabNodeProps) {
           props.onDragPane(null);
         }}
       >
-        <button
-          type="button"
-          className={`tree-chevron${expanded ? " expanded" : ""}`}
-          aria-label={expanded ? t.sidebar.collapse : t.sidebar.expand}
-          onClick={props.onToggle}
-        >
-          <ChevronRight size={13} />
-        </button>
-        <span className="tab-index">{index + 1}</span>
-        {editing ? (
-          <InlineRename
-            value={tab.name ?? ""}
-            label={t.rename.tabName}
-            className="tree-rename"
-            onCommit={(name) => {
-              props.onRenameTab(tab.id, name);
-              props.onRename(null);
-            }}
-            onCancel={() => props.onRename(null)}
-          />
-        ) : (
+        {props.compact ? (
           <button
             type="button"
             className="tree-select"
-            title={t.sidebar.renameHint(label)}
+            title={`${index + 1} · ${label}`}
+            aria-label={label}
             onClick={() => props.onSelectTab(tab.id)}
-            onDoubleClick={startRename}
-            onKeyDown={(event) => event.key === "F2" && startRename()}
           >
-            <span className={`tree-label${tab.name ? " custom" : ""}`}>{label}</span>
+            <span className="tab-index">{index + 1}</span>
           </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className={`tree-chevron${expanded ? " expanded" : ""}`}
+              aria-label={expanded ? t.sidebar.collapse : t.sidebar.expand}
+              onClick={props.onToggle}
+            >
+              <ChevronRight size={13} />
+            </button>
+            <span className="tab-index">{index + 1}</span>
+            {editing ? (
+              <InlineRename
+                value={tab.name ?? ""}
+                label={t.rename.tabName}
+                className="tree-rename"
+                onCommit={(name) => {
+                  props.onRenameTab(tab.id, name);
+                  props.onRename(null);
+                }}
+                onCancel={() => props.onRename(null)}
+              />
+            ) : (
+              <button
+                type="button"
+                className="tree-select"
+                title={t.sidebar.renameHint(label)}
+                onClick={() => props.onSelectTab(tab.id)}
+                onDoubleClick={startRename}
+                onKeyDown={(event) => event.key === "F2" && startRename()}
+              >
+                <span className={`tree-label${tab.name ? " custom" : ""}`}>{label}</span>
+              </button>
+            )}
+            <span className="tree-count" title={t.sidebar.sessionCount(sessions.length)}>
+              {sessions.length}
+            </span>
+            <button
+              type="button"
+              className="icon-button subtle"
+              aria-label={t.sidebar.closeTab(label)}
+              title={t.sidebar.closeTabHint}
+              onClick={() => props.onCloseTab(tab.id)}
+            >
+              <X size={13} />
+            </button>
+          </>
         )}
-        <span className="tree-count" title={t.sidebar.sessionCount(sessions.length)}>
-          {sessions.length}
-        </span>
-        <button
-          type="button"
-          className="icon-button subtle"
-          aria-label={t.sidebar.closeTab(label)}
-          title={t.sidebar.closeTabHint}
-          onClick={() => props.onCloseTab(tab.id)}
-        >
-          <X size={13} />
-        </button>
       </div>
       {expanded && (
         <ul className="tree-children" role="group">
@@ -243,40 +264,55 @@ function SessionNode(props: SessionNodeProps) {
           props.onDragPane(null);
         }}
       >
-        <KindIcon kind={session.kind} size={14} />
-        {editing ? (
-          <InlineRename
-            value={session.name ?? ""}
-            label={t.rename.sessionName}
-            className="tree-rename"
-            onCommit={(name) => {
-              onRenameSession(session.id, name);
-              onRename(null);
-            }}
-            onCancel={() => onRename(null)}
-          />
-        ) : (
+        {props.compact ? (
           <button
             type="button"
             className="tree-select"
-            title={t.sidebar.renameHint(label)}
+            title={label}
+            aria-label={label}
             onClick={() => onFocus(session.id)}
-            onDoubleClick={startRename}
-            onKeyDown={(event) => event.key === "F2" && startRename()}
           >
-            <span className={`tree-label${session.name ? " custom" : ""}`}>{label}</span>
+            <KindIcon kind={session.kind} size={15} />
+            <StatusDot status={session.status} />
           </button>
+        ) : (
+          <>
+            <KindIcon kind={session.kind} size={14} />
+            {editing ? (
+              <InlineRename
+                value={session.name ?? ""}
+                label={t.rename.sessionName}
+                className="tree-rename"
+                onCommit={(name) => {
+                  onRenameSession(session.id, name);
+                  onRename(null);
+                }}
+                onCancel={() => onRename(null)}
+              />
+            ) : (
+              <button
+                type="button"
+                className="tree-select"
+                title={t.sidebar.renameHint(label)}
+                onClick={() => onFocus(session.id)}
+                onDoubleClick={startRename}
+                onKeyDown={(event) => event.key === "F2" && startRename()}
+              >
+                <span className={`tree-label${session.name ? " custom" : ""}`}>{label}</span>
+              </button>
+            )}
+            <StatusDot status={session.status} />
+            <button
+              type="button"
+              className="icon-button subtle"
+              aria-label={t.sidebar.closeSession(label)}
+              title={t.sidebar.closeSessionHint}
+              onClick={() => onClose(session.id)}
+            >
+              <X size={13} />
+            </button>
+          </>
         )}
-        <StatusDot status={session.status} />
-        <button
-          type="button"
-          className="icon-button subtle"
-          aria-label={t.sidebar.closeSession(label)}
-          title={t.sidebar.closeSessionHint}
-          onClick={() => onClose(session.id)}
-        >
-          <X size={13} />
-        </button>
       </div>
     </li>
   );

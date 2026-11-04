@@ -30,12 +30,17 @@ export interface TerminalFontState {
   font: TerminalFont | null;
   /** True when the size comes from the user's override, not Ghostty. */
   sizeOverridden: boolean;
+  /** The font named in the Ghostty config, shown as the default in Settings. */
+  ghosttyFont: string;
   changeSize: (delta: number) => void;
   resetSize: () => void;
 }
 
-/** Ghostty config font, with a per-browser font-size override and CJK order for `locale`. */
-export function useTerminalFont(locale: Locale): TerminalFontState {
+/**
+ * Ghostty config font, with per-browser overrides for the size and the
+ * families (Settings), and CJK fallbacks ordered for `locale`.
+ */
+export function useTerminalFont(locale: Locale, familyOverride: string[] = []): TerminalFontState {
   const [config, setConfig] = useState<TerminalConfig | null | undefined>(undefined);
   const [sizeOverride, setSizeOverride] = useState<number | null>(readSavedSize);
 
@@ -52,7 +57,8 @@ export function useTerminalFont(locale: Locale): TerminalFontState {
     };
   }, []);
 
-  const font = config === undefined ? null : terminalFont(config, sizeOverride, locale);
+  const font = config === undefined ? null : terminalFont(config, sizeOverride, locale, familyOverride);
+  const ghosttyFont = terminalFont(config ?? null, null).label;
 
   const changeSize = useCallback(
     (delta: number) => {
@@ -69,5 +75,5 @@ export function useTerminalFont(locale: Locale): TerminalFontState {
     saveSize(null);
   }, []);
 
-  return { font, sizeOverridden: sizeOverride !== null, changeSize, resetSize };
+  return { font, sizeOverridden: sizeOverride !== null, ghosttyFont, changeSize, resetSize };
 }

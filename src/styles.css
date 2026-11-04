@@ -47,7 +47,7 @@
 
 /* Light scheme follows the OS; terminals switch with it (src/theme.ts). */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     --bg: #eef0f3;
     --surface: #f7f8fa;
     --surface-2: #e8ebef;
@@ -74,6 +74,35 @@
     --shadow: rgba(31, 35, 41, 0.18);
     color-scheme: light;
   }
+}
+
+/* Settings ▸ Theme pins the light scheme on a dark OS. */
+:root[data-theme="light"] {
+  --bg: #eef0f3;
+  --surface: #f7f8fa;
+  --surface-2: #e8ebef;
+  --border: #d9dde3;
+  --border-strong: #c3c9d2;
+  --text: #1f2329;
+  --text-muted: #5b6470;
+  --text-faint: #8a929d;
+  --accent: #2f6fde;
+  --accent-soft: rgba(47, 111, 222, 0.12);
+  --browser: #11906a;
+  --browser-soft: rgba(17, 144, 106, 0.12);
+  --editor: #7c4ddb;
+  --editor-soft: rgba(124, 77, 219, 0.12);
+  --ssh: #c26a1a;
+  --ssh-soft: rgba(194, 106, 26, 0.12);
+  --ok: #23a058;
+  --warn: #c48a12;
+  --danger: #d64545;
+  --on-accent: #ffffff;
+  --pane-bg: #fafafa;
+  --overlay: rgba(247, 248, 250, 0.82);
+  --backdrop: rgba(30, 35, 41, 0.28);
+  --shadow: rgba(31, 35, 41, 0.18);
+  color-scheme: light;
 }
 
 * {
@@ -383,14 +412,7 @@ button {
 
 /* Narrow workspace: give the room to the tabs. */
 @container (max-width: 720px) {
-  .workspace-meta,
-  .font-name {
-    display: none;
-  }
-}
-
-@container (max-width: 480px) {
-  .font-control {
+  .workspace-meta {
     display: none;
   }
 }
@@ -624,56 +646,13 @@ button {
   }
 }
 
-/* ---- Font control ---------------------------------------------------- */
+/* ---- Header tools ---------------------------------------------------- */
 
 .workspace-tools {
   display: flex;
   flex: none;
   align-items: center;
   gap: 14px;
-}
-
-.font-control {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 4px 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-}
-
-.font-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 160px;
-  margin-right: 4px;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.font-size {
-  min-width: 40px;
-  height: 22px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.font-size.overridden {
-  color: var(--accent);
-  cursor: pointer;
-}
-
-.font-size.overridden:hover {
-  background: var(--border);
 }
 
 .icon-button:disabled {
@@ -1028,6 +1007,58 @@ button {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
+/* Icons only: the sidebar dragged narrow. Names show as tooltips. */
+.session-panel.compact .session-panel-header {
+  justify-content: center;
+  padding: 0;
+}
+
+.session-panel.compact .tree {
+  padding-inline: 4px;
+}
+
+.session-panel.compact .tree-row {
+  justify-content: center;
+  padding: 0;
+}
+
+.session-panel.compact .tree-select {
+  position: relative;
+  flex: none;
+  justify-content: center;
+  width: 38px;
+  height: 30px;
+  border-radius: 6px;
+}
+
+.session-panel.compact .tree-children {
+  margin: 1px 0 6px !important;
+  padding-left: 0 !important;
+}
+
+.session-panel.compact .tree-children::before,
+.session-panel.compact .tree-session::before {
+  display: none;
+}
+
+.session-panel.compact .tree-session .status-dot {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  margin: 0;
+}
+
+.session-panel.compact .tab-index {
+  min-width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+
+.session-panel.compact .tree-tab.active .tab-index {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 /* ---- Rename fields --------------------------------------------------- */
 
 .inline-rename {
@@ -1131,73 +1162,313 @@ body.resizing-sidebar .pane-layer {
 
 /* ---- Language -------------------------------------------------------- */
 
-.lang-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 4px 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text-muted);
+
+
+
+
+/* ---- Update ---------------------------------------------------------- */
+
+.update {
+  position: relative;
 }
 
-.lang-control:hover,
-.lang-control:focus-within {
-  border-color: var(--border-strong);
-  color: var(--text);
-}
-
-.lang-control select {
-  height: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  outline: none;
-}
-
-@container (max-width: 560px) {
-  .lang-control {
-    display: none;
-  }
-}
-
-/* ---- Command palette ------------------------------------------------- */
-
-.palette-button {
+.update-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 26px;
-  padding: 0 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 600 12px/1 var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.update-button:hover {
+  filter: brightness(1.08);
+}
+
+.update-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(340px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 16px 40px -12px var(--shadow);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.update-panel h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.update-panel p {
+  margin: 0;
+}
+
+.update-detail,
+.update-note {
   color: var(--text-muted);
+}
+
+.update-error {
+  color: var(--danger);
+}
+
+.update-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  text-decoration: none;
+  width: fit-content;
+}
+
+.update-link:hover {
+  text-decoration: underline;
+}
+
+.update-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+/* ---- Settings -------------------------------------------------------- */
+
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 8vh 16px 16px;
+  background: var(--backdrop);
+  overflow-y: auto;
+}
+
+.settings {
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 60px var(--shadow);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-group h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+}
+
+.settings-row.stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.settings-row select,
+.settings-row input[type="text"] {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-row input[type="text"] {
+  font-family: var(--term-font-family, ui-monospace, monospace);
+}
+
+.settings-row select:focus-visible,
+.settings-row input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-stepper output {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
 }
 
-.palette-button:hover {
-  border-color: var(--border-strong);
-  color: var(--text);
+.settings-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
-.palette-button kbd,
+.settings-version {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 16px 14px;
+}
+
+.settings-foot a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.settings-foot a:hover {
+  text-decoration: underline;
+}
+
+.settings-foot .settings-hint {
+  margin-left: auto;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.seg button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+.seg button[aria-checked="true"] {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.link-button {
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+/* ---- Command palette ------------------------------------------------- */
+
+
+
 .palette-hint {
   font-family: inherit;
   font-size: 11px;
   color: var(--text-faint);
 }
 
-@container (max-width: 560px) {
-  .palette-button kbd {
-    display: none;
-  }
-}
 
 .palette-backdrop {
   position: fixed;

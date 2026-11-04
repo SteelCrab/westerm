@@ -1,4 +1,5 @@
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import type { ReactNode } from "react";
+import { Command, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import type { SessionKind } from "../../shared/protocol.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KINDS, LAUNCHERS } from "../kinds.tsx";
@@ -8,10 +9,19 @@ interface ActivityBarProps {
   counts: Record<SessionKind, number>;
   onLaunch: (kind: SessionKind) => void;
   onToggleSidebar: () => void;
+  onOpenSettings: () => void;
+  onOpenPalette: () => void;
+  /** Shown in the palette button's tooltip, e.g. ⌘K. */
+  paletteShortcut: string;
 }
 
-/** Narrow icon rail on the far left. Each launcher starts a new pane. */
-export function ActivityBar({ sidebarOpen, counts, onLaunch, onToggleSidebar }: ActivityBarProps) {
+/**
+ * The icon bar on the far left: launchers at the top; the command palette,
+ * settings (language, theme, font, updates), and the sidebar switch at the
+ * bottom.
+ */
+export function ActivityBar(props: ActivityBarProps) {
+  const { sidebarOpen, counts, onLaunch, onToggleSidebar, onOpenSettings } = props;
   const { t } = useI18n();
   return (
     <nav className="activity-bar" aria-label={t.activity.launchers}>
@@ -43,21 +53,40 @@ export function ActivityBar({ sidebarOpen, counts, onLaunch, onToggleSidebar }: 
         })}
       </div>
       <div className="activity-group">
-        <button
-          type="button"
-          className="activity-button"
-          aria-label={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
-          aria-pressed={sidebarOpen}
-          title={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
+        <BarButton label={t.palette.open} tooltip={`${t.palette.open} · ${props.paletteShortcut}`} onClick={props.onOpenPalette}>
+          <Command size={17} strokeWidth={1.75} />
+        </BarButton>
+        <BarButton label={t.activity.settings} tooltip={t.activity.settings} onClick={onOpenSettings}>
+          <Settings size={18} strokeWidth={1.75} />
+        </BarButton>
+        <BarButton
+          label={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
+          tooltip={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
+          pressed={sidebarOpen}
           onClick={onToggleSidebar}
         >
-          {sidebarOpen ? (
-            <PanelLeftClose size={18} strokeWidth={1.75} />
-          ) : (
-            <PanelLeftOpen size={18} strokeWidth={1.75} />
-          )}
-        </button>
+          {sidebarOpen ? <PanelLeftClose size={18} strokeWidth={1.75} /> : <PanelLeftOpen size={18} strokeWidth={1.75} />}
+        </BarButton>
       </div>
     </nav>
+  );
+}
+
+interface BarButtonProps {
+  label: string;
+  tooltip: string;
+  pressed?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}
+
+function BarButton({ label, tooltip, pressed, onClick, children }: BarButtonProps) {
+  return (
+    <button type="button" className="activity-button" aria-label={label} aria-pressed={pressed} onClick={onClick}>
+      {children}
+      <span className="activity-tooltip" role="presentation">
+        {tooltip}
+      </span>
+    </button>
   );
 }

@@ -255,3 +255,38 @@ export function parseLayout(value: unknown, isPaneId: (id: unknown) => id is str
   }
   return normalize(split(node.dir, children, scale(node.sizes as number[])));
 }
+
+export type Direction = "left" | "right" | "up" | "down";
+
+/**
+ * The pane beside `fromId` in `direction`: of the panes on that side that
+ * share some of its edge, the nearest; on a tie, the one best centred on it.
+ */
+export function neighbor(root: LayoutNode | null, fromId: string, direction: Direction): string | null {
+  const all = rects(root);
+  const from = all.get(fromId);
+  if (!from) return null;
+  const EPSILON = 1e-6;
+  const across = direction === "left" || direction === "right";
+  let best: { id: string; distance: number; offset: number } | null = null;
+  for (const [id, rect] of all) {
+    if (id === fromId) continue;
+    const distance = {
+      left: from.x - (rect.x + rect.w),
+      right: rect.x - (from.x + from.w),
+      up: from.y - (rect.y + rect.h),
+      down: rect.y - (from.y + from.h),
+    }[direction];
+    const overlap = across
+      ? Math.min(from.y + from.h, rect.y + rect.h) - Math.max(from.y, rect.y)
+      : Math.min(from.x + from.w, rect.x + rect.w) - Math.max(from.x, rect.x);
+    if (distance < -EPSILON || overlap <= EPSILON) continue;
+    const offset = across
+      ? Math.abs(rect.y + rect.h / 2 - (from.y + from.h / 2))
+      : Math.abs(rect.x + rect.w / 2 - (from.x + from.w / 2));
+    const closer = !best || distance < best.distance - EPSILON;
+    const tie = best && Math.abs(distance - best.distance) <= EPSILON && offset < best.offset;
+    if (closer || tie) best = { id, distance, offset };
+  }
+  return best?.id ?? null;
+}

@@ -6,6 +6,8 @@ import {
   fromGrid,
   insertPane,
   leaves,
+  neighbor,
+  type Direction,
   removePane,
   setSizesAt,
   swapPanes,
@@ -171,6 +173,34 @@ export function tabLead(state: Workspace, tab: Tab): Session | null {
 export function tabLabel(state: Workspace, tab: Tab, untitled: string): string {
   const lead = tabLead(state, tab);
   return tab.name ?? (lead ? sessionLabel(lead) : untitled);
+}
+
+/** Tab `number` (1–9) as browsers count: 9 is always the last tab. */
+export function tabByNumber(state: Workspace, number: number): Tab | null {
+  if (number === 9) return state.tabs[state.tabs.length - 1] ?? null;
+  return state.tabs[number - 1] ?? null;
+}
+
+/** The tab `delta` steps from the active one, wrapping around. */
+export function stepTab(state: Workspace, delta: number): Tab {
+  const index = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+  const count = state.tabs.length;
+  return state.tabs[(((index + delta) % count) + count) % count];
+}
+
+/** The pane `delta` steps from the focused one in the active tab, in reading order, wrapping around. */
+export function stepPane(state: Workspace, delta: number): string | null {
+  const ids = activeTab(state).paneIds;
+  if (ids.length === 0) return null;
+  const index = Math.max(0, ids.indexOf(activeTab(state).focusedId ?? ""));
+  return ids[(((index + delta) % ids.length) + ids.length) % ids.length];
+}
+
+/** The pane beside the focused one in `direction`, in the active tab. */
+export function paneToward(state: Workspace, direction: Direction): string | null {
+  const tab = activeTab(state);
+  if (!tab.focusedId) return tab.paneIds[0] ?? null;
+  return neighbor(tab.layout, tab.focusedId, direction);
 }
 
 /** The focused shell in the active tab, whose directory a new editor opens. */

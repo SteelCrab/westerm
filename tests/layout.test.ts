@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  neighbor,
   dockPane,
   fromGrid,
   handles,
@@ -92,4 +93,25 @@ test("saved trees are validated", () => {
   for (let i = 0; i < 20; i++) deep = { type: "split", dir: "row", sizes: [1], children: [deep] };
   assert.equal(parseLayout(deep, isId), null, "depth is bounded");
   assert.deepEqual(shape(normalize({ type: "split", dir: "row", sizes: [1], children: [pane("z")] })), "z");
+});
+
+test("arrow keys find the pane on that side", () => {
+  // a | b
+  //   | c
+  const layout = {
+    type: "split" as const,
+    dir: "row" as const,
+    sizes: [0.6, 0.4],
+    children: [
+      { type: "pane" as const, id: "a" },
+      { type: "split" as const, dir: "column" as const, sizes: [0.5, 0.5], children: [{ type: "pane" as const, id: "b" }, { type: "pane" as const, id: "c" }] },
+    ],
+  };
+  assert.equal(neighbor(layout, "a", "right"), "b", "b and c are equally near and centred; reading order decides");
+  assert.equal(neighbor(layout, "c", "left"), "a");
+  assert.equal(neighbor(layout, "b", "down"), "c");
+  assert.equal(neighbor(layout, "c", "up"), "b");
+  assert.equal(neighbor(layout, "a", "left"), null, "nothing beyond the edge");
+  assert.equal(neighbor(layout, "b", "right"), null);
+  assert.equal(neighbor(null, "a", "right"), null);
 });
