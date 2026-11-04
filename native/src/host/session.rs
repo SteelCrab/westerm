@@ -22,6 +22,7 @@ use tokio::time::{sleep_until, Instant};
 
 use super::store::{SessionMeta, SessionStore};
 use crate::cwd::process_cwd;
+use crate::i18n::Lang;
 use crate::protocol::{
     AttachMode, ClientMessage, PtySize, ServerMessage, SessionKind, CLOSE_TAKEN_OVER, FLOW_HIGH_WATER, FLOW_LOW_WATER,
 };
@@ -60,6 +61,8 @@ impl Handle {
 pub struct Restored {
     pub screen: String,
     pub saved_at: String,
+    /// Language of the restore notice.
+    pub lang: Lang,
 }
 
 enum ViewerEvent {
@@ -136,7 +139,7 @@ pub fn start(
         // The old screen goes in before the new shell prints its prompt.
         if let Some(restored) = &restored {
             screen.process(restored.screen.as_bytes());
-            screen.process(restored_notice(&restored.saved_at).as_bytes());
+            screen.process(restored_notice(&restored.saved_at, restored.lang).as_bytes());
         }
         screen
     });

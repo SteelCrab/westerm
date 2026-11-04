@@ -3,7 +3,10 @@ import { test } from "node:test";
 import { fuzzyScore } from "../src/components/CommandPalette.tsx";
 import { clampSidebar } from "../src/components/SidebarResizer.tsx";
 import { insertionIndex } from "../src/dnd.ts";
+import { MESSAGES } from "../src/i18n/messages.ts";
 import { urlCommands } from "../src/paletteCommands.tsx";
+
+const en = MESSAGES.en;
 
 test("palette search matches subsequences and prefers tight word-start matches", () => {
   assert.equal(fuzzyScore("새 탭", "xyz"), -1);
@@ -17,14 +20,15 @@ test("typing a URL offers terminal-browser; plain words do not", () => {
   const opened: Array<[string, string | null | undefined]> = [];
   const open = (kind: string, url?: string | null) => opened.push([kind, url]);
   for (const text of ["example.com", "https://news.ycombinator.com", "localhost:3000", "localhost"]) {
-    const [command] = urlCommands(text, open);
+    const [command] = urlCommands(text, open, en);
     assert.ok(command, text);
     command.run();
   }
   assert.deepEqual(opened.at(-1), ["browser", "localhost"]);
-  assert.deepEqual(urlCommands("rename", open), []);
-  assert.deepEqual(urlCommands("javascript:alert(1)", open), []);
-  assert.deepEqual(urlCommands("   ", open), []);
+  assert.deepEqual(urlCommands("rename", open, en), []);
+  assert.deepEqual(urlCommands("javascript:alert(1)", open, en), []);
+  assert.deepEqual(urlCommands("   ", open, en), []);
+  assert.equal(urlCommands("example.com", open, MESSAGES.ja)[0].title, "terminal-browser で開く: example.com");
 });
 
 test("drop indexes account for the moving item's own slot", () => {

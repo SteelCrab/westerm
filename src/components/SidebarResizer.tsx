@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { useI18n } from "../i18n/index.tsx";
 
 export const SIDEBAR_MIN = 160;
 export const SIDEBAR_MAX = 480;
@@ -20,6 +21,7 @@ interface SidebarResizerProps {
  * Home/End jump to the limits, and double-click or Enter resets it.
  */
 export function SidebarResizer({ width, onResize }: SidebarResizerProps) {
+  const { t } = useI18n();
   const drag = useRef<{ startX: number; startWidth: number; frame: number } | null>(null);
 
   return (
@@ -27,12 +29,12 @@ export function SidebarResizer({ width, onResize }: SidebarResizerProps) {
       className="sidebar-resizer"
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize sidebar"
+      aria-label={t.sidebar.resize}
       aria-valuemin={SIDEBAR_MIN}
       aria-valuemax={SIDEBAR_MAX}
       aria-valuenow={width}
       tabIndex={0}
-      title="끌어서 너비 조절 · 더블클릭하면 기본 너비"
+      title={t.sidebar.resizeHint}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();

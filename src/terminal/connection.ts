@@ -8,6 +8,7 @@ import {
   type ServerMessage,
   type SessionKind,
 } from "../../shared/protocol.ts";
+import type { Locale } from "../i18n/messages.ts";
 
 export type ConnectionEvent =
   | { type: "ready"; pid: number; mode: AttachMode }
@@ -25,6 +26,8 @@ export interface ConnectionOptions {
   cwdFrom: string | null;
   /** ssh destination. */
   target: string | null;
+  /** Language of text the server writes: the restore notice and errors. */
+  lang: Locale;
   size: PtySize;
   /** Parse output synchronously; bytes are acknowledged after this returns. */
   onOutput: (bytes: Uint8Array) => void;
@@ -51,6 +54,7 @@ export class PtyConnection {
       rows: String(options.size.rows),
       width: String(options.size.width),
       height: String(options.size.height),
+      lang: options.lang,
     });
     if (options.url) query.set("url", options.url);
     if (options.cwdFrom) query.set("cwdFrom", options.cwdFrom);

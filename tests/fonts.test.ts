@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { clampFontSize, fontStack, terminalFont } from "../src/terminal/fonts.ts";
+import { cjkFallbacks, clampFontSize, fontStack, terminalFont } from "../src/terminal/fonts.ts";
 
 test("font stack puts the user font first, then Nerd Font icons and Hangul", () => {
   const stack = fontStack(["D2Coding"]);
@@ -17,4 +17,13 @@ test("terminal font sizes are clamped and fall back to the Ghostty size", () => 
   assert.equal(terminalFont({ fontFamilies: ["D2Coding"], fontSize: 15 }, null).size, 15);
   assert.equal(terminalFont({ fontFamilies: ["D2Coding"], fontSize: 15 }, 18).size, 18);
   assert.equal(terminalFont(null, null).label, "Menlo");
+});
+
+test("CJK fallbacks put the UI language's fonts first and keep the others", () => {
+  assert.equal(cjkFallbacks("ja")[0], "Noto Sans Mono CJK JP");
+  assert.equal(cjkFallbacks("zh")[0], "Noto Sans Mono CJK SC");
+  assert.equal(cjkFallbacks("en")[0], "D2Coding");
+  assert.deepEqual([...cjkFallbacks("ja")].sort(), [...cjkFallbacks("ko")].sort(), "every script stays covered");
+  const stack = fontStack(["Menlo"], "zh");
+  assert.ok(stack.indexOf("PingFang SC") < stack.indexOf("Apple SD Gothic Neo"));
 });

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { GripVertical, Maximize2, Minimize2, RotateCcw, X } from "lucide-react";
 import { carries, dropZone, PANE_MIME, startDrag, type DropZone } from "../dnd.ts";
+import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
 import type { ConnectionEvent } from "../terminal/connection.ts";
 import type { TerminalFont } from "../terminal/fonts.ts";
 import type { ColorScheme } from "../theme.ts";
 import { TerminalView } from "../terminal/TerminalView.tsx";
-import { KIND_LABEL, sessionLabel, type Session, type WorkspaceAction } from "../workspace.ts";
+import { sessionLabel, type Session, type WorkspaceAction } from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
 import { StatusDot } from "./StatusDot.tsx";
 
@@ -38,6 +39,7 @@ export function Pane(props: PaneProps) {
   const { session, font, focused, maximized, covered, gridStyle, focusNonce, renaming, onRename, dispatch } = props;
   const { dragging, onDragPane, scheme } = props;
   const { id } = session;
+  const { t } = useI18n();
   // Where a dragged pane would land: a side (split there) or the center (swap).
   const [zone, setZone] = useState<DropZone | null>(null);
   const label = sessionLabel(session);
@@ -56,7 +58,7 @@ export function Pane(props: PaneProps) {
         break;
       case "closed":
         if (event.takenOver) {
-          dispatch({ type: "status", id, status: "error", detail: "다른 창에서 이 세션을 열었습니다" });
+          dispatch({ type: "status", id, status: "error", notice: "takenOver" });
         } else {
           dispatch({ type: "disconnected", id });
         }
@@ -74,6 +76,8 @@ export function Pane(props: PaneProps) {
   }, [session.status, session.retries, id, dispatch]);
 
   const ended = session.status === "exited" || session.status === "error";
+  // "pid 7 · reconnected", "exit 1", or a server message, in the UI language.
+  const detail = [session.detail, session.notice && t.notice[session.notice]].filter(Boolean).join(" · ") || null;
   const classes = [
     "pane",
     focused && "focused",
@@ -119,7 +123,7 @@ export function Pane(props: PaneProps) {
       <header
         className="pane-header"
         draggable={!editing}
-        title="끌어서 이동: 다른 패널 가장자리에 놓으면 그쪽으로 분할, 가운데는 자리 바꾸기, 탭 위는 그 탭으로"
+        title={t.pane.dragHint}
         onDragStart={(event) => {
           startDrag(event, PANE_MIME, id);
           onDragPane(id);
@@ -132,7 +136,7 @@ export function Pane(props: PaneProps) {
         {editing ? (
           <InlineRename
             value={session.name ?? ""}
-            label="Session name"
+            label={t.rename.sessionName}
             className="pane-rename"
             onCommit={(name) => {
               dispatch({ type: "renameSession", id, name });
@@ -143,7 +147,7 @@ export function Pane(props: PaneProps) {
         ) : (
           <span
             className={`pane-title${session.name ? " custom" : ""}`}
-            title={`${label} — 더블클릭하여 이름 변경`}
+            title={t.pane.renameHint(label)}
             onDoubleClick={(event) => {
               // The header's own double-click maximizes; the title renames.
               event.stopPropagation();
@@ -153,15 +157,15 @@ export function Pane(props: PaneProps) {
             {label}
           </span>
         )}
-        <span className="pane-kind">{KIND_LABEL[session.kind]}</span>
+        <span className="pane-kind">{t.kinds[session.kind].name}</span>
         <StatusDot status={session.status} />
-        {session.detail && <span className="pane-detail">{session.detail}</span>}
+        {detail && <span className="pane-detail">{detail}</span>}
         <span className="pane-spacer" />
         <button
           type="button"
           className="icon-button"
-          aria-label={maximized ? "Restore panes" : "Maximize pane"}
-          title={maximized ? "그리드로 돌아가기" : "패널 최대화"}
+          aria-label={maximized ? t.pane.restore : t.pane.maximize}
+          title={maximized ? t.pane.restore : t.pane.maximize}
           onClick={() => dispatch({ type: "toggleMaximize", id })}
         >
           {maximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
@@ -169,8 +173,8 @@ export function Pane(props: PaneProps) {
         <button
           type="button"
           className="icon-button"
-          aria-label={`Close ${label}`}
-          title="세션 닫기"
+          aria-label={t.sidebar.closeSession(label)}
+          title={t.sidebar.closeSessionHint}
           onClick={() => dispatch({ type: "close", id })}
         >
           <X size={14} />
@@ -197,15 +201,15 @@ export function Pane(props: PaneProps) {
         {ended && (
           <div className="pane-overlay" role="status">
             <p>
-              {session.status === "exited" ? "프로세스가 종료되었습니다" : "세션 오류"}
-              {session.detail ? ` (${session.detail})` : ""}
+              {session.status === "exited" ? t.pane.exited : t.pane.failed}
+              {detail ? ` (${detail})` : ""}
             </p>
             <div className="pane-overlay-actions">
               <button type="button" className="button primary" onClick={() => dispatch({ type: "restart", id, manual: true })}>
-                <RotateCcw size={14} /> 다시 시작
+                <RotateCcw size={14} /> {t.pane.restart}
               </button>
               <button type="button" className="button" onClick={() => dispatch({ type: "close", id })}>
-                닫기
+                {t.pane.close}
               </button>
             </div>
           </div>

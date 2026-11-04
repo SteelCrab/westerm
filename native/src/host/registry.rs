@@ -79,7 +79,7 @@ impl Registry {
             self.live.remove(&request.id);
         }
         if self.live.len() >= LIVE_LIMIT {
-            refuse(ws, format!("세션은 최대 {LIVE_LIMIT}개까지 열 수 있습니다"));
+            refuse(ws, request.lang.too_many_sessions(LIVE_LIMIT));
             return;
         }
 
@@ -89,7 +89,11 @@ impl Registry {
             _ => self.cwd_for(request.cwd_from.as_deref()).await,
         };
         let restored = meta.as_ref().filter(|_| request.kind.is_text()).and_then(|meta| {
-            Some(Restored { screen: self.store.read_screen(&request.id)?, saved_at: meta.saved_at.clone() })
+            Some(Restored {
+                screen: self.store.read_screen(&request.id)?,
+                saved_at: meta.saved_at.clone(),
+                lang: request.lang,
+            })
         });
         let launch = LaunchSpec {
             kind: request.kind,
@@ -105,7 +109,7 @@ impl Registry {
                 let _ = handle.tx.send(Command::Attach { ws, size: request.size, mode });
                 self.live.insert(request.id, handle);
             }
-            Err(error) => refuse(ws, format!("세션을 시작하지 못했습니다: {error}")),
+            Err(error) => refuse(ws, request.lang.start_failed(&error)),
         }
     }
 

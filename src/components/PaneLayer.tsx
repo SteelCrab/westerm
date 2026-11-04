@@ -1,7 +1,8 @@
 import { useCallback, useRef } from "react";
 import { rects, type Rect } from "../../shared/layout.ts";
 import type { SessionKind } from "../../shared/protocol.ts";
-import { KindIcon, KINDS, LAUNCHERS } from "../kinds.tsx";
+import { useI18n } from "../i18n/index.tsx";
+import { KindIcon, LAUNCHERS } from "../kinds.tsx";
 import type { TerminalFont } from "../terminal/fonts.ts";
 import type { ColorScheme } from "../theme.ts";
 import { activeTab, sessionTab, type Workspace, type WorkspaceAction } from "../workspace.ts";
@@ -34,6 +35,7 @@ const LAYER_PADDING = 4;
  */
 export function PaneLayer(props: PaneLayerProps) {
   const { state, dragging } = props;
+  const { t } = useI18n();
   const current = activeTab(state);
   const layerRef = useRef<HTMLDivElement>(null);
   const tabRects = new Map(state.tabs.map((tab) => [tab.id, rects(tab.layout)]));
@@ -88,11 +90,11 @@ export function PaneLayer(props: PaneLayerProps) {
       )}
       {current.paneIds.length === 0 && (
         <div className="workspace-empty layer-empty">
-          <p>이 탭에는 세션이 없습니다.</p>
+          <p>{t.pane.emptyTab}</p>
           <div className="workspace-empty-actions">
             {LAUNCHERS.map((kind) => (
               <button key={kind} type="button" className="button" onClick={() => props.onLaunch(kind)}>
-                <KindIcon kind={kind} size={15} /> {KINDS[kind].label}
+                <KindIcon kind={kind} size={15} /> {t.kinds[kind].label}
               </button>
             ))}
           </div>

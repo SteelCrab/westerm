@@ -5,6 +5,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::Lang;
+
 /// Output flow control: the host pauses reading a PTY while this many bytes
 /// wait for the browser's acknowledgment, and resumes below the low mark.
 pub const FLOW_HIGH_WATER: u64 = 8 * 1024 * 1024;
@@ -181,6 +183,8 @@ pub struct AttachRequest {
     /// Start in this session's directory (the focused shell), for an editor.
     pub cwd_from: Option<String>,
     pub size: PtySize,
+    /// UI language for text the host writes (restore notice, errors).
+    pub lang: Lang,
 }
 
 impl AttachRequest {
@@ -214,7 +218,8 @@ impl AttachRequest {
         } else {
             None
         };
-        Some(Self { id, kind, url, target, cwd_from, size })
+        let lang = Lang::parse(query.get("lang").map(String::as_str));
+        Some(Self { id, kind, url, target, cwd_from, size, lang })
     }
 
     /// The same request as a query string, from validated fields only.
@@ -226,6 +231,7 @@ impl AttachRequest {
             ("rows", self.size.rows.to_string()),
             ("width", self.size.width.to_string()),
             ("height", self.size.height.to_string()),
+            ("lang", self.lang.as_str().to_owned()),
         ];
         if let Some(url) = &self.url {
             pairs.push(("url", url.clone()));
@@ -308,6 +314,7 @@ mod tests {
             ("height", "408"),
             ("url", "localhost:3000"),
             ("target", "prod"),
+            ("lang", "ja"),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_owned(), v.to_owned()))
@@ -315,6 +322,8 @@ mod tests {
         let request = AttachRequest::from_query(&query).unwrap();
         assert_eq!(request.url.as_deref(), Some("localhost:3000"));
         assert!(request.to_query().contains("url=localhost%3A3000"));
+        assert_eq!(request.lang, Lang::Ja);
+        assert!(request.to_query().contains("lang=ja"));
         let mut ssh = query.clone();
         ssh.insert("kind".into(), "ssh".into());
         ssh.remove("target");

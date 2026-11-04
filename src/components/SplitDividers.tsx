@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { handles, moveShare, nodeAt, type Handle, type LayoutNode } from "../../shared/layout.ts";
+import { useI18n } from "../i18n/index.tsx";
 
 interface SplitDividersProps {
   layout: LayoutNode;
@@ -21,6 +22,7 @@ function sizesOf(layout: LayoutNode, handle: Handle): number[] {
  * double-click or Enter makes that split's children equal.
  */
 export function SplitDividers({ layout, inner, onResize }: SplitDividersProps) {
+  const { t } = useI18n();
   const drag = useRef<{ start: number; sizes: number[]; frame: number } | null>(null);
 
   return (
@@ -50,10 +52,10 @@ export function SplitDividers({ layout, inner, onResize }: SplitDividersProps) {
             style={style}
             role="separator"
             aria-orientation={vertical ? "vertical" : "horizontal"}
-            aria-label={vertical ? "Resize side by side panes" : "Resize stacked panes"}
+            aria-label={vertical ? t.pane.splitVertical : t.pane.splitHorizontal}
             aria-valuenow={Math.round(handle.at * 100)}
             tabIndex={0}
-            title="끌어서 크기 조절 · 더블클릭하면 균등 분할"
+            title={t.pane.splitHint}
             onPointerDown={(event) => {
               if (event.button !== 0) return;
               event.preventDefault();

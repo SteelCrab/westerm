@@ -1,5 +1,6 @@
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { SessionKind } from "../../shared/protocol.ts";
+import { useI18n } from "../i18n/index.tsx";
 import { KINDS, LAUNCHERS } from "../kinds.tsx";
 
 interface ActivityBarProps {
@@ -11,11 +12,13 @@ interface ActivityBarProps {
 
 /** Narrow icon rail on the far left. Each launcher starts a new pane. */
 export function ActivityBar({ sidebarOpen, counts, onLaunch, onToggleSidebar }: ActivityBarProps) {
+  const { t } = useI18n();
   return (
-    <nav className="activity-bar" aria-label="Launchers">
+    <nav className="activity-bar" aria-label={t.activity.launchers}>
       <div className="activity-group">
         {LAUNCHERS.map((kind) => {
-          const { label, hint, icon: Icon } = KINDS[kind];
+          const { label, hint } = t.kinds[kind];
+          const Icon = KINDS[kind].icon;
           return (
             <button
               key={kind}
@@ -43,9 +46,9 @@ export function ActivityBar({ sidebarOpen, counts, onLaunch, onToggleSidebar }: 
         <button
           type="button"
           className="activity-button"
-          aria-label={sidebarOpen ? "Hide sessions" : "Show sessions"}
+          aria-label={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
           aria-pressed={sidebarOpen}
-          title={sidebarOpen ? "세션 목록 숨기기" : "세션 목록 보기"}
+          title={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
           onClick={onToggleSidebar}
         >
           {sidebarOpen ? (

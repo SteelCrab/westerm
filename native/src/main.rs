@@ -6,6 +6,7 @@
 
 mod cwd;
 mod host;
+mod i18n;
 mod protocol;
 mod screen;
 mod server;

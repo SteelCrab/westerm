@@ -9,6 +9,7 @@ import { TERMINAL_COLORS, type ColorScheme } from "../theme.ts";
 import { installAltScreenImages } from "./alt-screen-images.ts";
 import { installCommandKeys } from "./command-keys.ts";
 import { PtyConnection, type ConnectionEvent } from "./connection.ts";
+import { useI18n } from "../i18n/index.tsx";
 import { takeEnding } from "./ending.ts";
 import { fontStyle, type TerminalFont } from "./fonts.ts";
 
@@ -75,6 +76,10 @@ function useGhosttyCore(kind: SessionKind): { core: GhosttyCore | null; error: s
 export function TerminalView(props: TerminalViewProps) {
   const { sessionId, kind, url, cwdFrom, target, label, font, scheme, focused, focusNonce, visible } = props;
   const { core, error } = useGhosttyCore(kind);
+  const { t, locale } = useI18n();
+  // Read at connect time only: switching language must not reconnect.
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
   const terminalRef = useRef<TerminalHandle>(null);
   const connectionRef = useRef<PtyConnection | null>(null);
   const wtermRef = useRef<WTerm | null>(null);
@@ -121,6 +126,7 @@ export function TerminalView(props: TerminalViewProps) {
         url,
         cwdFrom,
         target,
+        lang: localeRef.current,
         size: ptySize(wt),
         onOutput: (bytes) => wt.write(bytes),
         onEvent: (event) => callbacks.current.onEvent(event),
@@ -135,8 +141,8 @@ export function TerminalView(props: TerminalViewProps) {
     if (wt) connectionRef.current?.resize(ptySize(wt));
   }, []);
 
-  if (error) return <div className="pane-message">Ghostty 코어를 불러오지 못했습니다: {error}</div>;
-  if (!core) return <div className="pane-message">Ghostty 코어를 불러오는 중…</div>;
+  if (error) return <div className="pane-message">{t.pane.coreFailed(error)}</div>;
+  if (!core) return <div className="pane-message">{t.pane.coreLoading}</div>;
 
   return (
     <Terminal

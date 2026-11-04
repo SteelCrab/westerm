@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useI18n } from "../i18n/index.tsx";
 
 /** Where a rename was started; the input appears in that spot. */
 export type RenameTarget =
@@ -17,6 +18,7 @@ interface InlineRenameProps {
 
 /** Text field that replaces a label: Enter or blur saves, Escape cancels. */
 export function InlineRename({ value, label, className, onCommit, onCancel }: InlineRenameProps) {
+  const { t } = useI18n();
   const ref = useRef<HTMLInputElement>(null);
   const done = useRef(false);
 
@@ -38,7 +40,7 @@ export function InlineRename({ value, label, className, onCommit, onCancel }: In
       className={`inline-rename${className ? ` ${className}` : ""}`}
       defaultValue={value}
       aria-label={label}
-      placeholder="비우면 자동 이름"
+      placeholder={t.rename.placeholder}
       maxLength={120}
       spellCheck={false}
       onKeyDown={(event) => {

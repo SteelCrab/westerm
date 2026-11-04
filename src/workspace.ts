@@ -1,5 +1,6 @@
 import type { AttachMode, SessionKind } from "../shared/protocol.ts";
 import type { SavedWorkspace } from "../shared/workspace-file.ts";
+import type { Notice } from "./i18n/messages.ts";
 import {
   dockPane,
   fromGrid,
@@ -30,7 +31,10 @@ export interface Session {
   /** ssh destination: the remote host, or the proxy host for a remote browser. */
   target: string | null;
   status: SessionStatus;
+  /** Untranslated detail: pid, exit code, or a server message (already localized). */
   detail: string | null;
+  /** Connection state the UI shows in its language. */
+  notice: Notice | null;
   /** PTY process id once the server reports it. */
   pid: number | null;
   /** terminal-code opens the current directory of this session's process. */
@@ -84,7 +88,7 @@ export type WorkspaceAction =
   | { type: "close"; id: string }
   | { type: "focus"; id: string }
   | { type: "toggleMaximize"; id: string }
-  | { type: "status"; id: string; status: SessionStatus; detail?: string | null }
+  | { type: "status"; id: string; status: SessionStatus; detail?: string | null; notice?: Notice | null }
   | { type: "title"; id: string; title: string }
   /** An empty name returns the session to the program's title. */
   | { type: "renameSession"; id: string; name: string }
@@ -114,13 +118,6 @@ function emptyTab(id: string): Tab {
 export function createWorkspace(tabId: string): Workspace {
   return { sessions: [], tabs: [emptyTab(tabId)], activeTabId: tabId };
 }
-
-export const KIND_LABEL: Record<SessionKind, string> = {
-  shell: "Shell",
-  browser: "terminal-browser",
-  editor: "terminal-code",
-  ssh: "SSH",
-};
 
 const TITLE_PREFIX: Record<SessionKind, string> = {
   shell: "Shell",
@@ -167,10 +164,13 @@ export function tabLead(state: Workspace, tab: Tab): Session | null {
   return sessions.find((session) => session.id === tab.focusedId) ?? sessions[0] ?? null;
 }
 
-/** What the tab bar and sidebar show: the user's name, else the lead pane's title. */
-export function tabLabel(state: Workspace, tab: Tab): string {
+/**
+ * What the tab bar and sidebar show: the user's name, else the lead pane's
+ * title, else `untitled` (the UI's word for an empty tab).
+ */
+export function tabLabel(state: Workspace, tab: Tab, untitled: string): string {
   const lead = tabLead(state, tab);
-  return tab.name ?? (lead ? sessionLabel(lead) : "새 탭");
+  return tab.name ?? (lead ? sessionLabel(lead) : untitled);
 }
 
 /** The focused shell in the active tab, whose directory a new editor opens. */
@@ -196,6 +196,7 @@ function newSession(
     target,
     status: "connecting",
     detail: null,
+    notice: null,
     pid: null,
     cwdFrom: null,
     retries: 0,
@@ -220,10 +221,10 @@ export function toSaved(state: Workspace): SavedWorkspace {
   };
 }
 
-const ATTACH_DETAIL: Record<AttachMode, string> = {
-  new: "",
-  reattached: " · 다시 연결됨",
-  revived: " · 복원됨",
+const ATTACH_NOTICE: Record<AttachMode, Notice | null> = {
+  new: null,
+  reattached: "reattached",
+  revived: "revived",
 };
 
 function patch(state: Workspace, id: string, change: Partial<Session>): Workspace {
@@ -271,7 +272,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
         ...newSession(
           action.id,
           action.kind,
-          action.target ? `${action.kind === "ssh" ? "ssh" : "원격 브라우저"} ${action.target}` : defaultTitle(state.sessions, action.kind),
+          action.target ? `${action.kind === "ssh" ? "ssh" : "browser"} ${action.target}` : defaultTitle(state.sessions, action.kind),
           action.url ?? null,
           action.target ?? null,
         ),
@@ -309,7 +310,8 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
     case "ready":
       return patch(state, action.id, {
         status: "running",
-        detail: `pid ${action.pid}${ATTACH_DETAIL[action.mode]}`,
+        detail: `pid ${action.pid}`,
+        notice: ATTACH_NOTICE[action.mode],
         pid: action.pid,
         retries: 0,
       });
@@ -318,8 +320,8 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
       if (!session) return state;
       const retries = session.retries + 1;
       return retries > MAX_RECONNECTS
-        ? patch(state, action.id, { status: "error", detail: "서버에 연결할 수 없습니다", retries })
-        : patch(state, action.id, { status: "disconnected", detail: "다시 연결하는 중…", retries });
+        ? patch(state, action.id, { status: "error", detail: null, notice: "unreachable", retries })
+        : patch(state, action.id, { status: "disconnected", detail: null, notice: "reconnecting", retries });
     }
     case "hydrate": {
       const { saved } = action;
@@ -339,7 +341,11 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
       };
     }
     case "status":
-      return patch(state, action.id, { status: action.status, detail: action.detail ?? null });
+      return patch(state, action.id, {
+        status: action.status,
+        detail: action.detail ?? null,
+        notice: action.notice ?? null,
+      });
     case "title": {
       const title = action.title.trim();
       return title ? patch(state, action.id, { title }) : state;
@@ -352,6 +358,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
       return patch(state, action.id, {
         status: "connecting",
         detail: null,
+        notice: null,
         pid: null,
         retries: action.manual ? 0 : session.retries,
         generation: session.generation + 1,

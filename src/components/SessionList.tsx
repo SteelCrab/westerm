@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
 import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME } from "../dnd.ts";
+import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
 import { sessionLabel, tabLabel, tabSessions, type Session, type Tab, type Workspace } from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
@@ -45,6 +46,7 @@ function useDropMark() {
  */
 export function SessionList(props: SessionListProps) {
   const { state } = props;
+  const { t } = useI18n();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 
   const toggle = (id: string) =>
@@ -56,25 +58,25 @@ export function SessionList(props: SessionListProps) {
     });
 
   return (
-    <aside className="session-panel" aria-label="Workspace">
+    <aside className="session-panel" aria-label={t.sidebar.workspace}>
       <header className="session-panel-header">
-        <span>Workspace</span>
+        <span>{t.sidebar.workspace}</span>
         <span className="session-counts">
-          <span title="탭">{state.tabs.length}</span>
+          <span title={t.sidebar.tabs}>{state.tabs.length}</span>
           <span aria-hidden="true">·</span>
-          <span title="세션">{state.sessions.length}</span>
+          <span title={t.sidebar.sessions}>{state.sessions.length}</span>
         </span>
         <button
           type="button"
           className="icon-button"
-          aria-label="New tab"
-          title="새 탭"
+          aria-label={t.sidebar.newTab}
+          title={t.sidebar.newTab}
           onClick={props.onNewTab}
         >
           <Plus size={14} />
         </button>
       </header>
-      <ul className="tree" role="tree" aria-label="Tabs and sessions">
+      <ul className="tree" role="tree" aria-label={t.sidebar.tree}>
         {state.tabs.map((tab, index) => (
           <TabNode
             key={tab.id}
@@ -99,9 +101,10 @@ interface TabNodeProps extends SessionListProps {
 
 function TabNode(props: TabNodeProps) {
   const { state, tab, index, expanded, renaming } = props;
+  const { t } = useI18n();
   const sessions = tabSessions(state, tab.id);
   const active = tab.id === state.activeTabId;
-  const label = tabLabel(state, tab);
+  const label = tabLabel(state, tab, t.tabs.untitled);
   const editing = renaming?.kind === "tab" && renaming.id === tab.id && renaming.where === "sidebar";
   const startRename = () => props.onRename({ kind: "tab", id: tab.id, where: "sidebar" });
   const drop = useDropMark();
@@ -139,7 +142,7 @@ function TabNode(props: TabNodeProps) {
         <button
           type="button"
           className={`tree-chevron${expanded ? " expanded" : ""}`}
-          aria-label={expanded ? "Collapse tab" : "Expand tab"}
+          aria-label={expanded ? t.sidebar.collapse : t.sidebar.expand}
           onClick={props.onToggle}
         >
           <ChevronRight size={13} />
@@ -148,7 +151,7 @@ function TabNode(props: TabNodeProps) {
         {editing ? (
           <InlineRename
             value={tab.name ?? ""}
-            label="Tab name"
+            label={t.rename.tabName}
             className="tree-rename"
             onCommit={(name) => {
               props.onRenameTab(tab.id, name);
@@ -160,7 +163,7 @@ function TabNode(props: TabNodeProps) {
           <button
             type="button"
             className="tree-select"
-            title={`${label} — 더블클릭 또는 F2로 이름 변경`}
+            title={t.sidebar.renameHint(label)}
             onClick={() => props.onSelectTab(tab.id)}
             onDoubleClick={startRename}
             onKeyDown={(event) => event.key === "F2" && startRename()}
@@ -168,14 +171,14 @@ function TabNode(props: TabNodeProps) {
             <span className={`tree-label${tab.name ? " custom" : ""}`}>{label}</span>
           </button>
         )}
-        <span className="tree-count" title={`세션 ${sessions.length}개`}>
+        <span className="tree-count" title={t.sidebar.sessionCount(sessions.length)}>
           {sessions.length}
         </span>
         <button
           type="button"
           className="icon-button subtle"
-          aria-label={`Close tab ${label}`}
-          title="탭 닫기 (안의 세션도 모두 종료됩니다)"
+          aria-label={t.sidebar.closeTab(label)}
+          title={t.sidebar.closeTabHint}
           onClick={() => props.onCloseTab(tab.id)}
         >
           <X size={13} />
@@ -184,7 +187,7 @@ function TabNode(props: TabNodeProps) {
       {expanded && (
         <ul className="tree-children" role="group">
           {sessions.length === 0 ? (
-            <li className="tree-empty">세션 없음</li>
+            <li className="tree-empty">{t.sidebar.empty}</li>
           ) : (
             sessions.map((session) => (
               <SessionNode
@@ -208,6 +211,7 @@ interface SessionNodeProps extends SessionListProps {
 
 function SessionNode(props: SessionNodeProps) {
   const { session, current, renaming, onFocus, onClose, onRename, onRenameSession } = props;
+  const { t } = useI18n();
   const label = sessionLabel(session);
   const editing = renaming?.kind === "session" && renaming.id === session.id && renaming.where === "sidebar";
   const startRename = () => onRename({ kind: "session", id: session.id, where: "sidebar" });
@@ -243,7 +247,7 @@ function SessionNode(props: SessionNodeProps) {
         {editing ? (
           <InlineRename
             value={session.name ?? ""}
-            label="Session name"
+            label={t.rename.sessionName}
             className="tree-rename"
             onCommit={(name) => {
               onRenameSession(session.id, name);
@@ -255,7 +259,7 @@ function SessionNode(props: SessionNodeProps) {
           <button
             type="button"
             className="tree-select"
-            title={`${label} — 더블클릭 또는 F2로 이름 변경`}
+            title={t.sidebar.renameHint(label)}
             onClick={() => onFocus(session.id)}
             onDoubleClick={startRename}
             onKeyDown={(event) => event.key === "F2" && startRename()}
@@ -267,8 +271,8 @@ function SessionNode(props: SessionNodeProps) {
         <button
           type="button"
           className="icon-button subtle"
-          aria-label={`Close ${label}`}
-          title="세션 닫기"
+          aria-label={t.sidebar.closeSession(label)}
+          title={t.sidebar.closeSessionHint}
           onClick={() => onClose(session.id)}
         >
           <X size={13} />

@@ -6,6 +6,7 @@ use std::num::NonZeroU16;
 
 use vt100::capture::{BasicFormattedCaptureRange, BasicFormattedCaptureState};
 
+use crate::i18n::Lang;
 use crate::protocol::PtySize;
 
 /// Rows of history kept and replayed.
@@ -82,11 +83,8 @@ impl Screen {
 }
 
 /// Shown between a saved screen and the new process that replaces it.
-pub fn restored_notice(saved_at: &str) -> String {
-    format!(
-        "\x1b[0m\r\n\x1b[2m── 이전 세션 복원 · {} 저장 · 새 프로세스로 시작합니다 ──\x1b[0m\r\n",
-        crate::time::local_label(saved_at)
-    )
+pub fn restored_notice(saved_at: &str, lang: Lang) -> String {
+    format!("\x1b[0m\r\n\x1b[2m── {} ──\x1b[0m\r\n", lang.restored(&crate::time::local_label(saved_at)))
 }
 
 #[cfg(test)]

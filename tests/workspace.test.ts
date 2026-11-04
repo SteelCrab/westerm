@@ -16,6 +16,8 @@ import {
 } from "../src/workspace.ts";
 
 const start = () => createWorkspace("t1");
+/** The UI's word for an empty tab; the reducer stays language-free. */
+const UNTITLED = "New tab";
 const open = (state: Workspace, id: string, kind: "shell" | "browser" | "editor" = "shell") =>
   workspaceReducer(state, { type: "open", id, kind });
 const focused = (state: Workspace) => activeTab(state).focusedId;
@@ -142,7 +144,7 @@ test("closing the last tab leaves one empty tab", () => {
 test("a tab is named after its focused pane", () => {
   let state = open(open(start(), "a"), "b", "browser");
   state = workspaceReducer(state, { type: "title", id: "b", title: "Hacker News" });
-  assert.equal(tabLabel(state, activeTab(state)), "Hacker News");
+  assert.equal(tabLabel(state, activeTab(state), UNTITLED), "Hacker News");
   state = workspaceReducer(state, { type: "focus", id: "a" });
   assert.equal(tabLead(state, activeTab(state))?.title, "Shell 1");
   state = workspaceReducer(state, { type: "newTab", id: "t2" });
@@ -151,7 +153,7 @@ test("a tab is named after its focused pane", () => {
 
 test("renaming a tab overrides its automatic name; an empty name restores it", () => {
   let state = open(start(), "a");
-  const label = () => tabLabel(state, activeTab(state));
+  const label = () => tabLabel(state, activeTab(state), UNTITLED);
   assert.equal(label(), "Shell 1");
   state = workspaceReducer(state, { type: "renameTab", id: "t1", name: "  백엔드\n  서버  " });
   assert.equal(label(), "백엔드 서버", "whitespace is collapsed");
@@ -162,7 +164,7 @@ test("renaming a tab overrides its automatic name; an empty name restores it", (
   state = workspaceReducer(state, { type: "renameTab", id: "t1", name: "   " });
   assert.equal(label(), "vim");
   state = workspaceReducer(state, { type: "newTab", id: "t2" });
-  assert.equal(label(), "새 탭");
+  assert.equal(label(), UNTITLED);
   assert.equal(workspaceReducer(state, { type: "renameTab", id: "nope", name: "x" }), state);
 });
 
@@ -173,7 +175,7 @@ test("renaming a session overrides the program title until cleared", () => {
   assert.equal(sessionLabel(session()), "빌드 로그");
   state = workspaceReducer(state, { type: "title", id: "a", title: "npm run build" });
   assert.equal(sessionLabel(session()), "빌드 로그", "OSC titles do not replace a custom name");
-  assert.equal(tabLabel(state, activeTab(state)), "빌드 로그", "the tab follows the session's label");
+  assert.equal(tabLabel(state, activeTab(state), UNTITLED), "빌드 로그", "the tab follows the session's label");
   state = workspaceReducer(state, { type: "renameSession", id: "a", name: "" });
   assert.equal(sessionLabel(session()), "npm run build");
 });
@@ -264,14 +266,17 @@ test("disconnects retry with a budget; a successful attach resets it", () => {
     assert.equal(state.sessions[0].status, "disconnected");
     state = workspaceReducer(state, { type: "restart", id: "a" });
   }
+  assert.equal(state.sessions[0].notice, null, "restart clears the notice");
   state = workspaceReducer(state, { type: "disconnected", id: "a" });
   assert.equal(state.sessions[0].status, "error", "gives up after the budget");
+  assert.equal(state.sessions[0].notice, "unreachable");
   state = workspaceReducer(state, { type: "restart", id: "a", manual: true });
   assert.equal(state.sessions[0].retries, 0, "a manual restart starts over");
   state = workspaceReducer(state, { type: "disconnected", id: "a" });
   state = workspaceReducer(state, { type: "ready", id: "a", pid: 7, mode: "reattached" });
   assert.equal(state.sessions[0].retries, 0);
-  assert.equal(state.sessions[0].detail, "pid 7 · 다시 연결됨");
+  assert.equal(state.sessions[0].detail, "pid 7");
+  assert.equal(state.sessions[0].notice, "reattached");
 });
 
 test("a saved workspace round-trips names, order, and focus", () => {
@@ -286,6 +291,6 @@ test("a saved workspace round-trips names, order, and focus", () => {
   assert.deepEqual(toSaved(restored), saved);
   assert.equal(restored.sessions[0].status, "connecting", "runtime state is not saved");
   assert.equal(restored.sessions[0].pid, null);
-  assert.equal(tabLabel(restored, restored.tabs[1]), "서버");
+  assert.equal(tabLabel(restored, restored.tabs[1], UNTITLED), "서버");
   assert.deepEqual(restored.tabs[0].layout, state.tabs[0].layout, "split sizes survive a reload");
 });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CONFIG_PATH, type TerminalConfig } from "../shared/protocol.ts";
+import type { Locale } from "./i18n/messages.ts";
 import { clampFontSize, terminalFont, type TerminalFont } from "./terminal/fonts.ts";
 
 const SIZE_KEY = "westerm.fontSize";
@@ -33,8 +34,8 @@ export interface TerminalFontState {
   resetSize: () => void;
 }
 
-/** Ghostty config font, with a per-browser font-size override. */
-export function useTerminalFont(): TerminalFontState {
+/** Ghostty config font, with a per-browser font-size override and CJK order for `locale`. */
+export function useTerminalFont(locale: Locale): TerminalFontState {
   const [config, setConfig] = useState<TerminalConfig | null | undefined>(undefined);
   const [sizeOverride, setSizeOverride] = useState<number | null>(readSavedSize);
 
@@ -51,7 +52,7 @@ export function useTerminalFont(): TerminalFontState {
     };
   }, []);
 
-  const font = config === undefined ? null : terminalFont(config, sizeOverride);
+  const font = config === undefined ? null : terminalFont(config, sizeOverride, locale);
 
   const changeSize = useCallback(
     (delta: number) => {

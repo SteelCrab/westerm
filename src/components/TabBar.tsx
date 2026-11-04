@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME } from "../dnd.ts";
+import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
 import { tabLabel, tabLead, tabSessions, type Workspace } from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
@@ -29,6 +30,7 @@ type DropMark = { tabId: string; place: "before" | "after" | "into" } | null;
  */
 export function TabBar(props: TabBarProps) {
   const { state, renaming, onSelect, onClose, onNew, onRename, onRenameTab } = props;
+  const { t } = useI18n();
   const [mark, setMark] = useState<DropMark>(null);
   const [newTabTarget, setNewTabTarget] = useState(false);
 
@@ -64,12 +66,12 @@ export function TabBar(props: TabBarProps) {
         if (event.target === event.currentTarget) onNew();
       }}
     >
-      <div className="tab-list" role="tablist" aria-label="Tabs">
+      <div className="tab-list" role="tablist" aria-label={t.tabs.list}>
         {state.tabs.map((tab, index) => {
           const lead = tabLead(state, tab);
           const count = tabSessions(state, tab.id).length;
           const active = tab.id === state.activeTabId;
-          const label = tabLabel(state, tab);
+          const label = tabLabel(state, tab, t.tabs.untitled);
           const editing = renaming?.kind === "tab" && renaming.id === tab.id && renaming.where === "tabbar";
           const startRename = () => onRename({ kind: "tab", id: tab.id, where: "tabbar" });
           return (
@@ -102,7 +104,7 @@ export function TabBar(props: TabBarProps) {
               {editing ? (
                 <InlineRename
                   value={tab.name ?? ""}
-                  label="Tab name"
+                  label={t.rename.tabName}
                   className="tab-rename"
                   onCommit={(name) => {
                     onRenameTab(tab.id, name);
@@ -118,7 +120,7 @@ export function TabBar(props: TabBarProps) {
                   aria-selected={active}
                   aria-controls={`tabpanel-${tab.id}`}
                   className="tab-select"
-                  title={`${label}${count > 1 ? ` · ${count} panes` : ""} — 더블클릭 또는 F2로 이름 변경`}
+                  title={t.tabs.tooltip(label, count)}
                   onClick={() => onSelect(tab.id)}
                   onDoubleClick={startRename}
                   onKeyDown={(event) => event.key === "F2" && startRename()}
@@ -135,8 +137,8 @@ export function TabBar(props: TabBarProps) {
               <button
                 type="button"
                 className="tab-close"
-                aria-label={`Close tab ${label}`}
-                title="탭 닫기 (안의 세션도 모두 종료됩니다)"
+                aria-label={t.sidebar.closeTab(label)}
+                title={t.sidebar.closeTabHint}
                 onClick={() => onClose(tab.id)}
               >
                 <X size={12} />
@@ -148,8 +150,8 @@ export function TabBar(props: TabBarProps) {
       <button
         type="button"
         className={`tab-new${newTabTarget ? " drop-into" : ""}`}
-        aria-label="New tab"
-        title="새 탭 · 패널을 여기에 놓으면 새 탭으로 이동"
+        aria-label={t.tabs.newTab}
+        title={t.tabs.newTabHint}
         onClick={onNew}
         onDragOver={(event) => {
           if (!carries(event, PANE_MIME)) return;

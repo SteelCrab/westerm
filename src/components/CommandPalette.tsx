@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Search } from "lucide-react";
+import { useI18n } from "../i18n/index.tsx";
 
 export interface PaletteCommand {
   id: string;
@@ -8,7 +9,7 @@ export interface PaletteCommand {
   hint?: string;
   group: string;
   icon?: ReactNode;
-  /** Extra words to match, e.g. English names for Korean titles. */
+  /** Extra words to match, e.g. English names for translated titles. */
   keywords?: string;
   run: () => void;
 }
@@ -50,6 +51,7 @@ export function fuzzyScore(text: string, query: string): number {
 const MAX_RESULTS = 50;
 
 export function CommandPalette({ commands, dynamic, placeholder, empty, onClose }: CommandPaletteProps) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
@@ -89,7 +91,7 @@ export function CommandPalette({ commands, dynamic, placeholder, empty, onClose 
         className="palette"
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={t.palette.open}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="palette-input-row">
@@ -97,7 +99,7 @@ export function CommandPalette({ commands, dynamic, placeholder, empty, onClose 
           <input
             autoFocus
             className="palette-input"
-            placeholder={placeholder ?? "명령 검색, 또는 URL을 입력해 terminal-browser로 열기"}
+            placeholder={placeholder ?? t.palette.placeholder}
             value={query}
             role="combobox"
             aria-expanded="true"
@@ -125,7 +127,7 @@ export function CommandPalette({ commands, dynamic, placeholder, empty, onClose 
           />
         </div>
         <ul className="palette-results" id="palette-results" role="listbox" ref={listRef}>
-          {results.length === 0 && <li className="palette-empty">{empty ?? "일치하는 명령이 없습니다"}</li>}
+          {results.length === 0 && <li className="palette-empty">{empty ?? t.palette.empty}</li>}
           {results.map((command, index) => (
             <li
               key={command.id}

@@ -11,7 +11,7 @@ use tokio::net::UnixStream;
 use tokio_tungstenite::tungstenite::Message;
 
 const BIN: &str = env!("CARGO_BIN_EXE_westerm");
-const QUERY: &str = "session=stest1&kind=shell&cols=80&rows=24&width=640&height=408";
+const QUERY: &str = "session=stest1&kind=shell&cols=80&rows=24&width=640&height=408&lang=ko";
 
 fn start_host(state: &Path) -> Child {
     let child = Command::new(BIN)

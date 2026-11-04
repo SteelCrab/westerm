@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Command, Minus, Plus, Type } from "lucide-react";
+import { Command, Languages, Minus, Plus, Type } from "lucide-react";
 import type { SessionKind } from "../shared/protocol.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
@@ -8,6 +8,7 @@ import { PaneLayer } from "./components/PaneLayer.tsx";
 import { SessionList } from "./components/SessionList.tsx";
 import { SidebarResizer } from "./components/SidebarResizer.tsx";
 import { TabBar } from "./components/TabBar.tsx";
+import { LOCALE_NAMES, LOCALES, useI18n, type Locale } from "./i18n/index.tsx";
 import { buildCommands, isPaletteShortcut, PALETTE_SHORTCUT, sshCommands, urlCommands } from "./paletteCommands.tsx";
 import { useSshHosts } from "./useSshHosts.ts";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "./terminal/fonts.ts";
@@ -39,7 +40,8 @@ export function App() {
   const [dragging, setDragging] = useState<string | null>(null);
   // Bumped when a dashboard control gives keyboard focus back to the terminal.
   const [focusNonce, setFocusNonce] = useState(0);
-  const { font, sizeOverridden, changeSize, resetSize } = useTerminalFont();
+  const { t, locale, setLocale } = useI18n();
+  const { font, sizeOverridden, changeSize, resetSize } = useTerminalFont(locale);
   const scheme = useColorScheme();
 
   // Keep the latest state at hand for callbacks that must not change identity.
@@ -55,7 +57,6 @@ export function App() {
     rawDispatch(action);
   }, []);
 
-  // A new editor opens the focused shell's directory.
   // A new editor opens the focused shell's directory. SSH asks for a host first.
   const open = useCallback(
     (kind: SessionKind, url: string | null = null, target: string | null = null) => {
@@ -125,12 +126,15 @@ export function App() {
         toggleSidebar: () => setSidebarOpen((value) => !value),
         changeFontSize: changeSize,
         resetFontSize: resetSize,
+        t,
+        locale,
+        setLocale,
       }),
-    [state, dispatch, open, newTab, movePaneToNewTab, rename, changeSize, resetSize],
+    [state, dispatch, open, newTab, movePaneToNewTab, rename, changeSize, resetSize, t, locale, setLocale],
   );
-  const dynamicCommands = useCallback((query: string) => urlCommands(query, open), [open]);
-  const sshPaletteCommands = useMemo(() => sshCommands(sshHosts ?? [], null, open), [sshHosts, open]);
-  const sshDynamicCommands = useCallback((query: string) => sshCommands([], query, open), [open]);
+  const dynamicCommands = useCallback((query: string) => urlCommands(query, open, t), [open, t]);
+  const sshPaletteCommands = useMemo(() => sshCommands(sshHosts ?? [], null, open, t), [sshHosts, open, t]);
+  const sshDynamicCommands = useCallback((query: string) => sshCommands([], query, open, t), [open, t]);
 
   const counts = { shell: 0, browser: 0, editor: 0, ssh: 0 } satisfies Record<SessionKind, number>;
   for (const session of state.sessions) counts[session.kind] += 1;
@@ -188,15 +192,15 @@ export function App() {
             <button
               type="button"
               className="palette-button"
-              title={`명령 팔레트 (${PALETTE_SHORTCUT})`}
-              aria-label="Command palette"
+              title={`${t.palette.open} (${PALETTE_SHORTCUT})`}
+              aria-label={t.palette.open}
               onClick={() => setPalette("commands")}
             >
               <Command size={13} aria-hidden="true" />
               <kbd>{PALETTE_SHORTCUT}</kbd>
             </button>
             {font && (
-              <div className="font-control" role="group" aria-label="Terminal font">
+              <div className="font-control" role="group" aria-label={t.font.group}>
                 <span className="font-name" title={font.stack}>
                   <Type size={13} strokeWidth={1.75} aria-hidden="true" />
                   {font.label}
@@ -204,8 +208,8 @@ export function App() {
                 <button
                   type="button"
                   className="icon-button"
-                  aria-label="Decrease font size"
-                  title="글자 작게"
+                  aria-label={t.font.smaller}
+                  title={t.font.smaller}
                   disabled={font.size <= MIN_FONT_SIZE}
                   onClick={() => changeSize(-1)}
                 >
@@ -214,8 +218,8 @@ export function App() {
                 <button
                   type="button"
                   className={`font-size${sizeOverridden ? " overridden" : ""}`}
-                  title={sizeOverridden ? "Ghostty 설정 크기로 되돌리기" : "Ghostty 설정 크기"}
-                  aria-label={`Font size ${font.size}px${sizeOverridden ? ", reset to Ghostty size" : ""}`}
+                  title={sizeOverridden ? t.font.resetHint : t.font.ghosttySize}
+                  aria-label={t.font.sizeLabel(font.size, sizeOverridden)}
                   onClick={resetSize}
                   disabled={!sizeOverridden}
                 >
@@ -224,8 +228,8 @@ export function App() {
                 <button
                   type="button"
                   className="icon-button"
-                  aria-label="Increase font size"
-                  title="글자 크게"
+                  aria-label={t.font.bigger}
+                  title={t.font.bigger}
                   disabled={font.size >= MAX_FONT_SIZE}
                   onClick={() => changeSize(1)}
                 >
@@ -233,6 +237,20 @@ export function App() {
                 </button>
               </div>
             )}
+            <label className="lang-control" title={t.app.language}>
+              <Languages size={13} strokeWidth={1.75} aria-hidden="true" />
+              <select
+                value={locale}
+                aria-label={t.app.language}
+                onChange={(event) => setLocale(event.target.value as Locale)}
+              >
+                {LOCALES.map((item) => (
+                  <option key={item} value={item}>
+                    {LOCALE_NAMES[item]}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </header>
         {font && loaded ? (
@@ -250,7 +268,7 @@ export function App() {
           />
         ) : (
           <div className="workspace-empty">
-            <p>터미널 설정을 불러오는 중…</p>
+            <p>{t.app.loadingConfig}</p>
           </div>
         )}
       </main>
@@ -259,10 +277,10 @@ export function App() {
       )}
       {palette === "ssh" && (
         <CommandPalette
-          placeholder="SSH 호스트 선택, 또는 user@host 입력"
+          placeholder={t.palette.sshPlaceholder}
           commands={sshPaletteCommands}
           dynamic={sshDynamicCommands}
-          empty={sshHosts === null ? "~/.ssh/config를 읽는 중…" : "~/.ssh/config에 호스트가 없습니다. user@host를 입력하세요"}
+          empty={sshHosts === null ? t.palette.sshLoading : t.palette.sshEmpty}
           onClose={closePalette}
         />
       )}
