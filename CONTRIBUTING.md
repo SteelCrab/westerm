@@ -4,6 +4,8 @@
 
 Thank you for helping. This guide covers how to set up, what to check before a pull request, and the rules that keep the project working.
 
+westerm is under the [MIT License](LICENSE). By sending a contribution, you agree to license it under the same terms.
+
 ## Ways to help
 
 - **Report a bug**: open an [issue](https://github.com/SteelCrab/westerm/issues). See [Reporting a bug](#reporting-a-bug).
@@ -17,7 +19,7 @@ Requirements:
 
 - Node.js 24 or later
 - Rust (stable, with cargo)
-- macOS. Linux may work but is not tested.
+- macOS, Linux, or Windows. CI runs the tests on all three.
 - Optional, for the launchers: `terminal-browser` (`brew install --cask terminal-browser`) and `tode` (`curl -fsSL https://tode.sh/install | bash`)
 
 ```bash
@@ -50,9 +52,13 @@ Use a separate state folder and port while you develop:
 WESTERM_STATE_DIR=/tmp/westerm-dev ./native/target/release/westerm --port 4318
 ```
 
-- Keep the path short. The host socket path must fit in 104 bytes (a Unix socket limit).
+```powershell
+$env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\westerm.exe --port 4318
+```
+
+- On macOS and Linux keep the path short. The host socket path must fit in 104 bytes (a Unix socket limit).
 - `npm run dev` always forwards to :4317. Stop your everyday dashboard first (Ctrl+C). Your shells stay alive in the host.
-- Stop a test host with `curl --unix-socket /tmp/westerm-dev/host.sock -X POST http://host/shutdown`, then delete the folder.
+- Stop a test host with `westerm stop`, run with the same `WESTERM_STATE_DIR`. Then delete the folder.
 
 ## Project layout
 
@@ -66,8 +72,11 @@ WESTERM_STATE_DIR=/tmp/westerm-dev ./native/target/release/westerm --port 4318
 | `native/src/host/` | PTY host: runs and keeps processes, screen copy (`vt100`), save and restore |
 | `native/src/protocol.rs` | Message format and validation |
 | `native/src/i18n.rs` | Text the host writes into terminals, in all languages |
+| `native/src/ipc.rs` | Dashboard ↔ host channel: Unix socket, or a named pipe on Windows |
 | `tests/` | UI tests (`node:test`) |
 | `native/tests/` | Rust integration tests against the real executable |
+| `macos/` | macOS app: Swift window (`app/main.swift`), icon, `build-app.sh` |
+| `scripts/start.mjs` | `npm start` on every OS |
 | `docs/` | Usage, session persistence, architecture (Korean) |
 
 Read [docs/architecture.md](docs/architecture.md) for how the parts fit together.
@@ -122,6 +131,25 @@ To add a language:
 - Never pass user input through a shell string. Pass it as an argument, as `spawn.rs` does for SSH targets and URLs.
 - State files and the host socket are private to the user (folder 0700, files 0600).
 
+### Platforms
+
+westerm runs on macOS, Linux, and Windows. CI tests every pull request on all three.
+
+- Put OS-specific code behind `#[cfg(unix)]` and `#[cfg(windows)]`, and give every OS a path. Keep the differences in small modules: `ipc.rs` (host channel), `spawn.rs` (what a session runs), `state_dir.rs` (folders and file permissions), `cwd.rs`, `time.rs`.
+- macOS and Linux start sessions through the login shell. Windows starts programs directly with an argument list, so check arguments that a `.cmd` shim would pass through cmd.exe.
+- Check Windows from macOS or Linux before you push:
+
+  ```bash
+  rustup target add x86_64-pc-windows-msvc
+  cargo check --target x86_64-pc-windows-msvc --all-targets --manifest-path native/Cargo.toml
+  ```
+
+- Run the Linux tests from macOS with Docker:
+
+  ```bash
+  docker run --rm -v "$PWD":/src:ro -w /src/native -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test --locked
+  ```
+
 ### wterm patches
 
 `src/terminal/alt-screen-images.ts` and `src/terminal/command-keys.ts` use wterm internals. If wterm changes, they must turn themselves off and log a warning, never break the terminal. Note the wterm version you tested in the pull request.
@@ -147,9 +175,33 @@ Include:
 - `westerm --version` output (it includes the host build id)
 - OS and browser, with versions
 - Steps to reproduce, what you expected, and what happened
-- Relevant lines from `~/.local/state/westerm/host.log` and the browser console
+- Relevant lines from the host log and the browser console. The log is `~/.local/state/westerm/host.log` on macOS and Linux, and `%LOCALAPPDATA%\westerm\host.log` on Windows.
 
 Remove private data first: host names, paths, and screen contents.
+
+## Releasing
+
+For maintainers. A version tag builds and publishes everything.
+
+1. Set the same version in `package.json` and `native/Cargo.toml`:
+
+   ```bash
+   npm version 0.2.0 --no-git-tag-version     # package.json and package-lock.json
+   # edit `version` in native/Cargo.toml, then update Cargo.lock:
+   cargo check --manifest-path native/Cargo.toml
+   ```
+
+2. Commit, push, and wait for CI to pass on all three systems.
+3. Tag and push the tag:
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+4. The [Release workflow](.github/workflows/release.yml) checks that the tag matches both versions, tests and builds macOS (Apple silicon, Intel), Linux (x64, arm64, static), and Windows, bundles the universal macOS app, and publishes a GitHub release with the archives and SHA-256 sums. A last job installs the release with `install.sh` and `install.ps1` on every system. `install.sh` and `install.ps1` install it as the latest release.
+
+A new version with changed PTY host code restarts users' shells once, as "restored". Mention it in the release notes.
 
 ## Security issues
 

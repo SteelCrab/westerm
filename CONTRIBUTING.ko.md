@@ -4,6 +4,8 @@
 
 도와주셔서 고맙습니다. 이 문서는 개발 준비, PR 전 확인 사항, 프로젝트 규칙을 설명합니다.
 
+westerm은 [MIT 라이선스](LICENSE)입니다. 기여를 보내면 같은 조건으로 라이선스하는 데 동의하는 것으로 봅니다.
+
 ## 기여 방법
 
 - **버그 제보**: [이슈](https://github.com/SteelCrab/westerm/issues)를 엽니다. [버그 제보](#버그-제보)를 참고하세요.
@@ -17,7 +19,7 @@
 
 - Node.js 24 이상
 - Rust (stable, cargo 포함)
-- macOS. Linux는 동작할 수도 있지만 시험하지 않았습니다.
+- macOS, Linux, Windows 중 하나. CI가 세 곳 모두에서 테스트를 돌립니다.
 - 선택: 아이콘용 프로그램 `terminal-browser`(`brew install --cask terminal-browser`), `tode`(`curl -fsSL https://tode.sh/install | bash`)
 
 ```bash
@@ -50,9 +52,13 @@ westerm은 셸을 백그라운드 **PTY 호스트**에 둡니다. 호스트와 �
 WESTERM_STATE_DIR=/tmp/westerm-dev ./native/target/release/westerm --port 4318
 ```
 
-- 경로는 짧게 씁니다. 호스트 소켓 경로는 104바이트 안이어야 합니다(Unix 소켓 제한).
+```powershell
+$env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\westerm.exe --port 4318
+```
+
+- macOS와 Linux에서는 경로를 짧게 씁니다. 호스트 소켓 경로는 104바이트 안이어야 합니다(Unix 소켓 제한).
 - `npm run dev`는 항상 :4317로 전달합니다. 평소 쓰는 대시보드를 먼저 끕니다(Ctrl+C). 셸은 호스트 안에 그대로 남습니다.
-- 시험용 호스트는 `curl --unix-socket /tmp/westerm-dev/host.sock -X POST http://host/shutdown`으로 끄고, 폴더를 지웁니다.
+- 시험용 호스트는 같은 `WESTERM_STATE_DIR`로 `westerm stop`을 실행해 끄고, 폴더를 지웁니다.
 
 ## 프로젝트 구조
 
@@ -66,8 +72,11 @@ WESTERM_STATE_DIR=/tmp/westerm-dev ./native/target/release/westerm --port 4318
 | `native/src/host/` | PTY 호스트: 프로세스 실행·유지, 화면 사본(`vt100`), 저장·복원 |
 | `native/src/protocol.rs` | 메시지 형식과 검증 |
 | `native/src/i18n.rs` | 호스트가 터미널에 쓰는 문구의 모든 언어 |
+| `native/src/ipc.rs` | 대시보드 ↔ 호스트 통로: Unix 소켓, Windows는 named pipe |
 | `tests/` | 화면 테스트(`node:test`) |
 | `native/tests/` | 실제 실행 파일로 돌리는 Rust 통합 테스트 |
+| `macos/` | macOS 앱: Swift 창(`app/main.swift`), 아이콘, `build-app.sh` |
+| `scripts/start.mjs` | 모든 OS에서 `npm start` |
 | `docs/` | 사용법, 세션 유지, 구조 |
 
 각 부분의 관계는 [docs/architecture.md](docs/architecture.md)를 보세요.
@@ -122,6 +131,25 @@ npm run build        # 릴리스 빌드가 성공해야 합니다
 - 사용자 입력을 셸 문자열로 넘기지 않습니다. `spawn.rs`가 SSH 대상과 URL을 다루듯 인자로 넘깁니다.
 - 상태 파일과 호스트 소켓은 사용자만 접근합니다(폴더 0700, 파일 0600).
 
+### 플랫폼
+
+westerm은 macOS, Linux, Windows에서 동작합니다. CI가 모든 PR을 세 곳에서 시험합니다.
+
+- OS별 코드는 `#[cfg(unix)]`와 `#[cfg(windows)]`로 나누고, 모든 OS에 동작을 마련합니다. 차이는 작은 모듈에 모읍니다: `ipc.rs`(호스트 통로), `spawn.rs`(세션이 실행하는 것), `state_dir.rs`(폴더와 파일 권한), `cwd.rs`, `time.rs`.
+- macOS와 Linux는 로그인 셸을 거쳐 세션을 시작합니다. Windows는 인자 목록으로 프로그램을 바로 실행합니다. `.cmd` 실행 파일은 인자를 cmd.exe로 넘기므로, 인자에 cmd.exe 문법 문자가 없는지 확인합니다.
+- push 전에 macOS나 Linux에서 Windows 빌드를 확인합니다.
+
+  ```bash
+  rustup target add x86_64-pc-windows-msvc
+  cargo check --target x86_64-pc-windows-msvc --all-targets --manifest-path native/Cargo.toml
+  ```
+
+- macOS에서 Docker로 Linux 테스트를 돌립니다.
+
+  ```bash
+  docker run --rm -v "$PWD":/src:ro -w /src/native -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test --locked
+  ```
+
 ### wterm 보정
 
 `src/terminal/alt-screen-images.ts`와 `src/terminal/command-keys.ts`는 wterm 내부 구조를 씁니다. wterm이 바뀌면 보정은 스스로 꺼지고 경고를 남겨야 합니다. 터미널을 망가뜨리면 안 됩니다. PR에 시험한 wterm 버전을 적어 주세요.
@@ -147,9 +175,38 @@ npm run build        # 릴리스 빌드가 성공해야 합니다
 - `westerm --version` 출력(호스트 빌드 ID 포함)
 - OS와 브라우저, 각 버전
 - 재현 순서, 기대한 결과, 실제 결과
-- `~/.local/state/westerm/host.log`와 브라우저 콘솔의 관련 줄
+- 호스트 로그와 브라우저 콘솔의 관련 줄. 로그는 macOS·Linux에서 `~/.local/state/westerm/host.log`, Windows에서 `%LOCALAPPDATA%\westerm\host.log`입니다.
 
 호스트 이름, 경로, 화면 내용 같은 개인 정보는 먼저 지워 주세요.
+
+## 릴리스
+
+메인테이너용입니다. 버전 태그를 올리면 빌드와 배포가 모두 진행됩니다.
+
+1. `package.json`과 `native/Cargo.toml`에 같은 버전을 넣습니다.
+
+   ```bash
+   npm version 0.2.0 --no-git-tag-version     # package.json, package-lock.json
+   # native/Cargo.toml의 version을 고친 뒤 Cargo.lock 갱신:
+   cargo check --manifest-path native/Cargo.toml
+   ```
+
+2. 커밋하고 push한 뒤, CI가 세 OS에서 통과하는지 확인합니다.
+3. 태그를 만들고 push합니다.
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+4. [Release 워크플로](.github/workflows/release.yml)가 진행합니다.
+   - 태그와 두 버전이 같은지 확인합니다.
+   - macOS(Apple Silicon, Intel), Linux(x64, arm64, 정적 빌드), Windows를 시험하고 빌드합니다.
+   - macOS 앱(공용 빌드)을 묶습니다.
+   - 압축 파일과 SHA-256 값을 GitHub 릴리스로 올립니다. `install.sh`와 `install.ps1`이 이 릴리스를 최신 버전으로 설치합니다.
+   - 마지막으로 모든 OS에서 `install.sh`, `install.ps1`로 릴리스를 실제 설치해 확인합니다.
+
+PTY 호스트 코드가 바뀐 버전은 사용자의 셸을 한 번 "복원됨"으로 다시 시작합니다. 릴리스 노트에 적어 주세요.
 
 ## 보안 문제
 
