@@ -1,14 +1,26 @@
 import { useState } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
-import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME } from "../dnd.ts";
+import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME, WORKSPACE_MIME } from "../dnd.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
-import { sessionLabel, tabLabel, tabSessions, type Session, type Tab, type Workspace } from "../workspace.ts";
+import {
+  activeTab,
+  sessionLabel,
+  tabLabel,
+  tabSessions,
+  visibleTabs,
+  workspaceLabel,
+  workspaceTabs,
+  type Dashboard,
+  type Session,
+  type Tab,
+  type Workspace,
+} from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
 import { StatusDot } from "./StatusDot.tsx";
 
 interface SessionListProps {
-  state: Workspace;
+  state: Dashboard;
   renaming: RenameTarget | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
@@ -24,6 +36,13 @@ interface SessionListProps {
   /** A pane dropped on another session row swaps places with it. */
   onSwapPanes: (paneId: string, withId: string) => void;
   onDragPane: (id: string | null) => void;
+  onNewWorkspace: () => void;
+  onSelectWorkspace: (id: string) => void;
+  onCloseWorkspace: (id: string) => void;
+  onRenameWorkspace: (id: string, name: string) => void;
+  onMoveWorkspace: (id: string, toIndex: number) => void;
+  /** A tab dropped on a workspace row joins that workspace. */
+  onMoveTabToWorkspace: (tabId: string, workspaceId: string) => void;
   /** Icons only: tab numbers and session icons, names in tooltips. */
   compact: boolean;
 }
@@ -43,13 +62,17 @@ function useDropMark() {
 }
 
 /**
- * Workspace tree: each tab is a parent row with its panes indented below it,
- * in grid order. Double-click or F2 renames a tab or a session.
+ * The workspaces, then the tree of the workspace in view: each tab is a
+ * parent row with its panes indented below it, in grid order. Double-click or
+ * F2 renames a workspace, a tab, or a session.
  */
 export function SessionList(props: SessionListProps) {
   const { state } = props;
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const tabs = visibleTabs(state);
+  const activeId = activeTab(state).id;
+  const sessionCount = tabs.reduce((count, tab) => count + tab.paneIds.length, 0);
 
   const toggle = (id: string) =>
     setCollapsed((current) => {
@@ -60,15 +83,16 @@ export function SessionList(props: SessionListProps) {
     });
 
   return (
-    <aside className={`session-panel${props.compact ? " compact" : ""}`} aria-label={t.sidebar.workspace}>
+    <aside className={`session-panel${props.compact ? " compact" : ""}`} aria-label={t.sidebar.title}>
+      <WorkspaceList {...props} />
       <header className="session-panel-header">
         {!props.compact && (
           <>
-            <span>{t.sidebar.workspace}</span>
+            <span>{t.sidebar.tabs}</span>
             <span className="session-counts">
-              <span title={t.sidebar.tabs}>{state.tabs.length}</span>
+              <span title={t.sidebar.tabs}>{tabs.length}</span>
               <span aria-hidden="true">·</span>
-              <span title={t.sidebar.sessions}>{state.sessions.length}</span>
+              <span title={t.sidebar.sessions}>{sessionCount}</span>
             </span>
           </>
         )}
@@ -83,14 +107,16 @@ export function SessionList(props: SessionListProps) {
         </button>
       </header>
       <ul className="tree" role="tree" aria-label={t.sidebar.tree}>
-        {state.tabs.map((tab, index) => (
+        {tabs.map((tab, index) => (
           <TabNode
             key={tab.id}
             {...props}
             tab={tab}
+            tabs={tabs}
             index={index}
+            active={tab.id === activeId}
             // Icons only: just the tab in view lists its sessions.
-            expanded={props.compact ? tab.id === state.activeTabId : !collapsed.has(tab.id)}
+            expanded={props.compact ? tab.id === activeId : !collapsed.has(tab.id)}
             onToggle={() => toggle(tab.id)}
           />
         ))}
@@ -99,18 +125,153 @@ export function SessionList(props: SessionListProps) {
   );
 }
 
+/** The workspaces: a click shows one, a drop moves a tab or pane into one. */
+function WorkspaceList(props: SessionListProps) {
+  const { state } = props;
+  const { t } = useI18n();
+  return (
+    <section className="workspace-list" aria-label={t.workspaces.list}>
+      <header className="session-panel-header">
+        {!props.compact && <span className="workspace-list-title">{t.workspaces.list}</span>}
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={t.workspaces.newWorkspace}
+          title={t.workspaces.newWorkspace}
+          onClick={props.onNewWorkspace}
+        >
+          <Plus size={14} />
+        </button>
+      </header>
+      <ul className="tree">
+        {state.workspaces.map((workspace, index) => (
+          <WorkspaceRow key={workspace.id} {...props} workspace={workspace} index={index} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+interface WorkspaceRowProps extends SessionListProps {
+  workspace: Workspace;
+  index: number;
+}
+
+function WorkspaceRow(props: WorkspaceRowProps) {
+  const { state, workspace, index, renaming } = props;
+  const { t } = useI18n();
+  const active = workspace.id === state.activeWorkspaceId;
+  const label = workspaceLabel(state, workspace, t.workspaces.untitled);
+  const sessions = workspaceTabs(state, workspace.id).reduce((count, tab) => count + tab.paneIds.length, 0);
+  const editing = renaming?.kind === "workspace" && renaming.id === workspace.id;
+  const startRename = () => props.onRename({ kind: "workspace", id: workspace.id, where: "sidebar" });
+  const select = () => props.onSelectWorkspace(workspace.id);
+  const drop = useDropMark();
+
+  return (
+    <li aria-current={active ? "true" : undefined}>
+      <div
+        className={`tree-row tree-workspace${active ? " active" : ""}${drop.place ? ` drop-${drop.place}` : ""}`}
+        draggable={!editing}
+        onDragStart={(event) => startDrag(event, WORKSPACE_MIME, workspace.id)}
+        onDragOver={(event) => {
+          // Another workspace: reorder. A tab or a pane: move it in.
+          if (carries(event, WORKSPACE_MIME)) drop.mark(afterMidpoint(event, "y") ? "after" : "before");
+          else if (carries(event, TAB_MIME) || carries(event, PANE_MIME)) drop.mark("into");
+          else return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+        }}
+        onDragLeave={drop.leave}
+        onDrop={(event) => {
+          drop.setPlace(null);
+          const moving = event.dataTransfer.getData(WORKSPACE_MIME);
+          const tab = event.dataTransfer.getData(TAB_MIME);
+          const pane = event.dataTransfer.getData(PANE_MIME);
+          if (moving) {
+            event.preventDefault();
+            const from = state.workspaces.findIndex((item) => item.id === moving);
+            if (moving !== workspace.id) props.onMoveWorkspace(moving, insertionIndex(from, index, afterMidpoint(event, "y")));
+          } else if (tab) {
+            event.preventDefault();
+            props.onMoveTabToWorkspace(tab, workspace.id);
+          } else if (pane) {
+            // Into the tab the workspace shows.
+            event.preventDefault();
+            props.onMovePane(pane, workspace.activeTabId);
+          }
+          props.onDragPane(null);
+        }}
+      >
+        {props.compact ? (
+          <button
+            type="button"
+            className="tree-select"
+            title={`${index + 1} · ${label}`}
+            aria-label={label}
+            onClick={select}
+          >
+            <span className="workspace-index">{index + 1}</span>
+          </button>
+        ) : (
+          <>
+            <span className="workspace-index">{index + 1}</span>
+            {editing ? (
+              <InlineRename
+                value={workspace.name ?? ""}
+                label={t.rename.workspaceName}
+                className="tree-rename"
+                onCommit={(name) => {
+                  props.onRenameWorkspace(workspace.id, name);
+                  props.onRename(null);
+                }}
+                onCancel={() => props.onRename(null)}
+              />
+            ) : (
+              <button
+                type="button"
+                className="tree-select"
+                title={t.sidebar.renameHint(label)}
+                onClick={select}
+                onDoubleClick={startRename}
+                onKeyDown={(event) => event.key === "F2" && startRename()}
+              >
+                <span className={`tree-label${workspace.name ? " custom" : ""}`}>{label}</span>
+              </button>
+            )}
+            <span className="tree-count" title={t.sidebar.sessionCount(sessions)}>
+              {sessions}
+            </span>
+            <button
+              type="button"
+              className="icon-button subtle"
+              aria-label={t.workspaces.close(label)}
+              title={t.workspaces.closeHint}
+              onClick={() => props.onCloseWorkspace(workspace.id)}
+            >
+              <X size={13} />
+            </button>
+          </>
+        )}
+      </div>
+    </li>
+  );
+}
+
 interface TabNodeProps extends SessionListProps {
   tab: Tab;
+  /** The tabs of the workspace in view, which `index` counts in. */
+  tabs: Tab[];
   index: number;
+  active: boolean;
   expanded: boolean;
   onToggle: () => void;
 }
 
 function TabNode(props: TabNodeProps) {
-  const { state, tab, index, expanded, renaming } = props;
+  const { state, tab, index, active, expanded, renaming } = props;
   const { t } = useI18n();
   const sessions = tabSessions(state, tab.id);
-  const active = tab.id === state.activeTabId;
   const label = tabLabel(state, tab, t.tabs.untitled);
   const editing = renaming?.kind === "tab" && renaming.id === tab.id && renaming.where === "sidebar";
   const startRename = () => props.onRename({ kind: "tab", id: tab.id, where: "sidebar" });
@@ -137,7 +298,7 @@ function TabNode(props: TabNodeProps) {
           const pane = event.dataTransfer.getData(PANE_MIME);
           if (movingTab && movingTab !== tab.id) {
             event.preventDefault();
-            const from = state.tabs.findIndex((item) => item.id === movingTab);
+            const from = props.tabs.findIndex((item) => item.id === movingTab);
             props.onMoveTab(movingTab, insertionIndex(from, index, afterMidpoint(event, "y")));
           } else if (pane) {
             event.preventDefault();

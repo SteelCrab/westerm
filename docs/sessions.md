@@ -33,8 +33,8 @@
 
 ## Layout and saved files
 
-- The layout (tabs, pane order, names, proportions) is saved in the state folder's `workspace.json`.
-- Closing a pane or a tab ends its process and deletes its saved screen.
+- The layout (workspaces, tabs, pane order, names, proportions) is saved in the state folder's `workspace.json`.
+- Closing a pane, a tab, or a workspace ends its processes and deletes their saved screens.
 - Saved files unused for 30 days are deleted.
 
 ## Reconnecting

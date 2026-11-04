@@ -5,13 +5,13 @@ import { useI18n } from "../i18n/index.tsx";
 import { KindIcon, LAUNCHERS } from "../kinds.tsx";
 import type { TerminalFont } from "../terminal/fonts.ts";
 import type { ColorScheme } from "../theme.ts";
-import { activeTab, sessionTab, type Workspace, type WorkspaceAction } from "../workspace.ts";
+import { activeTab, sessionTab, type Dashboard, type DashboardAction } from "../workspace.ts";
 import type { RenameTarget } from "./InlineRename.tsx";
 import { Pane } from "./Pane.tsx";
 import { SplitDividers } from "./SplitDividers.tsx";
 
 interface PaneLayerProps {
-  state: Workspace;
+  state: Dashboard;
   font: TerminalFont;
   scheme: ColorScheme;
   focusNonce: number;
@@ -20,7 +20,7 @@ interface PaneLayerProps {
   onDragPane: (id: string | null) => void;
   onRename: (target: RenameTarget | null) => void;
   onLaunch: (kind: SessionKind) => void;
-  dispatch: (action: WorkspaceAction) => void;
+  dispatch: (action: DashboardAction) => void;
 }
 
 /** Matches .pane-layer padding: the space split fractions refer to. */
@@ -57,7 +57,7 @@ export function PaneLayer(props: PaneLayerProps) {
         const tab = sessionTab(state, session.id);
         const rect: Rect | undefined = tab ? tabRects.get(tab.id)?.get(session.id) : undefined;
         if (!tab || !rect) return null;
-        const active = tab.id === state.activeTabId;
+        const active = tab.id === current.id;
         const maximized = tab.maximizedId === session.id;
         const cellStyle = { "--x": rect.x, "--y": rect.y, "--w": rect.w, "--h": rect.h } as React.CSSProperties;
         return (

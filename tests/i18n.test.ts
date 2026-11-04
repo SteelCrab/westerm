@@ -34,5 +34,8 @@ test("parameterized messages include their values in every language", () => {
     assert.ok(t.font.sizeLabel(15, true).includes("15"), locale);
     assert.ok(t.tabs.tooltip("vim", 2).includes("vim"), locale);
     assert.ok(t.pane.coreFailed("boom").includes("boom"), locale);
+    assert.ok(t.workspaces.untitled(3).includes("3"), locale);
+    assert.ok(t.workspaces.close("빌드").includes("빌드"), locale);
+    assert.ok(t.palette.moveTabToWorkspace("빌드").includes("빌드"), locale);
   }
 });

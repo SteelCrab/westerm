@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { WORKSPACE_PATH, parseSavedWorkspace } from "../shared/workspace-file.ts";
-import { toSaved, type Workspace, type WorkspaceAction } from "./workspace.ts";
+import { WORKSPACE_PATH, parseSavedDashboard } from "../shared/workspace-file.ts";
+import { toSaved, type Dashboard, type DashboardAction } from "./workspace.ts";
 
 const SAVE_DELAY_MS = 400;
 
-function save(state: Workspace, keepalive = false): void {
+function save(state: Dashboard, keepalive = false): void {
   void fetch(WORKSPACE_PATH, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -21,8 +21,8 @@ function save(state: Workspace, keepalive = false): void {
  * `fresh` runs when nothing was saved.
  */
 export function useWorkspacePersistence(
-  state: Workspace,
-  dispatch: (action: WorkspaceAction) => void,
+  state: Dashboard,
+  dispatch: (action: DashboardAction) => void,
   fresh: () => void,
 ): boolean {
   const [loaded, setLoaded] = useState(false);
@@ -36,7 +36,7 @@ export function useWorkspacePersistence(
       .catch(() => null)
       .then((value: unknown) => {
         if (cancelled) return;
-        const saved = parseSavedWorkspace(value);
+        const saved = parseSavedDashboard(value);
         if (saved && saved.sessions.length > 0) dispatch({ type: "hydrate", saved });
         else fresh();
         setLoaded(true);

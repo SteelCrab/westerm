@@ -7,7 +7,7 @@ import type { ConnectionEvent } from "../terminal/connection.ts";
 import type { TerminalFont } from "../terminal/fonts.ts";
 import type { ColorScheme } from "../theme.ts";
 import { TerminalView } from "../terminal/TerminalView.tsx";
-import { sessionLabel, type Session, type WorkspaceAction } from "../workspace.ts";
+import { sessionLabel, type Session, type DashboardAction } from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
 import { StatusDot } from "./StatusDot.tsx";
 
@@ -27,7 +27,7 @@ interface PaneProps {
   /** Id of the pane being dragged anywhere in the dashboard. */
   dragging: string | null;
   onDragPane: (id: string | null) => void;
-  dispatch: (action: WorkspaceAction) => void;
+  dispatch: (action: DashboardAction) => void;
 }
 
 function exitDetail(event: Extract<ConnectionEvent, { type: "exit" }>): string {

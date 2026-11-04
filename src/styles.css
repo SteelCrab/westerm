@@ -1007,6 +1007,55 @@ button {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
+/* ---- Sidebar workspaces ---------------------------------------------- */
+
+/* Kept short so the tab tree below keeps most of the room. */
+.workspace-list {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  max-height: 40%;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-list .tree {
+  flex: 0 1 auto;
+}
+
+.workspace-list-title {
+  flex: 1;
+}
+
+/* Outlined, to tell workspace numbers from the filled tab numbers. */
+.workspace-index {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tree-workspace {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.tree-workspace.active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.tree-workspace.active .workspace-index {
+  background: var(--accent);
+  box-shadow: none;
+  color: var(--on-accent);
+}
+
 /* Icons only: the sidebar dragged narrow. Names show as tooltips. */
 .session-panel.compact .session-panel-header {
   justify-content: center;
@@ -1049,6 +1098,12 @@ button {
 }
 
 .session-panel.compact .tab-index {
+  min-width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+
+.session-panel.compact .workspace-index {
   min-width: 20px;
   height: 20px;
   font-size: 11px;
