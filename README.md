@@ -52,7 +52,7 @@ Then run `westerm` and open http://127.0.0.1:4317.
 
 ### macOS app
 
-Download `westerm-macos-app.zip` (Apple silicon and Intel) from [Releases](https://github.com/SteelCrab/westerm/releases/latest), unzip it, and move **westerm.app** to Applications. It opens the same dashboard in its own window.
+Download `westerm-macos-app.dmg` (Apple silicon and Intel) from [Releases](https://github.com/SteelCrab/westerm/releases/latest) and open it. In the window that opens, drag **westerm** onto the Applications folder, then eject the disk image. The app opens the same dashboard in its own window.
 
 - If a westerm already runs on port 4317 (for example from a terminal), the app opens that one, so both show the same sessions. Otherwise it starts its own.
 - Quitting the app keeps your shells running, as with the CLI. To save and stop them, run `/Applications/westerm.app/Contents/MacOS/westerm stop`.

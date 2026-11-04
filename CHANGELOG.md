@@ -4,6 +4,14 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- A disk image for the macOS app, `westerm-macos-app.dmg`. Open it and drag westerm onto the Applications folder to install. `westerm-macos-app.zip` stays for the app's updater.
+
+### Changed
+
+- The macOS app explains how to update when it runs from the disk image: move it to Applications first.
+
 ## [0.1.0] - 2026-11-05
 
 The first release.

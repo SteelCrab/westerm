@@ -318,8 +318,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func install(_ release: AppRelease) {
         let bundle = Bundle.main.bundleURL
         let folder = bundle.deletingLastPathComponent().path
-        // A downloaded app opened in place runs from a read-only copy.
-        if bundle.path.contains("/AppTranslocation/") {
+        // A downloaded app opened in place runs from a read-only copy, and one
+        // opened from the disk image runs from a read-only volume.
+        let readOnlyVolume = (try? bundle.resourceValues(forKeys: [.volumeIsReadOnlyKey]))?.volumeIsReadOnly ?? false
+        if bundle.path.contains("/AppTranslocation/") || readOnlyVolume {
             alert(L.updateFailed, L.moveToApplications)
             return
         }

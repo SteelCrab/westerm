@@ -108,12 +108,14 @@ jobs:
         run: sh macos/build-app.sh
       - name: Checksum
         run: |
-          mv dist-app/westerm-macos-app.zip .
-          shasum -a 256 westerm-macos-app.zip > westerm-macos-app.zip.sha256
+          for file in westerm-macos-app.zip westerm-macos-app.dmg; do
+            mv "dist-app/$file" .
+            shasum -a 256 "$file" > "$file.sha256"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: macos-app
-          path: westerm-macos-app.zip*
+          path: westerm-macos-app.*
           if-no-files-found: error
 
   release:

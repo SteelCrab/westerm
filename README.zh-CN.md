@@ -54,7 +54,7 @@ irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 
 ### macOS 应用
 
-从 [Releases](https://github.com/SteelCrab/westerm/releases/latest) 下载 `westerm-macos-app.zip`（Apple 芯片和 Intel 通用），解压后把 **westerm.app** 移到“应用程序”文件夹。它在独立窗口中打开同一个仪表板。
+从 [Releases](https://github.com/SteelCrab/westerm/releases/latest) 下载 `westerm-macos-app.dmg`（Apple 芯片和 Intel 通用）并打开。在弹出的窗口中把 **westerm** 拖到“应用程序”文件夹，然后推出磁盘映像。应用在独立窗口中打开同一个仪表板。
 
 - 如果端口 4317 上已经运行着 westerm（例如从终端启动的），应用会打开它，两边显示相同的会话；否则应用自己启动一个。
 - 退出应用后，Shell 会像 CLI 一样继续运行。要保存并停止它们，运行 `/Applications/westerm.app/Contents/MacOS/westerm stop`。

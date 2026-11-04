@@ -2,7 +2,7 @@
 # Builds westerm.app for macOS: the Swift window (macos/app), the westerm
 # binary, and the icon. Universal (Apple silicon and Intel) by default.
 #
-#   sh macos/build-app.sh                           # dist-app/westerm.app and westerm-macos-app.zip
+#   sh macos/build-app.sh                           # dist-app/westerm.app, westerm-macos-app.zip and .dmg
 #   WESTERM_APP_ARCHS=arm64 sh macos/build-app.sh   # one architecture, faster
 #
 # Needs Xcode or its command line tools, Node.js, and the Rust targets
@@ -64,7 +64,10 @@ say "sign"
 codesign --force --sign - "$app/Contents/MacOS/westerm"
 codesign --force --sign - "$app"
 
+# The zip is for the app's own updater; the disk image is for people, who
+# install by dragging the app to Applications.
 say "zip"
 rm -f "$out/westerm-macos-app.zip"
 ditto -c -k --keepParent "$app" "$out/westerm-macos-app.zip"
+sh macos/build-dmg.sh "$app" "$out/westerm-macos-app.dmg"
 say "done: $app ($(lipo -archs "$app/Contents/MacOS/westerm-app"))"
