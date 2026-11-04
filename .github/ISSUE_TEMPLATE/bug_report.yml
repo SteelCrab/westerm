@@ -1,0 +1,95 @@
+name: Bug report
+description: Something does not work as the docs say.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Give the issue a short title that says what is wrong, for example "Restored pane loses its folder on Windows".
+
+        Remove private data from everything you paste: host names, paths, and screen contents. For a security issue, do not open an issue. Use [private vulnerability reporting](https://github.com/SteelCrab/westerm/security/advisories/new).
+
+  - type: input
+    id: version
+    attributes:
+      label: westerm version
+      description: |
+        Output of `westerm --version`. It includes the host build id.
+        For the macOS app, run `/Applications/westerm.app/Contents/MacOS/westerm --version`.
+      placeholder: westerm 0.1.0 (host …)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run westerm
+      options:
+        - install.sh or install.ps1
+        - Archive from Releases
+        - macOS app (westerm.app)
+        - Built from source
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Name, version, and processor.
+      placeholder: macOS 15.5 (Apple silicon), Ubuntu 24.04 (x64), Windows 11 (arm64)
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Name and version. Leave it empty for the macOS app.
+      placeholder: Chrome 141, Safari 26, Firefox 144
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Start from a fresh dashboard if you can.
+      placeholder: |
+        1. Open a shell tab.
+        2. Split the pane to the right.
+        3. Restart the computer and open the dashboard.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Add a screenshot if it helps.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Relevant lines from the host log and the browser console.
+        The host log is `~/.local/state/westerm/host.log` on macOS and Linux, and `%LOCALAPPDATA%\westerm\host.log` on Windows.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the open and closed issues, and this is not a duplicate.
+          required: true
+        - label: I removed private data from what I pasted.
+          required: true

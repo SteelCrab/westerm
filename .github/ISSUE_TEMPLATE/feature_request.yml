@@ -1,0 +1,62 @@
+name: Feature request
+description: Suggest a new feature or a change in behavior.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Give the issue a short title that says what you want, for example "Rename a session from the sidebar".
+
+        Describe the problem first. The solution can change in the discussion. For a large change, agree on the direction here before you write code.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What do you want to do, and what stops you now?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How westerm could solve it. Screens, commands, or settings you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other solutions or workarounds you tried.
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Systems
+      description: Which systems does it concern?
+      options:
+        - label: macOS
+        - label: Linux
+        - label: Windows
+        - label: macOS app (westerm.app)
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Can you send a pull request?
+      options:
+        - "Yes"
+        - Yes, with some help
+        - "No"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the open and closed issues, and this is not a duplicate.
+          required: true

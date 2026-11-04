@@ -8,8 +8,8 @@ westerm is under the [MIT License](LICENSE). By sending a contribution, you agre
 
 ## Ways to help
 
-- **Report a bug**: open an [issue](https://github.com/SteelCrab/westerm/issues). See [Reporting a bug](#reporting-a-bug).
-- **Suggest an idea**: open an issue first, especially for a large change. Agree on the direction before you write code.
+- **Report a bug**: open an [issue](https://github.com/SteelCrab/westerm/issues) with the bug report form. See [Reporting a bug](#reporting-a-bug).
+- **Suggest an idea**: open an issue with the feature request form first, especially for a large change. Agree on the direction before you write code. See [Suggesting a feature](#suggesting-a-feature).
 - **Fix or build something**: send a pull request.
 - **Translate**: improve a UI language, or add one. See [UI text and languages](#ui-text-and-languages).
 
@@ -80,6 +80,43 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 | `docs/` | Usage, sessions, architecture |
 
 Read [docs/architecture.md](docs/architecture.md) for how the parts fit together.
+
+## Issues
+
+Every issue starts from a form: **Bug report** or **Feature request**. Blank issues are turned off.
+
+- Search the open and closed issues first. If one exists, add to it instead of opening a copy.
+- One problem or idea per issue.
+- Give the issue a short title that says what is wrong or what you want: `Restored pane loses its folder on Windows`, not `Bug` or `Help`.
+- Never report a security issue in a public issue. See [Security issues](#security-issues).
+
+### Reporting a bug
+
+The form asks for:
+
+- `westerm --version` output (it includes the host build id)
+- How you run westerm: install script, release archive, macOS app, or a source build
+- OS and browser, with versions
+- Steps to reproduce, what you expected, and what happened
+- Relevant lines from the host log and the browser console. The log is `~/.local/state/westerm/host.log` on macOS and Linux, and `%LOCALAPPDATA%\westerm\host.log` on Windows.
+
+Remove private data first: host names, paths, and screen contents.
+
+### Suggesting a feature
+
+- Describe the problem first, then your proposal. The solution can change in the discussion.
+- For a large change, agree on the direction in the issue before you write code.
+
+## Pull requests
+
+- Open an issue first for anything larger than a small fix, and agree on the direction.
+- Branch from `main`. Keep one topic per pull request.
+- Write the title like a commit subject (see [Commits](#commits)): imperative mood, about 72 characters or less.
+- Fill in the template. Link the issue with `Closes #123`, so the issue closes on merge.
+- Open a draft while you still work on it. Mark it ready when the checks in [Before you open a pull request](#before-you-open-a-pull-request) pass.
+- CI must pass on macOS, Linux, and Windows.
+- Answer review comments with new commits. Do not force-push during a review, so reviewers can see what changed.
+- A maintainer merges after review.
 
 ## Before you open a pull request
 
@@ -167,17 +204,6 @@ There is no formatter configuration yet. Match the code around your change.
 
 - Subject in the imperative mood, about 72 characters or less: `Add Japanese restore notice`, not `added ...`.
 - The body explains why the change is needed, when it is not obvious.
-
-## Reporting a bug
-
-Include:
-
-- `westerm --version` output (it includes the host build id)
-- OS and browser, with versions
-- Steps to reproduce, what you expected, and what happened
-- Relevant lines from the host log and the browser console. The log is `~/.local/state/westerm/host.log` on macOS and Linux, and `%LOCALAPPDATA%\westerm\host.log` on Windows.
-
-Remove private data first: host names, paths, and screen contents.
 
 ## Releasing
 
