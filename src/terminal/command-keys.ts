@@ -17,6 +17,8 @@ import {
  * - Cmd+V, so the paste event still delivers clipboard text.
  * - Shortcuts Chrome reserves (Cmd+T, Cmd+W, Cmd+N, Cmd+Q). They never reach
  *   the page.
+ * - Cmd+Q, Cmd+H, and Cmd+M. In the macOS app the page sees keys before the
+ *   menu, so forwarding these would stop Quit, Hide, and Minimize.
  *
  * Apps that do not set flag 8 (shells, Neovim) keep wterm's behavior.
  */
@@ -26,6 +28,8 @@ const MODIFIER_CODE = /^(Shift|Control|Alt|Meta)(Left|Right)$/;
 function isNativePaste(event: KeyboardEvent): boolean {
   return event.code === "KeyV" && !event.altKey && !event.shiftKey;
 }
+
+const SYSTEM_KEYS = new Set(["KeyQ", "KeyH", "KeyM"]);
 
 export function installCommandKeys(wt: WTerm, send: (sequence: string) => void): () => void {
   const element = wt.element;
@@ -51,7 +55,7 @@ export function installCommandKeys(wt: WTerm, send: (sequence: string) => void):
       pressed.add(event.code);
       return; // wterm reports modifier presses itself.
     }
-    if (!event.metaKey || event.ctrlKey || event.isComposing || isNativePaste(event)) return;
+    if (!event.metaKey || event.ctrlKey || event.isComposing || isNativePaste(event) || SYSTEM_KEYS.has(event.code)) return;
     const { flags, cursorKeysApp } = state();
     if (!(flags & KITTY_REPORT_ALL)) return;
     const sequence = encodeKittyKey(event, flags, event.repeat ? "repeat" : "press", pressed, cursorKeysApp);

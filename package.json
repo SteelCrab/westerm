@@ -2,12 +2,14 @@
   "name": "westerm",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "vite build && cargo build --release --manifest-path native/Cargo.toml",
-    "start": "./native/target/release/westerm",
+    "start": "node scripts/start.mjs",
     "dev": "vite",
     "dev:server": "cargo run --manifest-path native/Cargo.toml -- serve --allow-origin http://localhost:5173 --allow-origin http://127.0.0.1:5173",
+    "build:app": "sh macos/build-app.sh",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "node --import tsx --test tests/*.test.ts && cargo test --manifest-path native/Cargo.toml"
   },
