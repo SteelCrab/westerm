@@ -15,7 +15,7 @@
 シェル、terminal-browser、terminal-code、SSH をタブと分割パネルに配置します。
 画面は [wterm](https://github.com/vercel-labs/wterm) と Ghostty WASM コアで描画します。westerm は wterm の公式プロジェクトではありません。
 
-使い方と構成は[ドキュメント](docs/README.md)(韓国語)にあります。
+使い方、セッション、ショートカット、構成は[ドキュメント](docs/README.md)(英語)にあります。
 
 ## 実行
 
@@ -39,7 +39,7 @@ irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
   - macOS、Linux: `~/.local/bin`
   - Windows: `%LOCALAPPDATA%\Programs\westerm`(ユーザーの PATH に追加)
 - バージョンは `WESTERM_VERSION=v0.1.0`、フォルダは `WESTERM_INSTALL_DIR` で指定します。
-- 更新するにはスクリプトを再実行し、westerm を再起動します。開いていたシェルが一度「復元済み」として再起動することがあります。
+- 更新はダッシュボードの更新ボタン、`westerm update`、またはスクリプトの再実行で行います。開いていたシェルは一度「復元済み」として再起動します。
 - 手動でインストールする場合は [Releases](https://github.com/SteelCrab/westerm/releases/latest) からアーカイブを取得します。
 
 | システム | ファイル |
@@ -110,7 +110,7 @@ npm run type-check
 | `native/src/ipc.rs` | ダッシュボード ↔ ホスト間の通路: Unix ソケット、Windows は名前付きパイプ |
 | `macos/` | macOS アプリ: Swift のウィンドウ(WKWebView)、アイコン、ビルドスクリプト |
 
-CI はすべての PR を macOS、Linux、Windows でテストします。PTY ホストのコードを変更すると、実行中のシェルが一度「復元済み」として再起動します。詳しくは[セッションの維持](docs/sessions.md)(韓国語)を参照してください。
+CI はすべての PR を macOS、Linux、Windows でテストします。PTY ホストのコードを変更すると、実行中のシェルが一度「復元済み」として再起動します。詳しくは [Sessions](docs/sessions.md)(英語)を参照してください。
 
 ## コントリビュート
 

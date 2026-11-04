@@ -1,53 +1,49 @@
-# 세션 유지
+# Sessions
 
-| 상황 | 동작 |
+| What happens | What you get |
 |---|---|
-| 새로고침, 탭 닫았다 열기 | 같은 셸 프로세스에 다시 연결하고 화면을 재생합니다(`다시 연결됨`). |
-| 대시보드 프로그램 재시작 | 같은 셸 프로세스에 다시 연결합니다. |
-| 컴퓨터 재시작 | 같은 폴더에서 새 셸을 시작하고 이전 화면을 복원합니다(`복원됨`). 실행 중이던 프로그램은 되살릴 수 없습니다. |
+| Reload, or close and reopen the tab | The same shell process, with its screen replayed ("reconnected"). |
+| Restart the dashboard | The same shell process. |
+| Reboot the computer | A new shell in the same folder, with the previous screen restored ("restored"). Programs that were running cannot come back. |
 
-## PTY 호스트
+## The PTY host
 
-- `westerm host`는 셸을 붙잡고 있는 백그라운드 프로세스입니다.
-- 대시보드가 처음 시작할 때 같은 실행 파일로 띄웁니다. 대시보드나 대시보드를 띄운 터미널이 꺼져도 남습니다.
-  - macOS, Linux: 별도 세션(`setsid`)
-  - Windows: 콘솔 없이, 별도 프로세스 그룹으로 실행
-- 상태 폴더 안의 통로로만 통신합니다.
+- `westerm host` is the background process that holds the shells.
+- The dashboard starts it from the same executable the first time it runs. It keeps running when the dashboard, or the terminal that started the dashboard, closes.
+  - macOS and Linux: in its own session (`setsid`).
+  - Windows: without a console, in its own process group.
+- It talks only through a private channel in the state folder:
 
-| OS | 상태 폴더 | 통로 |
+| System | State folder | Channel |
 |---|---|---|
-| macOS, Linux | `~/.local/state/westerm` (`$XDG_STATE_HOME`이 있으면 그 아래, 권한 0700) | `host.sock` Unix 소켓(0600) |
-| Windows | `%LOCALAPPDATA%\westerm` | 이름이 무작위인 named pipe. 이름과 호스트 PID를 `host.pipe`에 적습니다. |
+| macOS, Linux | `~/.local/state/westerm` (under `$XDG_STATE_HOME` when set; mode 0700) | `host.sock`, a Unix socket (0600) |
+| Windows | `%LOCALAPPDATA%\westerm` | A named pipe with a random name. Its name and the host's process id are in `host.pipe`. |
 
-- 이미 응답하는 호스트가 있으면 새 호스트는 시작을 거부합니다.
-- 모든 세션을 저장하고 호스트를 끄려면 `westerm stop`을 실행합니다.
+- One host per state folder: a second one exits at once (a lock on `host.lock`).
+- `westerm stop` makes the host save every session and exit.
 
-## 화면 저장과 복원
+## Saving and restoring screens
 
-- 셸과 SSH는 호스트 안의 화면 사본(`vt100`)에 출력을 기록합니다.
-  다시 연결할 때 그 화면(스크롤 기록, 색, 커서, 입력 모드)을 보냅니다.
-- 화면 내용(최대 1,000줄)과 작업 폴더를 저장하는 때:
-  - 출력이 멈추고 3초 뒤
-  - 종료, 로그아웃, 재부팅(SIGTERM) 때. Windows의 호스트는 콘솔이 없어서 로그아웃·종료 알림을 받지 못할 수 있습니다. 그래도 3초 뒤 저장이 있어서 잃는 내용은 적습니다.
-- Windows는 다른 프로세스의 작업 폴더를 읽는 공개 API가 없습니다. 그래서 새 terminal-code와 복원된 셸은 홈 폴더에서 시작할 수 있습니다.
-- terminal-browser와 terminal-code는 화면을 Kitty 이미지로 그립니다. 그래서 화면을 저장할 수 없습니다.
-  다시 연결할 때 앱을 다시 시작합니다. 두 앱은 자기 탭과 폴더를 스스로 복원합니다.
+- Shells and SSH sessions write their output to a screen copy inside the host (`vt100`). On reconnect, that screen comes back: scrollback, colors, cursor, and input modes.
+- The screen (up to 1,000 lines) and the working folder are saved:
+  - 3 seconds after output stops;
+  - on exit, logout, and reboot (SIGTERM). A Windows host has no console, so it may not hear about logout or shutdown; the 3-second saves keep the loss small.
+- Windows has no public way to read another process's folder, so a new terminal-code and a restored shell may start in the home folder.
+- terminal-browser and terminal-code draw with Kitty images, which cannot be saved. On reconnect they start again and restore their own tabs and folders.
 
-## 레이아웃과 저장 파일
+## Layout and saved files
 
-- 레이아웃(탭, 패널 순서, 이름, 크기 비율)은 상태 폴더의 `workspace.json`에 저장합니다.
-- 패널이나 탭을 닫으면 프로세스를 끝내고 저장된 화면을 지웁니다.
-- 30일 동안 쓰지 않은 저장 파일은 지웁니다.
+- The layout (tabs, pane order, names, proportions) is saved in the state folder's `workspace.json`.
+- Closing a pane or a tab ends its process and deletes its saved screen.
+- Saved files unused for 30 days are deleted.
 
-## 다시 연결
+## Reconnecting
 
-- 연결이 끊기면 0.5초부터 최대 8초 간격으로 8번 다시 연결합니다.
-- 다른 창에서 같은 세션을 열면 이전 창은 자동으로 다시 연결하지 않습니다.
+- When the connection drops, a pane reconnects up to 8 times, waiting from 0.5 to 8 seconds between tries.
+- When another window opens the same session, the first window does not reconnect on its own.
 
-## 호스트 교체
+## Host replacement
 
-- 호스트 코드(`native/build.rs`의 `HOST_SOURCES`)가 바뀌면 대시보드가 호스트를 교체합니다.
-  `westerm --version`에 호스트 빌드 ID가 나옵니다.
-- 이때 셸은 `복원됨`으로 다시 시작합니다. 화면이나 대시보드 서버 코드만 바꾸면 셸은 그대로입니다.
-- 이름을 바꾸기 전(`wterm-dashboard`)의 상태 폴더는 처음 실행할 때 `~/.local/state/westerm`으로 옮깁니다.
-  그 폴더에서 돌던 호스트는 저장 후 종료되고, 셸은 한 번 `복원됨`으로 다시 시작합니다.
+- When the host code (`HOST_SOURCES` in `native/build.rs`) changes, the dashboard replaces the running host. `westerm --version` shows the host build id.
+- Shells then restart once as "restored". Changes to the UI or the dashboard server alone leave shells running.
+- The state folder from before the rename (`wterm-dashboard`) moves to `~/.local/state/westerm` on first start. A host still running there saves and exits, and its shells restart once as "restored".

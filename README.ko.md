@@ -15,7 +15,7 @@
 셸, terminal-browser, terminal-code, SSH를 탭과 분할 패널로 배치합니다.
 화면은 [wterm](https://github.com/vercel-labs/wterm)과 Ghostty WASM 코어로 그립니다. westerm은 wterm 공식 프로젝트가 아닙니다.
 
-사용법과 구조는 [문서](docs/README.md)에 있습니다.
+사용법, 세션, 단축키, 구조는 [문서](docs/README.md)(영어)에 있습니다.
 
 ## 실행
 
@@ -39,7 +39,7 @@ irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
   - macOS, Linux: `~/.local/bin`
   - Windows: `%LOCALAPPDATA%\Programs\westerm` (사용자 PATH에 추가)
 - 버전은 `WESTERM_VERSION=v0.1.0`, 폴더는 `WESTERM_INSTALL_DIR`로 정합니다.
-- 업데이트는 스크립트를 다시 실행하고 westerm을 다시 시작합니다. 열려 있던 셸이 한 번 "복원됨"으로 다시 시작할 수 있습니다.
+- 업데이트는 대시보드의 업데이트 버튼, `westerm update`, 또는 스크립트 재실행으로 합니다. 열려 있던 셸은 한 번 "복원됨"으로 다시 시작합니다.
 - 직접 설치하려면 [Releases](https://github.com/SteelCrab/westerm/releases/latest)에서 압축 파일을 받습니다.
 
 | 시스템 | 파일 |
@@ -110,7 +110,7 @@ npm run type-check
 | `native/src/ipc.rs` | 대시보드 ↔ 호스트 통로: Unix 소켓, Windows는 named pipe |
 | `macos/` | macOS 앱: Swift 창(WKWebView), 아이콘, 빌드 스크립트 |
 
-CI가 모든 PR을 macOS, Linux, Windows에서 시험합니다. PTY 호스트 코드를 바꾸면 실행 중인 셸이 한 번 `복원됨`으로 다시 시작합니다. 자세한 내용은 [세션 유지](docs/sessions.md)를 보세요.
+CI가 모든 PR을 macOS, Linux, Windows에서 시험합니다. PTY 호스트 코드를 바꾸면 실행 중인 셸이 한 번 `복원됨`으로 다시 시작합니다. 자세한 내용은 [Sessions](docs/sessions.md)(영어)를 보세요.
 
 ## 기여
 

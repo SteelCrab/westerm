@@ -15,7 +15,7 @@
 Shells, terminal-browser, terminal-code, and SSH sessions sit in tabs and split panes.
 The screen is drawn by [wterm](https://github.com/vercel-labs/wterm) and the Ghostty WASM core. westerm is not an official wterm project.
 
-Usage and design notes are in the [docs](docs/README.md) (Korean).
+Usage, sessions, shortcuts, and design notes are in the [docs](docs/README.md).
 
 ## Run
 
@@ -37,7 +37,7 @@ Then run `westerm` and open http://127.0.0.1:4317.
 
 - The script picks the build for your OS and CPU, checks its SHA-256, and installs it to `~/.local/bin` (macOS, Linux) or `%LOCALAPPDATA%\Programs\westerm` (Windows, added to your user PATH).
 - Choose a version with `WESTERM_VERSION=v0.1.0` and a folder with `WESTERM_INSTALL_DIR`.
-- Run the script again to update, then restart westerm. Open shells may come back once as "restored".
+- To update, use the update button in the dashboard, run `westerm update`, or run the script again. Open shells come back once as "restored".
 - To install by hand, download an archive from [Releases](https://github.com/SteelCrab/westerm/releases/latest):
 
 | System | File |
@@ -108,7 +108,7 @@ npm run type-check
 | `native/src/ipc.rs` | Dashboard ↔ host channel: Unix socket, or a named pipe on Windows |
 | `macos/` | macOS app: Swift window (WKWebView), icon, build script |
 
-CI tests every pull request on macOS, Linux, and Windows. Changing PTY host code restarts running shells once, as "restored". See [session persistence](docs/sessions.md) (Korean).
+CI tests every pull request on macOS, Linux, and Windows. Changing PTY host code restarts running shells once, as "restored". See [Sessions](docs/sessions.md).
 
 ## Contribute
 

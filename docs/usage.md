@@ -1,62 +1,92 @@
-# 사용법
+# Usage
 
-## 화면 구성
+## The screen
 
-| 영역 | 설명 |
+| Area | What it does |
 |---|---|
-| 아이콘 바 | 새 셸, terminal-browser, terminal-code, SSH. 배지는 열린 개수입니다. |
-| 사이드바 | 탭 → 세션 트리. 접기, 이름 변경, 드래그로 순서·위치 변경. 오른쪽 경계를 끌어 너비를 바꿉니다. |
-| 탭 바 | `+` 또는 빈 곳 더블클릭으로 새 탭. 가운데 클릭으로 닫기. 드래그로 순서 변경. |
-| 패널 | 헤더를 끌어 다른 패널의 가장자리에 놓으면 그쪽으로 분할, 가운데는 자리 바꾸기. 탭이나 `+` 위에 놓아 이동. 경계선을 끌어 크기 조절. |
-| 헤더 | 명령 팔레트, 폰트 크기(A−/A+), 언어 |
+| Activity bar | New shell, terminal-browser, terminal-code, and SSH at the top; a badge shows how many are open. The command palette, Settings, and the sidebar switch at the bottom. |
+| Sidebar | Tabs with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: tab numbers, plus the session icons of the tab in view. |
+| Tab bar | `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
+| Panes | Drag a pane's header onto another pane's edge to split there, onto its center to swap, or onto a tab or `+` to move it. Drag a divider to resize. |
+| Header | The tabs, and an update button when a new release exists. Language, theme, and fonts are in Settings. |
 
-## 이름 변경
+## Renaming
 
-탭이나 세션을 더블클릭하거나 F2를 누릅니다.
-이름을 비우면 자동 이름(셸이 보내는 제목)으로 돌아갑니다.
+Double-click a tab or a session, or press F2. Clear the name to go back to the automatic one (the title the shell sends).
 
-## 명령 팔레트
+## Command palette
 
-- `⌘K`(Windows/Linux는 `Ctrl+Shift+K`)로 엽니다.
-- 실행, 탭·세션 이동, 이름 변경, 최대화, 패널 옮기기, 폰트 크기, 언어 명령이 있습니다.
-- URL을 입력하면 terminal-browser로 바로 엽니다.
-- 영어 단어로도 찾을 수 있습니다. 예: `rename`, `font`, `language`.
+- Open it with ⌘K on macOS, or Ctrl+Shift+K on Linux and Windows.
+- It launches sessions, switches tabs and sessions, renames, maximizes, moves panes, changes the font size and language, opens settings, and checks for updates.
+- Type a URL to open it in terminal-browser.
+- English words find commands in any language, for example `rename`, `font`, or `language`.
 
-## 패널 배치와 크기
+## Panes and layout
 
-탭마다 패널을 **분할 트리**로 배치합니다. 타일링 창 관리자, VS Code 편집기 분할과 같은 방식입니다.
+Each tab arranges its panes as a **split tree**, the way tiling window managers and VS Code editor groups do.
 
-- **도킹**: 패널 헤더를 끌어 다른 패널 위로 가져가면 놓일 자리가 표시됩니다.
-  - 가장자리(왼쪽·오른쪽·위·아래): 그 패널을 반으로 나누어 그쪽에 넣습니다.
-  - 가운데: 두 패널의 자리를 바꿉니다.
-- **새 패널**: 포커스된 패널을 긴 쪽 방향으로 나누어 엽니다.
-- **크기**: 경계선을 끌면 그 경계의 두 패널만 크기가 바뀝니다.
-  화살표 키로 미세 조정합니다. 더블클릭이나 Enter는 그 분할을 균등하게 되돌립니다.
-- 배치와 비율은 탭마다 저장됩니다.
+- **Docking**: drag a pane's header over another pane to see where it would land.
+  - An edge (left, right, top, bottom) splits that pane in half and puts the dragged pane on that side.
+  - The center swaps the two panes.
+- **New panes** split the focused pane along its longer side.
+- **Resizing**: dragging a divider changes only the two panes on either side of it. Arrow keys nudge it; a double-click or Enter makes that split even again.
+- Layouts and proportions are saved per tab.
 
-## 언어
+## Switching terminals from the keyboard
 
-- 한국어, English, 日本語, 中文(간체)을 지원합니다.
-- 처음에는 브라우저 언어를 따릅니다. 지원하지 않는 언어면 영어로 시작합니다.
-- 헤더의 언어 메뉴나 팔레트의 `언어:` 명령으로 바꿉니다. 선택은 브라우저에 저장합니다(`westerm.locale`).
-- 서버가 터미널에 쓰는 문구도 이 언어를 따릅니다. 예: 이전 세션 복원 안내, 세션 시작 오류.
-  이 문구는 패널이 연결될 때의 언어로 씁니다.
-- 한자는 화면 언어의 글꼴을 먼저 씁니다. 일본어는 일본 자형, 중국어는 간체 자형으로 보입니다.
+The same keys work in the browser and in the macOS app. Browsers keep ⌘1–9 and similar keys for their own tabs, so the browser keys use Ctrl+Shift. The macOS app also takes the terminal-app keys used by iTerm and Ghostty.
 
-## SSH 원격 연동
+| Action | Browser and app | macOS app also |
+|---|---|---|
+| Tab 1–8 | Ctrl+Shift+1 … 8 | ⌘1 … ⌘8 |
+| Last tab | Ctrl+Shift+9 | ⌘9 |
+| Next / previous tab | Ctrl+Shift+] / [ | ⌘⇧] / ⌘⇧[ |
+| Next / previous pane | Ctrl+Shift+. / , | ⌘] / ⌘[ |
+| Pane to the left, right, above, below | — | ⌥⌘ + arrow keys |
 
-- SSH 아이콘이나 팔레트의 SSH 명령을 누르면 `~/.ssh/config`(Include 포함)의 호스트 목록이 나옵니다.
-  `user@host`를 직접 입력해도 됩니다.
-- **원격 셸**: 패널에서 `ssh <호스트>`를 실행합니다. 일반 셸처럼 새로고침과 프로그램 재시작 뒤에도 연결이 남습니다.
-- **원격 브라우저**: `terminal-browser --ssh <호스트>`로 엽니다.
-  페이지 요청이 원격 서버를 거칩니다. 그래서 `localhost:3000`은 원격 서버의 개발 서버입니다.
-- 인증은 기존 SSH 키와 agent를 씁니다. 비밀번호를 묻는 서버는 터미널에서 직접 입력합니다.
-  대시보드는 비밀번호를 저장하거나 전송하지 않습니다.
+- The keys work while a terminal has the keyboard. In the palette, a rename field, or Settings, they type as usual.
+- Ctrl+[ without Shift stays Escape for programs in the terminal.
+- In the macOS app the Window menu lists the same commands.
 
-## 폰트와 테마
+## Settings
 
-- 서버가 Ghostty 설정의 `font-family`와 `font-size`를 읽습니다(`/api/terminal-config`).
-- Ghostty는 Nerd Font 아이콘을 내장하지만 브라우저에는 없습니다.
-  그래서 사용자 폰트 뒤에 설치된 Nerd Font를 대체 글꼴로 붙입니다.
-- 밝은/어두운 테마는 OS 설정을 자동으로 따릅니다.
-  터미널 기본 색도 함께 바뀝니다(`WTerm.setThemeColors`). OSC 11로 배경색을 묻는 앱도 맞는 테마를 고릅니다.
+Open Settings from the gear at the bottom of the activity bar, from the palette, or with ⌘, in the macOS app. Changes apply at once and are saved in this browser (or the app).
+
+| Setting | Effect |
+|---|---|
+| Language | Same as the browser, or English, Korean, Japanese, or Simplified Chinese. |
+| Theme | System (follows the OS, live), Light, or Dark. Terminal colors follow it, and programs that ask for the background color (OSC 11) pick a matching theme. |
+| Font size | Overrides the Ghostty `font-size`. "Use the Ghostty size" goes back. |
+| Font | Overrides the Ghostty `font-family`; separate fallbacks with commas. Leave it empty for the Ghostty font. Applies on Enter or when the field loses focus. |
+| Check for updates automatically | Asks GitHub for the newest release when the dashboard opens and every 6 hours. With it off, westerm contacts GitHub only when you press Check now. |
+
+## Updates
+
+- **Dashboard**: when a newer release exists, an update button appears in the header. It shows the version and links to the release notes.
+  - An installed westerm downloads the new release, checks its SHA-256 sum and version, replaces itself, and restarts. The page reloads when the new version answers.
+  - The new version replaces the PTY host, so open shells come back once as "restored".
+  - A build from source shows how to update instead: `git pull` and `npm run build`.
+- **Command line**: `westerm update` installs the newest release; `westerm update --check` only reports it.
+- **macOS app**: westerm ▸ Check for Updates downloads `westerm-macos-app.zip`, checks it, replaces the app, and opens the new copy. The update button in the app window does the same.
+- `WESTERM_NO_UPDATE_CHECK=1` turns update checks off on that machine.
+
+## Languages
+
+- The UI is in English, Korean, Japanese, and Simplified Chinese.
+- It starts in the browser's language, or English when that language is not one of these.
+- Change it in the header, in Settings, or with the palette's `Language:` commands.
+- Text the server writes into terminals follows it too: the restore notice and session errors. It uses the language the pane had when it connected.
+- Han characters use the chosen language's fonts first, so Japanese shows Japanese glyphs and Chinese shows Simplified glyphs.
+
+## SSH
+
+- The SSH launcher and the palette's SSH command list the hosts in `~/.ssh/config` (with Include). You can also type `user@host`.
+- **Remote shell**: runs `ssh <host>` in a pane. Like a local shell, it survives reloads and dashboard restarts.
+- **Remote browser**: opens `terminal-browser --ssh <host>`. Pages load through the remote server, so `localhost:3000` is that server's dev server.
+- Authentication uses your SSH keys and agent. Type passwords into the terminal when a server asks; the dashboard never stores or sends them.
+
+## Fonts and themes
+
+- The server reads `font-family` and `font-size` from your Ghostty config (`/api/terminal-config`).
+- Ghostty has the Nerd Font icons built in; browsers do not. So the font stack adds the Nerd Fonts you have installed after your font.
+- Light and dark follow the OS unless Settings picks one. Terminal colors switch with it (`WTerm.setThemeColors`).

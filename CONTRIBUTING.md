@@ -77,7 +77,7 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 | `native/tests/` | Rust integration tests against the real executable |
 | `macos/` | macOS app: Swift window (`app/main.swift`), icon, `build-app.sh` |
 | `scripts/start.mjs` | `npm start` on every OS |
-| `docs/` | Usage, session persistence, architecture (Korean) |
+| `docs/` | Usage, sessions, architecture |
 
 Read [docs/architecture.md](docs/architecture.md) for how the parts fit together.
 

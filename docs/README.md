@@ -1,7 +1,7 @@
-# westerm 문서
+# westerm docs
 
-| 문서 | 내용 |
+| Document | What it covers |
 |---|---|
-| [사용법](usage.md) | 화면 구성, 이름 변경, 명령 팔레트, 패널 배치, 언어, SSH, 폰트와 테마 |
-| [세션 유지](sessions.md) | 새로고침·재시작·재부팅 뒤의 동작, PTY 호스트, 저장 파일 |
-| [구조](architecture.md) | 구성 요소, 보안, wterm 호환 보정, 알려진 제한, 테스트 |
+| [Usage](usage.md) | The screen, renaming, the command palette, panes, keyboard switching, settings, updates, languages, SSH, fonts and themes |
+| [Sessions](sessions.md) | What survives a reload, a restart, and a reboot; the PTY host; saved files |
+| [Architecture](architecture.md) | Components, security, wterm patches, known limits, tests |

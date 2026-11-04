@@ -15,7 +15,7 @@
 用标签页和分屏面板排列 Shell、terminal-browser、terminal-code 和 SSH 会话。
 界面由 [wterm](https://github.com/vercel-labs/wterm) 和 Ghostty WASM 核心绘制。westerm 不是 wterm 的官方项目。
 
-使用方法和架构说明见[文档](docs/README.md)（韩语）。
+使用方法、会话、快捷键和架构说明见[文档](docs/README.md)（英语）。
 
 ## 运行
 
@@ -39,7 +39,7 @@ irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
   - macOS、Linux：`~/.local/bin`
   - Windows：`%LOCALAPPDATA%\Programs\westerm`（并加入用户 PATH）
 - 用 `WESTERM_VERSION=v0.1.0` 指定版本，用 `WESTERM_INSTALL_DIR` 指定目录。
-- 更新时再次运行脚本，然后重启 westerm。已打开的 Shell 可能会以“已恢复”状态重新启动一次。
+- 更新可以用仪表板中的更新按钮、`westerm update`，或再次运行脚本。已打开的 Shell 会以“已恢复”状态重新启动一次。
 - 手动安装时，从 [Releases](https://github.com/SteelCrab/westerm/releases/latest) 下载压缩包：
 
 | 系统 | 文件 |
@@ -110,7 +110,7 @@ npm run type-check
 | `native/src/ipc.rs` | 仪表板 ↔ 主机通道：Unix 套接字，Windows 上为命名管道 |
 | `macos/` | macOS 应用：Swift 窗口（WKWebView）、图标、构建脚本 |
 
-CI 会在 macOS、Linux 和 Windows 上测试每个 PR。修改 PTY 主机代码后，正在运行的 Shell 会以“已恢复”状态重新启动一次。详见[会话保持](docs/sessions.md)（韩语）。
+CI 会在 macOS、Linux 和 Windows 上测试每个 PR。修改 PTY 主机代码后，正在运行的 Shell 会以“已恢复”状态重新启动一次。详见 [Sessions](docs/sessions.md)（英语）。
 
 ## 贡献
 
