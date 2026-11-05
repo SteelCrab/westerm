@@ -12,12 +12,17 @@
 import AppKit
 import WebKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private let port = Int(ProcessInfo.processInfo.environment["PORT"] ?? "") ?? 4317
     private let logURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/westerm.log")
     private var window: NSWindow!
     private var webView: WKWebView!
+    /// One window per remote server, by target. The page opens them with
+    /// window.open("/?remote=<target>"); see createWebViewWith.
+    private var remoteWindows: [String: NSWindow] = [:]
+    /// Keeps each remote window's title in step with its page title.
+    private var remoteTitles: [String: NSKeyValueObservation] = [:]
     /// The dashboard server this app started; nil when it uses another one.
     private var server: Process?
     private var dashboard: URL?
@@ -34,6 +39,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    /// A click on the Dock icon brings the main window back when it is closed
+    /// or minimized, even while remote windows are open.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !window.isVisible { raise(window) }
+        return true
+    }
+
+    private func raise(_ target: NSWindow) {
+        if target.isMiniaturized { target.deminiaturize(nil) }
+        target.makeKeyAndOrderFront(nil)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -202,6 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.title = "westerm"
         window.minSize = NSSize(width: 640, height: 400)
         window.tabbingMode = .disallowed
+        window.isReleasedWhenClosed = false
         window.contentView = webView
         window.center()
         window.setFrameAutosaveName("westerm main window")
@@ -211,6 +229,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func open(_ url: URL) {
         dashboard = url
         webView.load(URLRequest(url: url))
+    }
+
+    /// The target of a `/?remote=<target>` page on the dashboard's own origin,
+    /// or nil for any other URL.
+    private func remoteTarget(_ url: URL) -> String? {
+        guard url.scheme == "http", url.host == "127.0.0.1", url.port == dashboard?.port else { return nil }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        guard let target = items?.first(where: { $0.name == "remote" })?.value, !target.isEmpty else { return nil }
+        return target
+    }
+
+    /// Puts the web view WebKit made for window.open into a new window.
+    private func makeRemoteWindow(_ target: String, configuration: WKWebViewConfiguration) -> WKWebView {
+        let remoteView = WKWebView(frame: .zero, configuration: configuration)
+        remoteView.navigationDelegate = self
+        remoteView.uiDelegate = self
+        if #available(macOS 13.3, *) {
+            remoteView.isInspectable = true
+        }
+        let remote = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        remote.title = "westerm — \(target)"
+        remote.minSize = NSSize(width: 640, height: 400)
+        remote.tabbingMode = .disallowed
+        remote.isReleasedWhenClosed = false
+        remote.delegate = self
+        remote.contentView = remoteView
+        remote.center()
+        remote.setFrameAutosaveName("westerm remote \(target)")
+        remoteWindows[target] = remote
+        remoteTitles[target] = remoteView.observe(\.title) { [weak remote] view, _ in
+            if let title = view.title, !title.isEmpty { remote?.title = title }
+        }
+        remote.makeKeyAndOrderFront(nil)
+        return remoteView
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let closed = notification.object as? NSWindow,
+              let target = remoteWindows.first(where: { $0.value === closed })?.key else { return }
+        remoteWindows[target] = nil
+        remoteTitles[target] = nil
+        closed.delegate = nil
+    }
+
+    /// The web view of the key window; the main one when no window is key.
+    private var activeWebView: WKWebView {
+        NSApp.keyWindow?.contentView as? WKWebView ?? webView
     }
 
     private func showMessage(_ text: String) {
@@ -256,20 +326,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        if let url = navigationAction.request.url {
+        guard let url = navigationAction.request.url else { return nil }
+        guard let target = remoteTarget(url) else {
             NSWorkspace.shared.open(url)
+            return nil
         }
-        return nil
+        if let existing = remoteWindows[target] {
+            raise(existing)
+            return nil
+        }
+        return makeRemoteWindow(target, configuration: configuration)
+    }
+
+    /// The page asks for a remote window through the message handler: a page
+    /// cannot raise a window it opened, so the app does it on every request.
+    private func openRemoteWindow(_ target: String) {
+        if let existing = remoteWindows[target] {
+            raise(existing)
+            return
+        }
+        guard let dashboard, var components = URLComponents(url: dashboard, resolvingAgainstBaseURL: false) else { return }
+        // Encode everything but unreserved characters, so "+" cannot turn into a space.
+        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        guard let value = target.addingPercentEncoding(withAllowedCharacters: unreserved) else { return }
+        components.path = "/"
+        components.percentEncodedQuery = "remote=\(value)"
+        guard let url = components.url, remoteTarget(url) == target else { return }
+        // The main configuration carries the "westerm" message handler.
+        makeRemoteWindow(target, configuration: webView.configuration).load(URLRequest(url: url))
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        // Panes reattach to their sessions after a reload.
-        if let dashboard { webView.load(URLRequest(url: dashboard)) }
+        // Panes reattach to their sessions after a reload. Each window
+        // reloads its own page; the main one goes back to the dashboard.
+        if webView === self.webView {
+            if let dashboard { webView.load(URLRequest(url: dashboard)) }
+        } else if let url = webView.url {
+            webView.load(URLRequest(url: url))
+        } else {
+            webView.reload()
+        }
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any], body["type"] as? String == "update" else { return }
-        checkForUpdates(userInitiated: true)
+        guard let body = message.body as? [String: Any] else { return }
+        switch body["type"] as? String {
+        case "update":
+            checkForUpdates(userInitiated: true)
+        case "remoteWindow":
+            if let target = body["target"] as? String, !target.isEmpty { openRemoteWindow(target) }
+        default:
+            break
+        }
     }
 
     // MARK: Updates
@@ -384,7 +492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// src/shortcuts.ts); the menu items show them and work by click.
     @objc private func sendSwitch(_ sender: NSMenuItem) {
         guard let command = sender.representedObject as? String else { return }
-        webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('westerm:command', { detail: \(command) }))")
+        activeWebView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('westerm:command', { detail: \(command) }))")
     }
 
     private func switchItem(_ title: String, _ command: String, key: String, _ modifiers: NSEvent.ModifierFlags) -> NSMenuItem {
@@ -397,15 +505,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     /// The page opens its settings when it hears this event.
     @objc private func openSettings(_ sender: Any?) {
-        webView.evaluateJavaScript("window.dispatchEvent(new Event('westerm:settings'))")
+        activeWebView.evaluateJavaScript("window.dispatchEvent(new Event('westerm:settings'))")
     }
 
     @objc private func reload(_ sender: Any?) {
-        if let dashboard { webView.load(URLRequest(url: dashboard)) }
+        let view = activeWebView
+        if view === webView {
+            if let dashboard { view.load(URLRequest(url: dashboard)) }
+        } else {
+            view.reload()
+        }
     }
 
     @objc private func openInBrowser(_ sender: Any?) {
-        if let dashboard { NSWorkspace.shared.open(dashboard) }
+        let view = activeWebView
+        if let url = view === webView ? dashboard : view.url { NSWorkspace.shared.open(url) }
     }
 
     private func makeMenu() -> NSMenu {
