@@ -1,10 +1,13 @@
 //! The dashboard server: the web UI (embedded in the binary), small APIs, and
 //! a WebSocket relay from each browser pane to its session in the PTY host.
-//! Listens on 127.0.0.1 only.
+//! Listens on 127.0.0.1 only. On a server, `remote_router` serves the few
+//! routes a remote window needs, on a private Unix socket instead.
 
 mod config;
 pub(crate) mod host_client;
+mod http1;
 mod remote;
+mod remote_window;
 mod updates;
 
 use std::collections::HashMap;
@@ -30,7 +33,7 @@ use tokio_tungstenite::WebSocketStream;
 
 use crate::host::MAX_MESSAGE;
 use crate::protocol::{
-    is_id, normalize_ssh_target, AttachRequest, ClientMessage, RemoteStage, ServerMessage, SessionKind, CLOSE_REMOTE_FAILED,
+    is_id, normalize_ssh_target, AttachRequest, ClientMessage, ServerMessage, REMOTE_LINK_PATH, REMOTE_RETRY_PATH,
 };
 use crate::state_dir::{home_dir, state_dir};
 use host_client::HostClient;
@@ -51,8 +54,11 @@ struct AppState {
     origins: Vec<String>,
     state_dir: PathBuf,
     updates: updates::UpdateCheck,
-    /// Connections to remote westerm hosts, one per server.
-    remote: RemoteManager,
+    /// Links to remote westerm servers, one per server.
+    remote: Arc<RemoteManager>,
+    /// True when every caller is already trusted, as on the server's private
+    /// socket: no Origin is checked.
+    trusted: bool,
 }
 
 type Shared = Arc<AppState>;
@@ -64,15 +70,21 @@ static BOUND_PORT: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
 /// `westerm stop`: the host saves every session and exits. Shells come back
 /// as "restored" when westerm starts again.
 pub async fn stop_host() -> std::io::Result<()> {
+    // On a server, the gate and the server dashboard go with the host, and
+    // before it: a remote window's pane that retries in between would make
+    // the dashboard start a new host.
+    #[cfg(unix)]
+    if crate::remote::gate::stop_running(&state_dir()?).await? {
+        println!("westerm: the remote gate stopped");
+    }
+    #[cfg(unix)]
+    if crate::remote::dashboard::stop_running(&state_dir()?).await? {
+        println!("westerm: the remote dashboard stopped");
+    }
     if host_client::stop_running().await? {
         println!("westerm: the PTY host saved its sessions and stopped");
     } else {
         println!("westerm: no PTY host is running");
-    }
-    // On a server, a remote dashboard's gate goes with its host.
-    #[cfg(unix)]
-    if crate::remote::gate::stop_running(&state_dir()?).await? {
-        println!("westerm: the remote gate stopped");
     }
     Ok(())
 }
@@ -92,7 +104,8 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         origins,
         state_dir: state_dir()?,
         updates: updates::UpdateCheck::default(),
-        remote: RemoteManager::new(state_dir()?),
+        remote: Arc::new(RemoteManager::new(state_dir()?)),
+        trusted: false,
     });
     // Start the PTY host now so the first pane does not wait for it.
     if let Err(error) = state.host.ensure().await {
@@ -104,14 +117,38 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         .route("/api/update", get(updates::get_update).post(updates::post_update))
         .route("/api/workspace", get(get_workspace).put(put_workspace))
         .route("/api/ssh-hosts", get(ssh_hosts))
+        .route(REMOTE_LINK_PATH, get(remote_link))
+        .route(REMOTE_RETRY_PATH, post(remote_retry))
         .route("/api/remote/decision", post(remote_decision))
         .route("/api/remote/close", post(remote_close))
         .route("/api/remote/update-host", post(remote_update_host))
         .route("/ws/session", get(session))
+        .merge(remote_window::routes())
         .fallback(asset)
         .with_state(state);
     println!("> westerm: http://127.0.0.1:{port}");
     axum::serve(listener, app).await
+}
+
+/// The server's dashboard for remote windows, served on a Unix socket only the
+/// user can open. It answers the layout, the SSH host list, and sessions; every
+/// other path is 404. It leaves a running host as it is.
+#[cfg(unix)]
+pub fn remote_router(state_dir: PathBuf) -> Router {
+    let state = Arc::new(AppState {
+        host: HostClient::keeping_running(),
+        origins: Vec::new(),
+        remote: Arc::new(RemoteManager::new(state_dir.clone())),
+        state_dir,
+        updates: updates::UpdateCheck::default(),
+        trusted: true,
+    });
+    Router::new()
+        .route("/api/workspace", get(get_workspace).put(put_workspace))
+        .route("/api/ssh-hosts", get(ssh_hosts))
+        .route("/ws/session", get(session))
+        .fallback(|| async { StatusCode::NOT_FOUND })
+        .with_state(state)
 }
 
 /// Binds 127.0.0.1:`port`. After an update on Windows the new process starts
@@ -140,10 +177,38 @@ async fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
 /// A page on any other site can reach 127.0.0.1. Only the dashboard's own
 /// origin may open sessions or change the layout.
 fn origin_allowed(state: &AppState, headers: &HeaderMap) -> bool {
-    headers
+    state.trusted
+        || headers
         .get(header::ORIGIN)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|origin| state.origins.iter().any(|allowed| allowed == origin))
+}
+
+/// The Host header names one of this dashboard's own origins. A page on
+/// another name can point at 127.0.0.1 (DNS rebinding) and then pass the
+/// browser's same-origin checks; only the names above are served.
+fn host_allowed(state: &AppState, headers: &HeaderMap) -> bool {
+    headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|host| state.origins.iter().filter_map(|origin| origin.strip_prefix("http://")).any(|allowed| allowed == host))
+}
+
+/// A browser says the request comes from another site: `Sec-Fetch-Site` is
+/// `cross-site` or `same-site`, or an `Origin` is present that is not ours.
+/// A request with neither header (not from a browser) is not cross-site.
+/// For routes that do work on a plain GET, which any page can fire at 127.0.0.1.
+fn cross_site(state: &AppState, headers: &HeaderMap) -> bool {
+    let fetch_site = headers.get("sec-fetch-site").and_then(|value| value.to_str().ok());
+    matches!(fetch_site, Some("cross-site" | "same-site")) || (headers.contains_key(header::ORIGIN) && !origin_allowed(state, headers))
+}
+
+/// The request says its body is JSON.
+fn is_json(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/json"))
 }
 
 fn no_store(body: impl IntoResponse) -> Response {
@@ -167,11 +232,7 @@ async fn get_workspace(State(state): State<Shared>) -> Response {
 /// A form on another site can POST; a cross-site JSON PUT needs a CORS
 /// preflight this server never answers. The Origin check covers the rest.
 async fn put_workspace(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> StatusCode {
-    let json = headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.starts_with("application/json"));
-    if json && origin_allowed(&state, &headers) && config::write_workspace(&state.state_dir, &body) {
+    if is_json(&headers) && origin_allowed(&state, &headers) && config::write_workspace(&state.state_dir, &body) {
         StatusCode::NO_CONTENT
     } else {
         StatusCode::BAD_REQUEST
@@ -180,11 +241,7 @@ async fn put_workspace(State(state): State<Shared>, headers: HeaderMap, body: By
 
 /// A JSON body from the dashboard's own page; None for anything else.
 fn json_body<T: DeserializeOwned>(state: &AppState, headers: &HeaderMap, body: &Bytes) -> Option<T> {
-    let json = headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.starts_with("application/json"));
-    if !json || !origin_allowed(state, headers) {
+    if !is_json(headers) || !origin_allowed(state, headers) {
         return None;
     }
     serde_json::from_slice(body).ok()
@@ -207,6 +264,60 @@ struct TargetBody {
     target: String,
 }
 
+/// A remote window's status stream: "hello" with this westerm's version,
+/// then the link's stage each time it changes, the current one first. The
+/// link to the server stays up while a window keeps this open. A page on
+/// another site must not make ssh run, so the Origin is checked too.
+async fn remote_link(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    let Some(target) = query.get("target").and_then(|target| normalize_ssh_target(target)) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    if !host_allowed(&state, &headers) || !origin_allowed(&state, &headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    ws.on_upgrade(move |socket| link_status(socket, state, target))
+}
+
+/// Sends the stages until the window closes the stream, which drops its `Watch`.
+async fn link_status(mut socket: WebSocket, state: Shared, target: String) {
+    let mut watch = state.remote.watch(&target);
+    let hello = ServerMessage::Hello { version: crate::version_line() }.to_json();
+    if socket.send(Message::Text(hello.into())).await.is_err() {
+        return;
+    }
+    loop {
+        tokio::select! {
+            changed = watch.stages.changed() => {
+                if changed.is_err() {
+                    return;
+                }
+                let Some(stage) = watch.stages.borrow_and_update().clone() else { continue };
+                if socket.send(Message::Text(ServerMessage::Remote(stage).to_json().into())).await.is_err() {
+                    return;
+                }
+            }
+            message = socket.recv() => match message {
+                Some(Ok(Message::Close(_)) | Err(_)) | None => return,
+                Some(Ok(_)) => {}
+            },
+        }
+    }
+}
+
+/// "Try again" after a permanent failure. 409 when no link waits for it.
+async fn remote_retry(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> StatusCode {
+    let Some(TargetBody { target }) = json_body(&state, &headers, &body) else {
+        return StatusCode::BAD_REQUEST;
+    };
+    let Some(target) = normalize_ssh_target(&target) else { return StatusCode::BAD_REQUEST };
+    if state.remote.retry(&target) { StatusCode::NO_CONTENT } else { StatusCode::CONFLICT }
+}
+
 /// The answer to "replace the server's older host?". 409 when nothing asks.
 async fn remote_decision(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> StatusCode {
     let Some(DecisionBody { target, replace }) = json_body(&state, &headers, &body) else {
@@ -216,7 +327,7 @@ async fn remote_decision(State(state): State<Shared>, headers: HeaderMap, body: 
     if state.remote.decide(&target, replace) { StatusCode::NO_CONTENT } else { StatusCode::CONFLICT }
 }
 
-/// A remote pane closed while its socket could not say so.
+/// A remote session closed while its socket could not say so.
 async fn remote_close(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> StatusCode {
     let Some(CloseBody { target, session }) = json_body(&state, &headers, &body) else {
         return StatusCode::BAD_REQUEST;
@@ -251,9 +362,6 @@ async fn session(
     let Some(request) = AttachRequest::from_query(&query).filter(|_| origin_allowed(&state, &headers)) else {
         return StatusCode::FORBIDDEN.into_response();
     };
-    if request.kind == SessionKind::Remote {
-        return ws.max_message_size(MAX_MESSAGE).on_upgrade(move |browser| remote_relay(browser, request, state));
-    }
     let dir = match state.host.ensure().await {
         Ok(dir) => dir,
         Err(error) => {
@@ -295,92 +403,8 @@ async fn relay(browser: WebSocket, dir: PathBuf, query: String, state: Shared) {
 /// A silent one (a dead gate, a lost network) gets the link replaced.
 const REMOTE_HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-fn stage_message(stage: &RemoteStage) -> Message {
-    Message::Text(ServerMessage::Remote(stage.clone()).to_json().into())
-}
-
 fn close_message(code: u16, reason: &str) -> Message {
     Message::Close(Some(CloseFrame { code, reason: reason.into() }))
-}
-
-/// A remote pane: shows the stages while the dashboard reaches the server,
-/// then pipes the pane to a shell on the server's own host. A close from
-/// the pane before that ends the session there later (pending close).
-async fn remote_relay(browser: WebSocket, request: AttachRequest, state: Shared) {
-    let Some(target) = request.target.clone() else { return };
-    let (mut to_browser, mut from_browser) = browser.split();
-    let mut stages = state.remote.stages(&target);
-    let mut shown: Option<RemoteStage> = None;
-    // The pane sends its fitted size first; the remote host gets the last one.
-    let mut size: Option<String> = None;
-    let opening = state.remote.open_stream(&target);
-    tokio::pin!(opening);
-    let opened = loop {
-        tokio::select! {
-            result = &mut opening => break result,
-            Ok(()) = stages.changed() => {
-                let stage = stages.borrow_and_update().clone();
-                if let Some(stage) = stage.filter(|stage| shown.as_ref() != Some(stage)) {
-                    if to_browser.send(stage_message(&stage)).await.is_err() {
-                        return;
-                    }
-                    shown = Some(stage);
-                }
-            }
-            message = from_browser.next() => match message {
-                Some(Ok(Message::Text(text))) => match ClientMessage::parse(&text) {
-                    Some(ClientMessage::Close) => {
-                        state.remote.forget_session(&target, &request.id).await;
-                        let _ = to_browser.send(close_message(1000, "closed")).await;
-                        return;
-                    }
-                    Some(ClientMessage::Resize { .. }) => size = Some(text.to_string()),
-                    _ => {}
-                },
-                Some(Ok(Message::Close(_)) | Err(_)) | None => return,
-                Some(Ok(_)) => {}
-            },
-        }
-    };
-    let latest = stages.borrow().clone();
-    if let Some(stage) = latest.filter(|stage| shown.as_ref() != Some(stage)) {
-        let _ = to_browser.send(stage_message(&stage)).await;
-    }
-
-    let opened = match opened {
-        Ok(opened) => opened,
-        Err(failure) => {
-            let stage = RemoteStage::Failed { reason: failure.reason, detail: failure.detail };
-            let _ = to_browser.send(stage_message(&stage)).await;
-            let code = if failure.reason.is_permanent() { CLOSE_REMOTE_FAILED } else { 1011 };
-            let _ = to_browser.send(close_message(code, "remote westerm failed")).await;
-            return;
-        }
-    };
-    let url = format!("ws://host/session?{}", request.for_remote_host().to_query());
-    let config = WebSocketConfig::default().max_message_size(None).max_frame_size(None);
-    let handshake =
-        tokio::time::timeout(REMOTE_HANDSHAKE_TIMEOUT, tokio_tungstenite::client_async_with_config(url, opened.stream, Some(config)));
-    let Ok(Ok((mut host, _))) = handshake.await else {
-        let (state, target) = (state.clone(), target.clone());
-        tokio::spawn(async move { state.remote.invalidate(&target, opened.link).await });
-        let _ = to_browser.send(close_message(1011, "remote host unavailable")).await;
-        return;
-    };
-    if let Some(size) = size {
-        if host.send(HostMessage::text(size)).await.is_err() {
-            return;
-        }
-    }
-    let end = pipe(to_browser, from_browser, host).await;
-    // The pane closed its session but the server never answered: the link
-    // may have gone silent with the close in it. End the session at the
-    // next connection, and do not reuse this link.
-    if end.session_closed && !end.host_answered {
-        state.remote.remember_close(&target, &request.id);
-        let (state, target) = (state.clone(), target.clone());
-        tokio::spawn(async move { state.remote.invalidate(&target, opened.link).await });
-    }
 }
 
 /// How long the host may take to answer a pane's close before a remote
@@ -468,4 +492,53 @@ async fn asset(uri: Uri) -> Response {
     // Hashed asset names never change content; the page itself must stay fresh.
     let cache = if path.starts_with("assets/") { "public, max-age=31536000, immutable" } else { "no-cache" };
     ([(header::CONTENT_TYPE, mime.as_ref().to_owned()), (header::CACHE_CONTROL, cache.to_owned())], file.data).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_state(origins: &[&str]) -> AppState {
+        AppState {
+            host: HostClient::default(),
+            origins: origins.iter().map(|origin| (*origin).to_owned()).collect(),
+            state_dir: PathBuf::new(),
+            updates: updates::UpdateCheck::default(),
+            remote: Arc::new(RemoteManager::new(PathBuf::new())),
+            trusted: false,
+        }
+    }
+
+    fn headers_with_host(host: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::HOST, host.parse().unwrap());
+        headers
+    }
+
+    #[test]
+    fn host_allowed_follows_the_allowed_origins() {
+        let state = test_state(&["http://127.0.0.1:4317", "http://localhost:4317", "http://localhost:5173"]);
+        for host in ["127.0.0.1:4317", "localhost:4317", "localhost:5173"] {
+            assert!(host_allowed(&state, &headers_with_host(host)), "{host}");
+        }
+        assert!(!host_allowed(&state, &headers_with_host("evil.example:4317")));
+        assert!(!host_allowed(&state, &HeaderMap::new()));
+    }
+
+    #[test]
+    fn cross_site_follows_fetch_metadata_and_origin() {
+        let state = test_state(&["http://127.0.0.1:4317"]);
+        let with = |name: &'static str, value: &str| {
+            let mut headers = HeaderMap::new();
+            headers.insert(name, value.parse().unwrap());
+            headers
+        };
+        assert!(cross_site(&state, &with("sec-fetch-site", "cross-site")));
+        assert!(cross_site(&state, &with("sec-fetch-site", "same-site")));
+        assert!(cross_site(&state, &with("origin", "http://evil.example")));
+        assert!(!cross_site(&state, &with("sec-fetch-site", "same-origin")));
+        assert!(!cross_site(&state, &with("sec-fetch-site", "none")));
+        assert!(!cross_site(&state, &with("origin", "http://127.0.0.1:4317")));
+        assert!(!cross_site(&state, &HeaderMap::new()), "not a browser");
+    }
 }

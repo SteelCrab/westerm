@@ -8,6 +8,10 @@ use std::time::Duration;
 
 pub mod authorized;
 #[cfg(unix)]
+pub mod daemon;
+#[cfg(unix)]
+pub mod dashboard;
+#[cfg(unix)]
 pub mod gate;
 pub mod identity;
 pub mod report;

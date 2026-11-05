@@ -1,28 +1,22 @@
 import {
   ACK_THRESHOLD,
   CLOSE_TAKEN_OVER,
-  isPermanentFailure,
   REMOTE_CLOSE_PATH,
   WS_PATH,
   type AttachMode,
   type ClientMessage,
   type PtySize,
-  type RemoteFailure,
-  type RemoteStage,
   type ServerMessage,
   type SessionKind,
 } from "../../shared/protocol.ts";
 import type { Locale } from "../i18n/messages.ts";
-import { postRemote, shouldPostRemoteClose } from "../remoteApi.ts";
+import { postRemote } from "../remoteApi.ts";
+import { REMOTE_TARGET, serverPath, shouldPostRemoteClose } from "../remoteWindow.ts";
 
 export type ConnectionEvent =
   | { type: "ready"; pid: number; mode: AttachMode }
   | { type: "exit"; code: number; signal: number }
   | { type: "error"; message: string }
-  /** A remote pane's stage while the dashboard reaches the server. */
-  | { type: "remote"; stage: RemoteStage }
-  /** A remote pane failed in a way that reconnecting does not fix. */
-  | { type: "remoteFailed"; reason: RemoteFailure; detail: string }
   /** The socket closed without an exit. `takenOver`: another window has the sessions. */
   | { type: "closed"; takenOver: boolean };
 
@@ -51,7 +45,7 @@ const ACK_DELAY_MS = 30;
  */
 const WINDOW_ID = `w${Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 
-/** One WebSocket ↔ one PTY on the local server. */
+/** One WebSocket ↔ one PTY on the local server, or on a remote window's server. */
 export class PtyConnection {
   private readonly ws: WebSocket;
   private unacked = 0;
@@ -76,7 +70,7 @@ export class PtyConnection {
     if (options.cwdFrom) query.set("cwdFrom", options.cwdFrom);
     if (options.target) query.set("target", options.target);
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    this.ws = new WebSocket(`${scheme}//${location.host}${WS_PATH}?${query}`);
+    this.ws = new WebSocket(`${scheme}//${location.host}${serverPath(WS_PATH)}?${query}`);
     this.ws.binaryType = "arraybuffer";
     this.ws.onopen = () => {
       // Always send the fitted size first: the terminal usually fits its pane
@@ -107,18 +101,26 @@ export class PtyConnection {
   close({ end }: { end: boolean }): void {
     this.finished = true;
     this.clearAckTimer();
-    const { kind, target, session } = this.options;
-    if (target && shouldPostRemoteClose(kind, target, end, this.ws.readyState)) {
-      void postRemote(REMOTE_CLOSE_PATH, { target, session });
-    }
+    // A socket that is down cannot carry the close. In a remote window the
+    // local dashboard keeps the id and ends the session on the server at the
+    // next connection.
+    const reportClose = () => {
+      if (shouldPostRemoteClose(REMOTE_TARGET, end, this.ws.readyState)) {
+        void postRemote(REMOTE_CLOSE_PATH, { target: REMOTE_TARGET, session: this.options.session });
+      }
+    };
     if (end && this.ws.readyState === WebSocket.CONNECTING) {
       // Closing now would leave the new process running unseen.
       this.ws.onopen = () => {
+        this.ws.onclose = null;
         this.send({ type: "close" });
         this.ws.close();
       };
+      // While a remote window's link is down, the socket never opens.
+      this.ws.onclose = reportClose;
       return;
     }
+    reportClose();
     if (end) this.send({ type: "close" });
     this.ws.close();
   }
@@ -138,15 +140,6 @@ export class PtyConnection {
     }
     if (message.type === "exit" || message.type === "error") this.finish(message);
     else if (message.type === "ready") this.options.onEvent(message);
-    else if (message.type === "remote") this.remote(message);
-  }
-
-  private remote({ type: _, ...stage }: Extract<ServerMessage, { type: "remote" }>): void {
-    if (stage.stage === "failed" && isPermanentFailure(stage.reason)) {
-      this.finish({ type: "remoteFailed", reason: stage.reason, detail: stage.detail });
-    } else {
-      this.options.onEvent({ type: "remote", stage });
-    }
   }
 
   /** Acknowledge parsed bytes in batches so the server can keep the PTY flowing. */

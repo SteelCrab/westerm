@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import type { SessionKind } from "../shared/protocol.ts";
 import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
-import { CommandPalette } from "./components/CommandPalette.tsx";
+import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.tsx";
 import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
 import { PaneLayer } from "./components/PaneLayer.tsx";
+import { RemoteBanner, RemoteConnect, stageText } from "./components/RemoteConnect.tsx";
 import { SessionList } from "./components/SessionList.tsx";
 import { isCompact, SidebarResizer } from "./components/SidebarResizer.tsx";
 import { TabBar } from "./components/TabBar.tsx";
@@ -12,7 +14,17 @@ import { WorkspaceMenu } from "./components/WorkspaceMenu.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { UpdateButton, updateShown } from "./components/UpdateButton.tsx";
 import { useI18n } from "./i18n/index.tsx";
-import { buildCommands, isPaletteShortcut, PALETTE_SHORTCUT, sshCommands, urlCommands } from "./paletteCommands.tsx";
+import { RemoteWindowIcon } from "./kinds.tsx";
+import {
+  buildCommands,
+  isPaletteShortcut,
+  PALETTE_SHORTCUT,
+  remoteWindowCommands,
+  sshCommands,
+  urlCommands,
+} from "./paletteCommands.tsx";
+import { openRemoteWindow, REMOTE_TARGET } from "./remoteWindow.ts";
+import { useRemoteLink } from "./useRemoteLink.ts";
 import { useSshHosts } from "./useSshHosts.ts";
 import { useColorScheme } from "./theme.ts";
 import { useSidebarWidth } from "./useSidebarWidth.ts";
@@ -22,7 +34,7 @@ import { parseFamilies, useSettings } from "./settings.ts";
 import { switchCommand, typingElsewhere, type SwitchCommand } from "./shortcuts.ts";
 import { appBridge } from "./useUpdate.ts";
 import { markEnding } from "./terminal/ending.ts";
-import { loadSaved, useWorkspacePersistence } from "./useWorkspacePersistence.ts";
+import { loadSaved, reclaimAction, useWorkspacePersistence } from "./useWorkspacePersistence.ts";
 import {
   activeTab,
   activeWorkspace,
@@ -49,14 +61,22 @@ let nextId = 0;
 const newId = (prefix: "s" | "t" | "w") => `${prefix}${Date.now().toString(36)}${(nextId++).toString(36)}`;
 const createFresh = () => createDashboard(newId("w"), newId("t"));
 
+/** The host picker of the activity bar's remote window button lists only the window entries. */
+const pickCommands = (commands: PaletteCommand[], windowsOnly: boolean) =>
+  windowsOnly ? commands.filter((command) => command.id.startsWith("window-")) : commands;
+
+/** A local window's layout needs no link. */
+const LOCAL_LINK = { ready: true, reconnects: 0 };
+
 export function App() {
   const [state, rawDispatch] = useReducer(dashboardReducer, null, createFresh);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const [renaming, setRenaming] = useState<RenameTarget | null>(null);
   // "commands": the command palette. "ssh": the same palette listing ssh hosts.
-  const [palette, setPalette] = useState<"commands" | "ssh" | null>(null);
-  const sshHosts = useSshHosts(palette === "ssh");
+  // "window": the host list again, with only the "open in a new window" entries.
+  const [palette, setPalette] = useState<"commands" | "ssh" | "window" | null>(null);
+  const sshHosts = useSshHosts(palette === "ssh" || palette === "window");
   const [dragging, setDragging] = useState<string | null>(null);
   // Bumped when a dashboard control gives keyboard focus back to the terminal.
   const [focusNonce, setFocusNonce] = useState(0);
@@ -65,8 +85,29 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const fontOverride = useMemo(() => parseFamilies(settings.fontFamily), [settings.fontFamily]);
   const { font, sizeOverridden, ghosttyFont, changeSize, resetSize } = useTerminalFont(locale, fontOverride);
-  const update = useUpdate(settings.autoUpdate);
+  // A remote window does not update westerm: the server follows this one.
+  const update = useUpdate(settings.autoUpdate && REMOTE_TARGET === null);
   const scheme = useColorScheme(settings.theme);
+
+  // A remote window's link to its server. A new local westerm (an update)
+  // brings new page files, so the window loads again.
+  const link = useRemoteLink(REMOTE_TARGET);
+  // The macOS app uses the page title as the window title.
+  useEffect(() => {
+    if (REMOTE_TARGET !== null) document.title = `westerm — ${REMOTE_TARGET}`;
+  }, []);
+  useEffect(() => {
+    if (link.reload) location.reload();
+  }, [link.reload]);
+  // How often the link came up; every time after the first is a reconnect.
+  // Panes that lost their socket would wait out their own backoff (up to
+  // 8 s); the link is back, so they connect at once.
+  const [linkUps, setLinkUps] = useState(0);
+  useEffect(() => {
+    if (!link.connected) return;
+    setLinkUps((value) => value + 1);
+    rawDispatch({ type: "retryDisconnected" });
+  }, [link.connected]);
 
   // The macOS app's Settings menu (⌘,) sends this event.
   useEffect(() => {
@@ -95,11 +136,11 @@ export function App() {
     rawDispatch(action);
   }, []);
 
-  // A new editor opens the focused shell's directory. SSH and remote westerm
-  // ask for a host first.
+  // A new editor opens the focused shell's directory. SSH asks for a host
+  // first.
   const open = useCallback(
     (kind: SessionKind, url: string | null = null, target: string | null = null) => {
-      if ((kind === "ssh" || kind === "remote") && !target) {
+      if (kind === "ssh" && !target) {
         setPalette("ssh");
         return;
       }
@@ -179,15 +220,23 @@ export function App() {
   }, []);
 
   // Restore the saved layout; panes then reattach to their running shells.
-  // With nothing saved, start with one shell.
+  // With nothing saved, start with one shell. A remote window reads its
+  // server's layout once the link is up.
   const away = takenOver(state);
-  const loaded = useWorkspacePersistence(state, rawDispatch, () => open("shell"), away);
+  const persistenceLink =
+    REMOTE_TARGET === null ? LOCAL_LINK : { ready: link.connected, reconnects: Math.max(0, linkUps - 1) };
+  const { loaded, adopted } = useWorkspacePersistence(state, rawDispatch, () => open("shell"), away, persistenceLink);
 
   // One window at a time has the sessions. Using this window again, by
   // switching to it or clicking it, takes them back with the latest layout.
   const reclaim = useCallback(() => {
-    void loadSaved().then((saved) => rawDispatch({ type: "reclaim", saved }));
-  }, []);
+    void loadSaved().then((result) => {
+      const next = reclaimAction(REMOTE_TARGET !== null, result);
+      if (next === "stay") return;
+      adopted(next.saved);
+      rawDispatch({ type: "reclaim", saved: next.saved });
+    });
+  }, [adopted]);
   useEffect(() => {
     if (!away) return;
     window.addEventListener("focus", reclaim);
@@ -247,8 +296,8 @@ export function App() {
   }, []);
 
   const commands = useMemo(
-    () =>
-      buildCommands({
+    () => [
+      ...buildCommands({
         state,
         dispatch,
         open,
@@ -267,11 +316,13 @@ export function App() {
         t,
         locale,
         setLocale,
-        checkUpdates,
-        newVersion: update.status?.newer ? (update.status.latest ?? null) : null,
+        checkUpdates: REMOTE_TARGET === null ? checkUpdates : null,
+        newVersion: REMOTE_TARGET === null && update.status?.newer ? (update.status.latest ?? null) : null,
         showUpdate: () => setUpdateOpen(true),
         openSettings: () => setSettingsOpen(true),
       }),
+      ...(REMOTE_TARGET === null ? [] : remoteWindowCommands(REMOTE_TARGET, t)),
+    ],
     [
       state,
       dispatch,
@@ -294,17 +345,27 @@ export function App() {
     ],
   );
   const dynamicCommands = useCallback((query: string) => urlCommands(query, open, t), [open, t]);
-  const sshPaletteCommands = useMemo(() => sshCommands(sshHosts ?? [], null, open, t), [sshHosts, open, t]);
-  const sshDynamicCommands = useCallback((query: string) => sshCommands([], query, open, t), [open, t]);
+  // A remote window opens no windows: they do not nest.
+  const openWindow = REMOTE_TARGET === null ? openRemoteWindow : null;
+  const windowsOnly = palette === "window";
+  const sshPaletteCommands = useMemo(
+    () => pickCommands(sshCommands(sshHosts ?? [], null, open, openWindow, t), windowsOnly),
+    [sshHosts, open, openWindow, t, windowsOnly],
+  );
+  const sshDynamicCommands = useCallback(
+    (query: string) => pickCommands(sshCommands([], query, open, openWindow, t), windowsOnly),
+    [open, openWindow, t, windowsOnly],
+  );
 
-  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0, remote: 0 } satisfies Record<SessionKind, number>;
+  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0 } satisfies Record<SessionKind, number>;
   for (const session of state.sessions) counts[session.kind] += 1;
 
   // Top: the workspace menu and the tab bar, no sidebar. Sidebar: both in the
   // sidebar, no tab bar; the header stays only for the update button.
   const onTop = layout === "top";
   const sidebarShown = !onTop && sidebarOpen;
-  const headerShown = onTop || updateShown(update.status, updateOpen);
+  // A remote window always shows its server in the header.
+  const headerShown = onTop || REMOTE_TARGET !== null || updateShown(update.status, updateOpen);
 
   return (
     <div
@@ -318,6 +379,7 @@ export function App() {
         onToggleSidebar={onTop ? null : () => setSidebarOpen((value) => !value)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenPalette={() => setPalette("commands")}
+        onOpenRemoteWindow={openWindow && (() => setPalette("window"))}
         paletteShortcut={PALETTE_SHORTCUT}
       />
       {sidebarShown && (
@@ -384,9 +446,27 @@ export function App() {
               </>
             )}
             <div className="workspace-tools">
-              <UpdateButton update={update} open={updateOpen} onOpenChange={setUpdateOpen} />
+              {REMOTE_TARGET === null ? (
+                <UpdateButton update={update} open={updateOpen} onOpenChange={setUpdateOpen} />
+              ) : (
+                <span className="remote-badge" title={stageText(link.stage, t)}>
+                  <RemoteWindowIcon size={13} />
+                  <span className="remote-badge-target">{REMOTE_TARGET}</span>
+                  {link.stage?.stage === "connected" && (
+                    <>
+                      <span className="remote-badge-via">{t.remote.via[link.stage.via]}</span>
+                      {link.stage.killOnLogout && (
+                        <TriangleAlert size={13} className="remote-badge-warn" role="img" aria-label={t.remote.killOnLogout} />
+                      )}
+                    </>
+                  )}
+                </span>
+              )}
             </div>
           </header>
+        )}
+        {REMOTE_TARGET !== null && link.connectedOnce && !link.connected && (
+          <RemoteBanner target={REMOTE_TARGET} stage={link.stage} />
         )}
         {font && loaded ? (
           <PaneLayer
@@ -417,6 +497,7 @@ export function App() {
           changeSize={changeSize}
           resetSize={resetSize}
           update={update}
+          updates={REMOTE_TARGET === null}
           onShowUpdate={() => {
             setSettingsOpen(false);
             setUpdateOpen(true);
@@ -430,15 +511,16 @@ export function App() {
       {palette === "commands" && (
         <CommandPalette commands={commands} dynamic={dynamicCommands} onClose={closePalette} />
       )}
-      {palette === "ssh" && (
+      {(palette === "ssh" || palette === "window") && (
         <CommandPalette
-          placeholder={t.palette.sshPlaceholder}
+          placeholder={windowsOnly ? t.palette.remoteWindowPlaceholder : t.palette.sshPlaceholder}
           commands={sshPaletteCommands}
           dynamic={sshDynamicCommands}
           empty={sshHosts === null ? t.palette.sshLoading : t.palette.sshEmpty}
           onClose={closePalette}
         />
       )}
+      {REMOTE_TARGET !== null && !link.connectedOnce && <RemoteConnect target={REMOTE_TARGET} stage={link.stage} />}
       {away && (
         <div
           className="window-away"

@@ -27,16 +27,17 @@ export const KINDS: Record<SessionKind, KindMeta> = {
     icon: Server,
     imageLimit: 32 * MiB,
   },
-  remote: {
-    icon: ServerCog,
-    imageLimit: 32 * MiB,
-  },
 };
 
 /** Launcher order in the activity bar. */
-export const LAUNCHERS: SessionKind[] = ["shell", "browser", "editor", "ssh", "remote"];
+export const LAUNCHERS: SessionKind[] = ["shell", "browser", "editor", "ssh"];
 
 export function KindIcon({ kind, size }: { kind: SessionKind; size: number }) {
   const Icon = KINDS[kind].icon;
   return <Icon size={size} strokeWidth={1.75} className={`kind-icon kind-${kind}`} aria-hidden="true" />;
+}
+
+/** The server icon of a remote window, for the buttons that open one. */
+export function RemoteWindowIcon({ size }: { size: number }) {
+  return <ServerCog size={size} strokeWidth={1.75} className="kind-icon kind-remote" aria-hidden="true" />;
 }

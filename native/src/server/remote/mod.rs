@@ -22,7 +22,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin + Send> HostIo for T {}
 
 pub type HostStream = Box<dyn HostIo>;
 
-/// Why a remote pane could not connect, with the detail a person needs
+/// Why a remote westerm could not connect, with the detail a person needs
 /// (ssh's own words, a path, a version).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Failure {

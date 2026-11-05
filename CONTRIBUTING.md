@@ -60,9 +60,9 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 - `npm run dev` always forwards to :4317. Stop your everyday dashboard first (Ctrl+C). Your shells stay alive in the host.
 - Stop a test host with `westerm stop`, run with the same `WESTERM_STATE_DIR`. Then delete the folder.
 
-### Try remote westerm with a development build
+### Try remote windows with a development build
 
-A source build has no release with its code, so remote westerm installs a Linux build you make. Build both from the same source: westerm compares their version lines.
+A source build has no release with its code, so a remote window installs a Linux build you make on the server. Build both from the same source: westerm compares their version lines.
 
 ```bash
 brew install zig && cargo install cargo-zigbuild   # once (zig links the Linux build)
@@ -91,8 +91,15 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 | `native/src/protocol.rs` | Message format and validation |
 | `native/src/i18n.rs` | Text the host writes into terminals, in all languages |
 | `native/src/ipc.rs` | Dashboard ↔ host channel: Unix socket, or a named pipe on Windows |
-| `native/src/remote/` | Remote westerm on the server: `westerm gate`, `westerm remote-setup`, certificates, QUIC settings |
-| `native/src/server/remote/` | Remote westerm in the dashboard: ssh setup, install, QUIC and tunnel links |
+| `native/src/remote/` | Remote windows on the server: `westerm gate`, `westerm remote-setup`, `westerm remote-dashboard`, certificates, QUIC settings |
+| `native/src/remote/daemon.rs` | What the gate and the server dashboard share: one running copy, its record, and stopping it |
+| `native/src/remote/dashboard.rs` | `westerm remote-dashboard`: the server's dashboard, on a private Unix socket only |
+| `native/src/server/remote/` | Remote windows in the local dashboard: ssh setup, install, QUIC and tunnel links |
+| `native/src/server/remote_window.rs` | `/remote/<target>/…`: a remote window's requests, sent over the link to the server's dashboard |
+| `native/src/server/http1.rs` | One HTTP/1.1 request over any byte stream: to the PTY host, or over a link to a server |
+| `src/remoteWindow.ts` | A remote window's address (`/?remote=<target>`), its server paths, opening one |
+| `src/useRemoteLink.ts` | A remote window's link state from the local dashboard's status stream |
+| `src/components/RemoteConnect.tsx` | The connecting screen and the banner while a remote window's link is down |
 | `tests/` | UI tests (`node:test`) |
 | `native/tests/` | Rust integration tests against the real executable |
 | `macos/` | macOS app: Swift window (`app/main.swift`), icon, `build-app.sh` |
@@ -136,7 +143,7 @@ Remove private data first: host names, paths, and screen contents.
   - `scope`: the part the change touches, such as `remote`, `host`, `ui`, `i18n`, or `macos`.
   - `subject`: imperative mood, starting in lowercase, with no period at the end.
   - Examples: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
-- Fill in the template. Link the issue with `Closes #123`, so the issue closes on merge.
+- Fill in the template: a summary of at most 5 bullets, one line each, and the commands a reviewer runs to test. Link the issue with `Closes #123`, so the issue closes on merge.
 - Open a draft while you still work on it. Mark it ready when the checks in [Before you open a pull request](#before-you-open-a-pull-request) pass.
 - CI must pass on macOS, Linux, and Windows.
 - Answer review comments with new commits. Do not force-push during a review, so reviewers can see what changed.
@@ -157,6 +164,7 @@ All three must pass. Then check:
 - [ ] UI text is in `src/i18n/messages.ts`, in all four languages.
 - [ ] For a UI change, the pull request has a screenshot. Try light and dark themes.
 - [ ] Docs match the change: `docs/` for behavior, the READMEs for run or develop steps.
+- [ ] `CHANGELOG.md` has a line under `[Unreleased]` for a change that users notice.
 
 ## Rules
 

@@ -52,18 +52,24 @@ The macOS app and browser tabs use the same sessions. One window at a time has t
 
 ## Remote sessions
 
-A remote westerm pane's shell lives in the PTY host on the server, not on this computer.
+A remote window shows the tabs and shells of a server. They live in the PTY host on the server, not on this computer. The layout (workspaces, tabs, panes) is saved on the server too, in its `workspace.json`.
 
 | What happens | What you get |
 |---|---|
-| Wi‑Fi changes, or a short drop | QUIC moves the connection to the new network, or the pane reconnects to the same shell. |
-| Sleep, a long drop, a dashboard restart | The pane reconnects to the same shell, its screen replayed ("reconnected"). |
+| Close the window | Nothing ends on the server. Open the server again to see the same tabs and shells. |
+| Wi‑Fi changes, or a short drop | QUIC moves the connection to the new network, or the panes reconnect to the same shells. |
+| Sleep, a long drop | A "Reconnecting…" banner shows. The panes reconnect to the same shells, their screens replayed ("reconnected"). |
+| Restart the local dashboard | The window reconnects and shows the same tabs and shells. |
 | The server reboots | The next connection starts westerm there again. Shells come back from their saved screens ("restored"). |
-| westerm on this computer is updated | The server gets the same version. If its running host is older and has open shells, the pane asks before replacing it, because replacing ends their programs. |
+| westerm on this computer is updated | Open remote windows reload. The server gets the same version at the next connection. If its running host is older and has open shells, the window asks before replacing it, because replacing ends their programs. |
 
-- Remote panes keep trying to reconnect for as long as they are open (local panes stop after 8 tries).
-- Closing a remote pane ends its shell on the server. When the server is out of reach at that moment, the shell ends at the next connection.
-- A server that ends a user's processes at logout (systemd-logind `KillUserProcesses=yes`, without lingering) ends these shells too; the pane says so.
+- Panes keep trying to reconnect for as long as the window is open (local panes stop after 8 tries). Temporary failures retry with waits of up to 8 seconds. After a failed SSH check, the next one waits at least 30 seconds.
+- A permanent failure stops the retries and shows the reason with a "Try again" button. Examples: the SSH key is refused, the host key is unknown, the server is not supported, or the server has a newer westerm.
+- Another computer that opens the same server sees the same tabs and shells. As with local windows, one window at a time has the sessions. The other shows "In use in another window" and takes them back when you click it, once its link is up.
+- A window that comes back after sleep or a lost network reads the server's layout before it saves its own. If another computer changed the layout meanwhile, the window takes the server's layout. Known limit: the window that comes back also takes the sessions from the window in use; click that window to take them back.
+- Closing a pane, a tab, or a workspace ends its shells on the server. Panes closed while the link was down end at the next connection.
+- A server that ends a user's processes at logout (systemd-logind `KillUserProcesses=yes`, without lingering) ends these shells too; the header badge then shows a warning icon, and its tooltip says so.
+- Shells of a v0.2.0 remote westerm pane stay on the server after the update, but no window shows them. `westerm stop` on the server ends them.
 
 ## Host replacement
 

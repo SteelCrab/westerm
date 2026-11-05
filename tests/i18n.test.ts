@@ -40,5 +40,6 @@ test("parameterized messages include their values in every language", () => {
     assert.ok(t.workspaces.rename("빌드").includes("빌드"), locale);
     assert.ok(t.workspaces.changeLook("빌드").includes("빌드"), locale);
     assert.ok(t.palette.moveTabToWorkspace("빌드").includes("빌드"), locale);
+    assert.ok(t.remote.connectingTo("pista@msi").includes("pista@msi"), locale);
   }
 });

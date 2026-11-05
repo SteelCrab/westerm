@@ -7,22 +7,20 @@ Rules: CONTRIBUTING.md ▸ Pull requests.
 
 ## Summary
 
-<!-- What changes, and why. -->
+<!--
+At most 5 bullets, one line each: what changes, and why.
+When PTY host code changes (HOST_SOURCES in native/build.rs), say so: users' shells restart once.
+Link an issue with "Closes #123" below the bullets.
+-->
 
-Closes #
+-
 
-## How I tested
+## How to test
 
-<!-- Commands you ran, and what you checked by hand. For a UI change, add screenshots in the light and dark themes. -->
+<!-- Commands a reviewer can copy and run, then what to check by hand. -->
 
-## Checklist
-
-<!-- If an item does not apply, leave it unchecked and say why. -->
-
-- [ ] `npm test`, `npm run type-check`, and `npm run build` pass.
-- [ ] One topic. Unrelated changes are in other pull requests.
-- [ ] New behavior has tests. A bug fix has a test that fails without the fix.
-- [ ] UI text is in `src/i18n/messages.ts`, in all four languages.
-- [ ] Docs match the change: `docs/` for behavior, the READMEs for run or develop steps.
-- [ ] `CHANGELOG.md` has a line under `[Unreleased]` for a change that users notice.
-- [ ] If PTY host code changes (`HOST_SOURCES` in `native/build.rs`), this pull request says so: users' shells restart once.
+```bash
+gh pr checkout <branch>
+npm ci
+npm test && npm run type-check && npm run build
+```

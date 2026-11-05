@@ -22,8 +22,13 @@ import type { RenameTarget } from "./components/InlineRename.tsx";
 import { WorkspaceGlyph, workspaceColor } from "./components/WorkspaceMenu.tsx";
 import type { PaletteCommand } from "./components/CommandPalette.tsx";
 import { LOCALE_NAMES, LOCALES, type Locale, type Messages } from "./i18n/messages.ts";
-import { KindIcon, LAUNCHERS } from "./kinds.tsx";
-import { normalizeBrowserUrl, normalizeSshTarget, REMOTE_UPDATE_HOST_PATH } from "../shared/protocol.ts";
+import { KindIcon, LAUNCHERS, RemoteWindowIcon } from "./kinds.tsx";
+import {
+  normalizeBrowserUrl,
+  normalizeSshTarget,
+  REMOTE_RETRY_PATH,
+  REMOTE_UPDATE_HOST_PATH,
+} from "../shared/protocol.ts";
 import { postRemote } from "./remoteApi.ts";
 import type { SshHost } from "./useSshHosts.ts";
 import { shortcutLabel, type SwitchCommand } from "./shortcuts.ts";
@@ -76,8 +81,8 @@ export interface PaletteContext {
   t: Messages;
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  /** Asks GitHub again and shows the result. */
-  checkUpdates: () => void;
+  /** Asks GitHub again and shows the result. Null in a remote window, which does not update westerm. */
+  checkUpdates: (() => void) | null;
   /** A newer release, when there is one. */
   newVersion: string | null;
   showUpdate: () => void;
@@ -375,14 +380,18 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       keywords: "settings preferences options config theme font",
       run: ctx.openSettings,
     },
-    {
-      id: "check-updates",
-      title: t.palette.checkUpdates,
-      group: g.app,
-      icon: <CircleArrowUp size={14} />,
-      keywords: "update upgrade version release check",
-      run: ctx.checkUpdates,
-    },
+    ...(ctx.checkUpdates
+      ? [
+          {
+            id: "check-updates",
+            title: t.palette.checkUpdates,
+            group: g.app,
+            icon: <CircleArrowUp size={14} />,
+            keywords: "update upgrade version release check",
+            run: ctx.checkUpdates,
+          },
+        ]
+      : []),
     ...LOCALES.filter((locale) => locale !== ctx.locale).map((locale) => ({
       id: `language-${locale}`,
       title: t.palette.setLanguage(LOCALE_NAMES[locale]),
@@ -438,19 +447,30 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       run: () => dispatch({ type: "focus", id: session.id }),
     });
   }
-  // A kept older host on a server can be replaced later, once per server.
-  const remoteTargets = new Set(state.sessions.flatMap((session) => (session.kind === "remote" && session.target ? [session.target] : [])));
-  for (const target of remoteTargets) {
-    commands.push({
-      id: `remote-update-${target}`,
-      title: t.palette.updateRemoteHost(target),
-      group: g.remoteShell,
-      icon: <KindIcon kind="remote" size={14} />,
-      keywords: `westerm remote host update replace ${target}`,
-      run: () => void postRemote(REMOTE_UPDATE_HOST_PATH, { target }),
-    });
-  }
   return commands;
+}
+
+/**
+ * A remote window's own commands: replace its server's westerm host with this
+ * build now. Then the link comes back by itself, or, after a permanent
+ * failure (an incompatible old host), on the retry that follows.
+ */
+export function remoteWindowCommands(target: string, t: Messages): Array<PaletteCommand & { keywords: string }> {
+  return [
+    {
+      id: "update-this-host",
+      title: t.palette.updateThisHost,
+      hint: target,
+      group: t.palette.groups.app,
+      icon: <RemoteWindowIcon size={14} />,
+      keywords: `westerm remote server host update upgrade replace ${target}`,
+      run: () => {
+        void postRemote(REMOTE_UPDATE_HOST_PATH, { target }).then((ok) => {
+          if (ok) void postRemote(REMOTE_RETRY_PATH, { target });
+        });
+      },
+    },
+  ];
 }
 
 /** Typing something URL-like offers to open it in terminal-browser. */
@@ -473,12 +493,14 @@ export function urlCommands(query: string, open: PaletteContext["open"], t: Mess
 /**
  * SSH picker entries: each host as a remote shell and as a remote browser
  * (terminal-browser fetching through that host), plus whatever destination
- * the user typed.
+ * the user typed. With `openWindow`, each also opens as a remote window; a
+ * remote window passes null, since windows do not nest.
  */
 export function sshCommands(
   hosts: SshHost[],
   query: string | null,
   open: PaletteContext["open"],
+  openWindow: ((target: string) => void) | null,
   t: Messages,
 ): PaletteCommand[] {
   const entries: Array<{ target: string; hint?: string }> = [];
@@ -501,15 +523,19 @@ export function sshCommands(
       keywords: `ssh remote shell ${target}`,
       run: () => open("ssh", null, target),
     },
-    {
-      id: `remote-${target}`,
-      title: t.palette.remoteWesterm(target),
-      hint: t.palette.remoteWestermHint,
-      group: t.palette.groups.remoteShell,
-      icon: <KindIcon kind="remote" size={14} />,
-      keywords: `westerm remote quic persistent ${target}`,
-      run: () => open("remote", null, target),
-    },
+    ...(openWindow
+      ? [
+          {
+            id: `window-${target}`,
+            title: t.palette.openRemoteWindow(target),
+            hint: t.palette.openRemoteWindowHint,
+            group: t.palette.groups.remoteShell,
+            icon: <RemoteWindowIcon size={14} />,
+            keywords: `window remote server new open ${target}`,
+            run: () => openWindow(target),
+          },
+        ]
+      : []),
     {
       id: `ssh-browser-${target}`,
       title: t.palette.remoteBrowser(target),
