@@ -36,12 +36,51 @@ export interface SavedTab {
   maximizedId: string | null;
 }
 
+/** Icons a workspace can show. The first is the default. */
+export const WORKSPACE_ICONS = [
+  "layers",
+  "folder",
+  "code",
+  "terminal",
+  "globe",
+  "server",
+  "database",
+  "book",
+  "flask",
+  "rocket",
+  "bug",
+  "star",
+] as const;
+export type WorkspaceIcon = (typeof WORKSPACE_ICONS)[number];
+export const DEFAULT_WORKSPACE_ICON: WorkspaceIcon = WORKSPACE_ICONS[0];
+
+export function isWorkspaceIcon(value: unknown): value is WorkspaceIcon {
+  return (WORKSPACE_ICONS as readonly unknown[]).includes(value);
+}
+
+/** Colors a workspace can show, each a `--ws-<name>` theme value in src/styles.css. */
+export const WORKSPACE_COLORS = ["blue", "green", "yellow", "orange", "red", "pink", "purple", "gray"] as const;
+export type WorkspaceColor = (typeof WORKSPACE_COLORS)[number];
+
+export function isWorkspaceColor(value: unknown): value is WorkspaceColor {
+  return (WORKSPACE_COLORS as readonly unknown[]).includes(value);
+}
+
+/** The color of the workspace at this position, for files that do not say. */
+export function positionColor(index: number): WorkspaceColor {
+  return WORKSPACE_COLORS[index % WORKSPACE_COLORS.length];
+}
+
 export interface SavedWorkspace {
   id: string;
   /** User-set name, or null. */
   name: string | null;
   /** The tab the workspace shows; one of its own. */
   activeTabId: string;
+  /** Files from before icons, and icons this version does not know, get the default. */
+  icon: WorkspaceIcon;
+  /** Files from before colors, and colors this version does not know, get the position's color. */
+  color: WorkspaceColor;
 }
 
 /**
@@ -160,7 +199,9 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
     activeTabId,
     tabs: tabs.map((tab) => ({ ...tab, workspaceId: DEFAULT_WORKSPACE_ID })),
     sessions,
-    workspaces: [{ id: DEFAULT_WORKSPACE_ID, name: null, activeTabId }],
+    workspaces: [
+      { id: DEFAULT_WORKSPACE_ID, name: null, activeTabId, icon: DEFAULT_WORKSPACE_ICON, color: positionColor(0) },
+    ],
     activeWorkspaceId: DEFAULT_WORKSPACE_ID,
     ...legacy,
   };
@@ -179,14 +220,16 @@ function parseWorkspaces(
 ): Pick<SavedDashboard, "tabs" | "workspaces" | "activeWorkspaceId"> | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_TABS) return null;
   const workspaces: SavedWorkspace[] = [];
-  for (const item of value as unknown[]) {
+  for (const [index, item] of (value as unknown[]).entries()) {
     if (typeof item !== "object" || item === null) return null;
     const workspace = item as Record<string, unknown>;
     const name = workspace.name == null ? null : text(workspace.name);
     if (!isId(workspace.id) || !isId(workspace.activeTabId)) return null;
     if (workspaces.some((other) => other.id === workspace.id)) return null;
     if (workspace.name != null && name === null) return null;
-    workspaces.push({ id: workspace.id, name, activeTabId: workspace.activeTabId });
+    const icon = isWorkspaceIcon(workspace.icon) ? workspace.icon : DEFAULT_WORKSPACE_ICON;
+    const color = isWorkspaceColor(workspace.color) ? workspace.color : positionColor(index);
+    workspaces.push({ id: workspace.id, name, activeTabId: workspace.activeTabId, icon, color });
   }
   const known = (id: unknown): id is string => workspaces.some((workspace) => workspace.id === id);
   const owned: SavedTab[] = [];

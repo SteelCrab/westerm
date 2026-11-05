@@ -11,6 +11,7 @@ import { installCommandKeys } from "./command-keys.ts";
 import { PtyConnection, type ConnectionEvent } from "./connection.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { takeEnding } from "./ending.ts";
+import { keyboardFree } from "./keyboard.ts";
 import { fontStyle, type TerminalFont } from "./fonts.ts";
 
 
@@ -73,11 +74,6 @@ function useGhosttyCore(kind: SessionKind): { core: GhosttyCore | null; error: s
   return { core, error };
 }
 
-/** A dialog such as Settings keeps the keyboard; a terminal that reloads must not take it. */
-function modalOpen(): boolean {
-  return document.querySelector('[aria-modal="true"]') !== null;
-}
-
 export function TerminalView(props: TerminalViewProps) {
   const { sessionId, kind, url, cwdFrom, target, label, font, scheme, focused, focusNonce, visible } = props;
   const { core, error } = useGhosttyCore(kind);
@@ -102,7 +98,7 @@ export function TerminalView(props: TerminalViewProps) {
   );
 
   useEffect(() => {
-    if (focused && !modalOpen()) terminalRef.current?.focus();
+    if (focused && keyboardFree()) terminalRef.current?.focus();
   }, [focused, focusNonce]);
 
   // Live light/dark switch: repaints history and keeps app color overrides.
@@ -136,7 +132,7 @@ export function TerminalView(props: TerminalViewProps) {
         onOutput: (bytes) => wt.write(bytes),
         onEvent: (event) => callbacks.current.onEvent(event),
       });
-      if (callbacks.current.focused && !modalOpen()) wt.focus();
+      if (callbacks.current.focused && keyboardFree()) wt.focus();
     },
     [sessionId, kind, url, cwdFrom, target],
   );

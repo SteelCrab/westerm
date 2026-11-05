@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { WORKSPACE_COLORS } from "../shared/workspace-file.ts";
 import { fuzzyScore } from "../src/components/CommandPalette.tsx";
+import { placeRename } from "../src/components/InlineRename.tsx";
 import { clampSidebar } from "../src/components/SidebarResizer.tsx";
+import { updateShown } from "../src/components/UpdateButton.tsx";
+import { stepIndex, workspaceColor } from "../src/components/WorkspaceMenu.tsx";
 import { insertionIndex } from "../src/dnd.ts";
 import { MESSAGES } from "../src/i18n/messages.ts";
 import { urlCommands } from "../src/paletteCommands.tsx";
+import { keyboardFree } from "../src/terminal/keyboard.ts";
 
 const en = MESSAGES.en;
 
@@ -49,4 +55,55 @@ test("sidebar width is bounded", () => {
   assert.equal(clampSidebar(9999), 480);
   assert.equal(clampSidebar(Number.NaN), 240);
   assert.equal(clampSidebar(300.6), 301);
+});
+
+test("every workspace color has a value in the dark and both light theme blocks", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  for (const color of WORKSPACE_COLORS) {
+    assert.equal(css.split(`--ws-${color}:`).length - 1, 3, color);
+    assert.equal(workspaceColor(color), `var(--ws-${color})`);
+  }
+});
+
+test("arrow keys in the workspace menu wrap around", () => {
+  assert.equal(stepIndex(0, 1, 3), 1);
+  assert.equal(stepIndex(2, 1, 3), 0, "down from the last goes to the first");
+  assert.equal(stepIndex(0, -1, 3), 2, "up from the first goes to the last");
+  assert.equal(stepIndex(-1, 1, 3), 0, "nothing focused: down goes to the first");
+  assert.equal(stepIndex(-1, -1, 3), 2, "nothing focused: up goes to the last");
+});
+
+test("the terminal leaves the keyboard to dialogs and rename fields", () => {
+  // A palette command that starts a rename also closes the palette, and
+  // closing it asks the terminal to take the keyboard back.
+  const page = (modal: boolean, active: string | null) => ({
+    querySelector: (selector: string) => (modal && selector === '[aria-modal="true"]' ? {} : null),
+    activeElement: active === null ? null : { classList: { contains: (name: string) => name === active } },
+  });
+  assert.equal(keyboardFree(page(false, null)), true);
+  assert.equal(keyboardFree(page(false, "palette-input")), true);
+  assert.equal(keyboardFree(page(true, null)), false, "a dialog is open");
+  assert.equal(keyboardFree(page(false, "inline-rename")), false, "a rename field has the keyboard");
+});
+
+test("a rename field opens where the layout shows the item", () => {
+  const tab = { kind: "tab", id: "t1", where: "tabbar" } as const;
+  const workspace = { kind: "workspace", id: "w1", where: "tabbar" } as const;
+  assert.deepEqual(placeRename(tab, "top"), tab);
+  assert.deepEqual(placeRename(tab, "sidebar"), { ...tab, where: "sidebar" }, "no tab bar in the sidebar layout");
+  assert.deepEqual(placeRename(workspace, "top"), workspace);
+  assert.deepEqual(placeRename(workspace, "sidebar"), { ...workspace, where: "sidebar" });
+  assert.deepEqual(placeRename({ ...workspace, where: "sidebar" }, "top"), workspace, "no sidebar in the top layout");
+  const session = { kind: "session", id: "s1", where: "sidebar" } as const;
+  assert.deepEqual(placeRename(session, "top"), { ...session, where: "pane" });
+  assert.deepEqual(placeRename(session, "sidebar"), session, "the sidebar layout has both");
+  assert.deepEqual(placeRename({ ...session, where: "pane" }, "sidebar"), { ...session, where: "pane" });
+});
+
+test("the header shows the update button only when there is something to show", () => {
+  const status = (newer: boolean) => ({ newer, latest: newer ? "9.9.9" : null }) as never;
+  assert.equal(updateShown(null, false), false);
+  assert.equal(updateShown(status(false), false), false);
+  assert.equal(updateShown(status(true), false), true);
+  assert.equal(updateShown(status(false), true), true, "opened from the palette");
 });

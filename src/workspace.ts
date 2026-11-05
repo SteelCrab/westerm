@@ -1,5 +1,12 @@
 import type { AttachMode, SessionKind } from "../shared/protocol.ts";
-import type { SavedDashboard } from "../shared/workspace-file.ts";
+import {
+  DEFAULT_WORKSPACE_ICON,
+  positionColor,
+  WORKSPACE_COLORS,
+  type SavedDashboard,
+  type WorkspaceColor,
+  type WorkspaceIcon,
+} from "../shared/workspace-file.ts";
 import type { Notice } from "./i18n/messages.ts";
 import {
   dockPane,
@@ -72,6 +79,8 @@ export interface Workspace {
   name: string | null;
   /** The tab this workspace shows; always one of its own. */
   activeTabId: string;
+  icon: WorkspaceIcon;
+  color: WorkspaceColor;
 }
 
 /**
@@ -143,13 +152,13 @@ export type DashboardAction =
   | { type: "selectWorkspace"; id: string }
   /** An empty name returns the workspace to its number. */
   | { type: "renameWorkspace"; id: string; name: string }
+  | { type: "setWorkspaceIcon"; id: string; icon: WorkspaceIcon }
+  | { type: "setWorkspaceColor"; id: string; color: WorkspaceColor }
   /**
    * Closes the workspace, its tabs, and their sessions. `fallbackId` and
    * `fallbackTabId` name the empty workspace that replaces the last one.
    */
   | { type: "closeWorkspace"; id: string; fallbackId: string; fallbackTabId: string }
-  /** Puts the workspace at `toIndex` among the workspaces. */
-  | { type: "moveWorkspace"; id: string; toIndex: number }
   /**
    * Moves the tab to the end of another workspace and shows it there.
    * `fallbackId` names the empty tab left behind when it was the source's only tab.
@@ -172,7 +181,9 @@ export function createDashboard(workspaceId: string, tabId: string): Dashboard {
   return {
     sessions: [],
     tabs: [emptyTab(tabId, workspaceId)],
-    workspaces: [{ id: workspaceId, name: null, activeTabId: tabId }],
+    workspaces: [
+      { id: workspaceId, name: null, activeTabId: tabId, icon: DEFAULT_WORKSPACE_ICON, color: positionColor(0) },
+    ],
     activeWorkspaceId: workspaceId,
   };
 }
@@ -337,7 +348,7 @@ export function toSaved(state: Dashboard): SavedDashboard {
       maximizedId,
     })),
     sessions: state.sessions.map(({ id, kind, title, name, url, target }) => ({ id, kind, title, name, url, target })),
-    workspaces: state.workspaces.map(({ id, name, activeTabId }) => ({ id, name, activeTabId })),
+    workspaces: state.workspaces.map(({ id, name, activeTabId, icon, color }) => ({ id, name, activeTabId, icon, color })),
     activeWorkspaceId: state.activeWorkspaceId,
   };
 }
@@ -381,6 +392,12 @@ function patch(state: Dashboard, id: string, change: Partial<Session>): Dashboar
 
 function patchTab(state: Dashboard, tabId: string, change: Partial<Tab>): Dashboard {
   return { ...state, tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...change } : tab)) };
+}
+
+/** The first color no workspace has; past the last color, they repeat by position. */
+function freeColor(workspaces: readonly Workspace[]): WorkspaceColor {
+  const taken = new Set(workspaces.map((workspace) => workspace.color));
+  return WORKSPACE_COLORS.find((color) => !taken.has(color)) ?? positionColor(workspaces.length);
 }
 
 function patchWorkspace(state: Dashboard, workspaceId: string, change: Partial<Workspace>): Dashboard {
@@ -534,7 +551,7 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
           focusedId: tab.focusedId,
           maximizedId: tab.maximizedId,
         })),
-        workspaces: saved.workspaces.map(({ id, name, activeTabId }) => ({ id, name, activeTabId })),
+        workspaces: saved.workspaces.map(({ id, name, activeTabId, icon, color }) => ({ id, name, activeTabId, icon, color })),
         activeWorkspaceId: saved.activeWorkspaceId,
       };
       // Nothing is attached yet, so closing a legacy remote pane ends no session.
@@ -615,7 +632,16 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
       return {
         ...state,
         tabs: [...state.tabs, emptyTab(action.tabId, action.id)],
-        workspaces: [...state.workspaces, { id: action.id, name: null, activeTabId: action.tabId }],
+        workspaces: [
+          ...state.workspaces,
+          {
+            id: action.id,
+            name: null,
+            activeTabId: action.tabId,
+            icon: DEFAULT_WORKSPACE_ICON,
+            color: freeColor(state.workspaces),
+          },
+        ],
         activeWorkspaceId: action.id,
       };
     }
@@ -625,6 +651,16 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
     case "renameWorkspace":
       if (!state.workspaces.some((workspace) => workspace.id === action.id)) return state;
       return patchWorkspace(state, action.id, { name: cleanName(action.name) });
+    case "setWorkspaceIcon": {
+      const workspace = state.workspaces.find((item) => item.id === action.id);
+      if (!workspace || workspace.icon === action.icon) return state;
+      return patchWorkspace(state, action.id, { icon: action.icon });
+    }
+    case "setWorkspaceColor": {
+      const workspace = state.workspaces.find((item) => item.id === action.id);
+      if (!workspace || workspace.color === action.color) return state;
+      return patchWorkspace(state, action.id, { color: action.color });
+    }
     case "closeWorkspace": {
       const index = state.workspaces.findIndex((workspace) => workspace.id === action.id);
       if (index < 0) return state;
@@ -640,12 +676,6 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
         workspaces,
         activeWorkspaceId,
       };
-    }
-    case "moveWorkspace": {
-      const moving = state.workspaces.find((workspace) => workspace.id === action.id);
-      if (!moving) return state;
-      const workspaces = moveTo(state.workspaces, moving, action.toIndex);
-      return workspaces === state.workspaces ? state : { ...state, workspaces };
     }
     case "moveTabToWorkspace": {
       const moving = state.tabs.find((tab) => tab.id === action.id);

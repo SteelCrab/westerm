@@ -1,6 +1,12 @@
 import { useCallback, useState } from "react";
 import type { ThemeChoice } from "./theme.ts";
 
+/**
+ * Where the workspaces and tabs are. top: a workspace menu and the tab bar,
+ * with no sidebar. sidebar: both in the sidebar, with no tab bar.
+ */
+export type Layout = "top" | "sidebar";
+
 /** Preferences kept in this browser (or in the macOS app's web view). */
 export interface Settings {
   /** "system" follows the OS appearance. */
@@ -9,9 +15,10 @@ export interface Settings {
   fontFamily: string;
   /** Look for a new release when the dashboard opens and every few hours. */
   autoUpdate: boolean;
+  layout: Layout;
 }
 
-export const DEFAULT_SETTINGS: Settings = { theme: "system", fontFamily: "", autoUpdate: true };
+export const DEFAULT_SETTINGS: Settings = { theme: "system", fontFamily: "", autoUpdate: true, layout: "top" };
 
 const KEY = "westerm.settings";
 export const FONT_FAMILY_MAX = 200;
@@ -29,6 +36,7 @@ export function parseSettings(raw: string | null): Settings {
     theme: saved.theme === "light" || saved.theme === "dark" ? saved.theme : DEFAULT_SETTINGS.theme,
     fontFamily: typeof saved.fontFamily === "string" ? saved.fontFamily.slice(0, FONT_FAMILY_MAX) : DEFAULT_SETTINGS.fontFamily,
     autoUpdate: typeof saved.autoUpdate === "boolean" ? saved.autoUpdate : DEFAULT_SETTINGS.autoUpdate,
+    layout: saved.layout === "sidebar" ? "sidebar" : DEFAULT_SETTINGS.layout,
   };
 }
 

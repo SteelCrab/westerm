@@ -8,7 +8,8 @@ interface ActivityBarProps {
   sidebarOpen: boolean;
   counts: Record<SessionKind, number>;
   onLaunch: (kind: SessionKind) => void;
-  onToggleSidebar: () => void;
+  /** Null in the top layout, which has no sidebar. */
+  onToggleSidebar: (() => void) | null;
   onOpenSettings: () => void;
   onOpenPalette: () => void;
   /** Picks a server to open in a new window. Null in a remote window: windows do not nest. */
@@ -71,14 +72,16 @@ export function ActivityBar(props: ActivityBarProps) {
         <BarButton label={t.activity.settings} tooltip={t.activity.settings} onClick={onOpenSettings}>
           <Settings size={18} strokeWidth={1.75} />
         </BarButton>
-        <BarButton
-          label={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
-          tooltip={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
-          pressed={sidebarOpen}
-          onClick={onToggleSidebar}
-        >
-          {sidebarOpen ? <PanelLeftClose size={18} strokeWidth={1.75} /> : <PanelLeftOpen size={18} strokeWidth={1.75} />}
-        </BarButton>
+        {onToggleSidebar && (
+          <BarButton
+            label={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
+            tooltip={sidebarOpen ? t.activity.hideSessions : t.activity.showSessions}
+            pressed={sidebarOpen}
+            onClick={onToggleSidebar}
+          >
+            {sidebarOpen ? <PanelLeftClose size={18} strokeWidth={1.75} /> : <PanelLeftOpen size={18} strokeWidth={1.75} />}
+          </BarButton>
+        )}
       </div>
     </nav>
   );

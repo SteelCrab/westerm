@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Minus, Plus, X } from "lucide-react";
 import { LOCALE_NAMES, LOCALES, useI18n, type Locale } from "../i18n/index.tsx";
-import { FONT_FAMILY_MAX, type Settings } from "../settings.ts";
+import { FONT_FAMILY_MAX, type Layout, type Settings } from "../settings.ts";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE, type TerminalFont } from "../terminal/fonts.ts";
 import type { ThemeChoice } from "../theme.ts";
 import type { UpdateState } from "../useUpdate.ts";
@@ -24,7 +24,7 @@ interface SettingsDialogProps {
 
 const REPOSITORY = "https://github.com/SteelCrab/westerm";
 
-/** Preferences: language, theme, terminal font, and updates. Changes apply at once. */
+/** Preferences: language, theme, where the workspaces and tabs are, terminal font, and updates. Changes apply at once. */
 export function SettingsDialog(props: SettingsDialogProps) {
   const { settings, onChange, font, update, onClose } = props;
   const { t, choice, setLocale, followSystem } = useI18n();
@@ -64,6 +64,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ["system", t.settings.themeSystem],
     ["light", t.settings.themeLight],
     ["dark", t.settings.themeDark],
+  ];
+  const layouts: Array<[Layout, string]> = [
+    ["top", t.settings.layoutTop],
+    ["sidebar", t.settings.layoutSidebar],
   ];
 
   const checkNow = async () => {
@@ -138,6 +142,22 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   role="radio"
                   aria-checked={settings.theme === value}
                   onClick={() => onChange({ theme: value })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="settings-row">
+            <span id="settings-layout-label">{t.settings.layout}</span>
+            <div className="seg" role="radiogroup" aria-labelledby="settings-layout-label">
+              {layouts.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={settings.layout === value}
+                  onClick={() => onChange({ layout: value })}
                 >
                   {label}
                 </button>

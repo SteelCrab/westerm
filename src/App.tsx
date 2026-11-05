@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import type { SessionKind } from "../shared/protocol.ts";
+import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.tsx";
-import type { RenameTarget } from "./components/InlineRename.tsx";
+import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
 import { PaneLayer } from "./components/PaneLayer.tsx";
 import { RemoteBanner, RemoteConnect, stageText } from "./components/RemoteConnect.tsx";
 import { SessionList } from "./components/SessionList.tsx";
 import { isCompact, SidebarResizer } from "./components/SidebarResizer.tsx";
 import { TabBar } from "./components/TabBar.tsx";
+import { WorkspaceMenu } from "./components/WorkspaceMenu.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
-import { UpdateButton } from "./components/UpdateButton.tsx";
+import { UpdateButton, updateShown } from "./components/UpdateButton.tsx";
 import { useI18n } from "./i18n/index.tsx";
 import { RemoteWindowIcon } from "./kinds.tsx";
 import {
@@ -171,11 +173,37 @@ export function App() {
     [dispatch],
   );
 
-  // The workspace's name is edited in the sidebar, so it must be open.
-  const renameWorkspace = useCallback(() => {
-    setSidebarOpen(true);
-    setRenaming({ kind: "workspace", id: activeWorkspace(stateRef.current).id, where: "sidebar" });
-  }, []);
+  // A rename field opens where the layout shows the item. In the sidebar
+  // layout, the sidebar must be open for it.
+  const layout = settings.layout;
+  const rename = useCallback(
+    (target: RenameTarget | null) => {
+      if (target === null) {
+        setRenaming(null);
+        setFocusNonce((value) => value + 1);
+        return;
+      }
+      const placed = placeRename(target, layout);
+      if (placed.where === "sidebar") setSidebarOpen(true);
+      setRenaming(placed);
+    },
+    [layout],
+  );
+
+  const renameWorkspace = useCallback(
+    () => rename({ kind: "workspace", id: activeWorkspace(stateRef.current).id, where: "tabbar" }),
+    [rename],
+  );
+
+  const setWorkspaceIcon = useCallback(
+    (id: string, icon: WorkspaceIcon) => dispatch({ type: "setWorkspaceIcon", id, icon }),
+    [dispatch],
+  );
+
+  const setWorkspaceColor = useCallback(
+    (id: string, color: WorkspaceColor) => dispatch({ type: "setWorkspaceColor", id, color }),
+    [dispatch],
+  );
 
   const movePaneToNewTab = useCallback(
     (paneId: string) => {
@@ -185,11 +213,6 @@ export function App() {
     },
     [dispatch],
   );
-
-  const rename = useCallback((target: RenameTarget | null) => {
-    setRenaming(target);
-    if (target === null) setFocusNonce((value) => value + 1);
-  }, []);
 
   const closePalette = useCallback(() => {
     setPalette(null);
@@ -287,7 +310,7 @@ export function App() {
         closeWorkspace,
         moveTabToWorkspace,
         openSshPicker: () => setPalette("ssh"),
-        toggleSidebar: () => setSidebarOpen((value) => !value),
+        toggleSidebar: layout === "top" ? null : () => setSidebarOpen((value) => !value),
         changeFontSize: changeSize,
         resetFontSize: resetSize,
         t,
@@ -318,6 +341,7 @@ export function App() {
       setLocale,
       checkUpdates,
       update.status,
+      layout,
     ],
   );
   const dynamicCommands = useCallback((query: string) => urlCommands(query, open, t), [open, t]);
@@ -336,22 +360,29 @@ export function App() {
   const counts = { shell: 0, browser: 0, editor: 0, ssh: 0 } satisfies Record<SessionKind, number>;
   for (const session of state.sessions) counts[session.kind] += 1;
 
+  // Top: the workspace menu and the tab bar, no sidebar. Sidebar: both in the
+  // sidebar, no tab bar; the header stays only for the update button.
+  const onTop = layout === "top";
+  const sidebarShown = !onTop && sidebarOpen;
+  // A remote window always shows its server in the header.
+  const headerShown = onTop || REMOTE_TARGET !== null || updateShown(update.status, updateOpen);
+
   return (
     <div
-      className={`app${sidebarOpen ? "" : " sidebar-collapsed"}`}
+      className={`app${sidebarShown ? "" : " sidebar-collapsed"}`}
       style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
     >
       <ActivityBar
         sidebarOpen={sidebarOpen}
         counts={counts}
         onLaunch={open}
-        onToggleSidebar={() => setSidebarOpen((value) => !value)}
+        onToggleSidebar={onTop ? null : () => setSidebarOpen((value) => !value)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenPalette={() => setPalette("commands")}
         onOpenRemoteWindow={openWindow && (() => setPalette("window"))}
         paletteShortcut={PALETTE_SHORTCUT}
       />
-      {sidebarOpen && (
+      {sidebarShown && (
         <div className="sidebar-slot">
           <SessionList
             state={state}
@@ -372,49 +403,68 @@ export function App() {
             onSelectWorkspace={(id) => dispatch({ type: "selectWorkspace", id })}
             onCloseWorkspace={closeWorkspace}
             onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
-            onMoveWorkspace={(id, toIndex) => dispatch({ type: "moveWorkspace", id, toIndex })}
-            onMoveTabToWorkspace={moveTabToWorkspace}
+            onSetWorkspaceIcon={setWorkspaceIcon}
+            onSetWorkspaceColor={setWorkspaceColor}
             compact={isCompact(sidebarWidth)}
           />
           <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
         </div>
       )}
       <main className="workspace">
-        <header className="workspace-header">
-          <TabBar
-            state={state}
-            renaming={renaming}
-            onSelect={(id) => dispatch({ type: "selectTab", id })}
-            onClose={(id) => dispatch({ type: "closeTab", id, fallbackId: newId("t") })}
-            onNew={newTab}
-            onRename={rename}
-            onRenameTab={(id, name) => dispatch({ type: "renameTab", id, name })}
-            onMoveTab={(id, toIndex) => dispatch({ type: "moveTab", id, toIndex })}
-            onMovePane={(paneId, tabId) =>
-              dispatch({ type: "movePane", id: paneId, toTabId: tabId, aspect: layerAspect() })
-            }
-            onMovePaneToNewTab={movePaneToNewTab}
-            onDragEnd={() => setDragging(null)}
-          />
-          <div className="workspace-tools">
-            {REMOTE_TARGET === null ? (
-              <UpdateButton update={update} open={updateOpen} onOpenChange={setUpdateOpen} />
-            ) : (
-              <span className="remote-badge" title={stageText(link.stage, t)}>
-                <RemoteWindowIcon size={13} />
-                <span className="remote-badge-target">{REMOTE_TARGET}</span>
-                {link.stage?.stage === "connected" && (
-                  <>
-                    <span className="remote-badge-via">{t.remote.via[link.stage.via]}</span>
-                    {link.stage.killOnLogout && (
-                      <TriangleAlert size={13} className="remote-badge-warn" role="img" aria-label={t.remote.killOnLogout} />
-                    )}
-                  </>
-                )}
-              </span>
+        {headerShown && (
+          <header className="workspace-header">
+            {onTop && (
+              <>
+                <WorkspaceMenu
+                  where="tabbar"
+                  labelled={false}
+                  state={state}
+                  renaming={renaming}
+                  onRename={rename}
+                  onSelect={(id) => dispatch({ type: "selectWorkspace", id })}
+                  onNew={newWorkspace}
+                  onClose={closeWorkspace}
+                  onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
+                  onSetIcon={setWorkspaceIcon}
+                  onSetColor={setWorkspaceColor}
+                />
+                <TabBar
+                  state={state}
+                  renaming={renaming}
+                  onSelect={(id) => dispatch({ type: "selectTab", id })}
+                  onClose={(id) => dispatch({ type: "closeTab", id, fallbackId: newId("t") })}
+                  onNew={newTab}
+                  onRename={rename}
+                  onRenameTab={(id, name) => dispatch({ type: "renameTab", id, name })}
+                  onMoveTab={(id, toIndex) => dispatch({ type: "moveTab", id, toIndex })}
+                  onMovePane={(paneId, tabId) =>
+                    dispatch({ type: "movePane", id: paneId, toTabId: tabId, aspect: layerAspect() })
+                  }
+                  onMovePaneToNewTab={movePaneToNewTab}
+                  onDragEnd={() => setDragging(null)}
+                />
+              </>
             )}
-          </div>
-        </header>
+            <div className="workspace-tools">
+              {REMOTE_TARGET === null ? (
+                <UpdateButton update={update} open={updateOpen} onOpenChange={setUpdateOpen} />
+              ) : (
+                <span className="remote-badge" title={stageText(link.stage, t)}>
+                  <RemoteWindowIcon size={13} />
+                  <span className="remote-badge-target">{REMOTE_TARGET}</span>
+                  {link.stage?.stage === "connected" && (
+                    <>
+                      <span className="remote-badge-via">{t.remote.via[link.stage.via]}</span>
+                      {link.stage.killOnLogout && (
+                        <TriangleAlert size={13} className="remote-badge-warn" role="img" aria-label={t.remote.killOnLogout} />
+                      )}
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
+          </header>
+        )}
         {REMOTE_TARGET !== null && link.connectedOnce && !link.connected && (
           <RemoteBanner target={REMOTE_TARGET} stage={link.stage} />
         )}

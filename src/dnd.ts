@@ -2,7 +2,6 @@
 // text fields such as the terminal's input textarea.
 export const PANE_MIME = "application/x-wterm-pane";
 export const TAB_MIME = "application/x-wterm-tab";
-export const WORKSPACE_MIME = "application/x-wterm-workspace";
 
 export function carries(event: React.DragEvent, mime: string): boolean {
   return event.dataTransfer.types.includes(mime);

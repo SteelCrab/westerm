@@ -1,11 +1,26 @@
 import { useEffect, useRef } from "react";
 import { useI18n } from "../i18n/index.tsx";
+import type { Layout } from "../settings.ts";
 
 /** Where a rename was started; the input appears in that spot. */
 export type RenameTarget =
   | { kind: "tab"; id: string; where: "tabbar" | "sidebar" }
   | { kind: "session"; id: string; where: "pane" | "sidebar" }
-  | { kind: "workspace"; id: string; where: "sidebar" };
+  | { kind: "workspace"; id: string; where: "tabbar" | "sidebar" };
+
+/**
+ * The same target, where the layout shows it: the tab bar is only in the top
+ * layout, the sidebar only in the sidebar layout.
+ */
+export function placeRename(target: RenameTarget, layout: Layout): RenameTarget {
+  switch (target.kind) {
+    case "tab":
+    case "workspace":
+      return { ...target, where: layout === "top" ? "tabbar" : "sidebar" };
+    case "session":
+      return layout === "top" ? { ...target, where: "pane" } : target;
+  }
+}
 
 interface InlineRenameProps {
   /** Current label, preselected. */

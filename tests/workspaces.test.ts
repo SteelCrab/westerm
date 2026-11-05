@@ -112,6 +112,45 @@ test("tabs reorder within their workspace", () => {
   assert.equal(dashboardReducer(state, { type: "moveTab", id: "t3", toIndex: 0 }), state, "no-op keeps state");
 });
 
+test("a workspace keeps the icon picked for it", () => {
+  let state = twoWorkspaces();
+  assert.deepEqual(
+    state.workspaces.map((workspace) => workspace.icon),
+    ["layers", "layers"],
+    "new workspaces start with the default icon",
+  );
+  state = dashboardReducer(state, { type: "setWorkspaceIcon", id: "w1", icon: "rocket" });
+  assert.equal(state.workspaces[0].icon, "rocket");
+  assert.equal(state.workspaces[1].icon, "layers", "the other workspace keeps its icon");
+  assert.equal(dashboardReducer(state, { type: "setWorkspaceIcon", id: "w1", icon: "rocket" }), state, "no-op keeps state");
+  assert.equal(dashboardReducer(state, { type: "setWorkspaceIcon", id: "nope", icon: "bug" }), state);
+});
+
+test("a new workspace takes the first color that no other workspace has", () => {
+  let state = run(
+    twoWorkspaces(),
+    { type: "newWorkspace", id: "w3", tabId: "t4" },
+    { type: "newWorkspace", id: "w4", tabId: "t5" },
+  );
+  assert.deepEqual(state.workspaces.map((workspace) => workspace.color), ["blue", "green", "yellow", "orange"]);
+  state = run(
+    state,
+    { type: "closeWorkspace", id: "w2", fallbackId: "unused", fallbackTabId: "unused" },
+    { type: "newWorkspace", id: "w5", tabId: "t6" },
+  );
+  assert.equal(state.workspaces.at(-1)?.color, "green", "the color of a closed workspace is free again");
+});
+
+test("a workspace keeps the color picked for it", () => {
+  let state = dashboardReducer(twoWorkspaces(), { type: "setWorkspaceColor", id: "w1", color: "pink" });
+  assert.equal(state.workspaces[0].color, "pink");
+  assert.equal(state.workspaces[1].color, "green", "the other workspace keeps its color");
+  assert.equal(dashboardReducer(state, { type: "setWorkspaceColor", id: "w1", color: "pink" }), state, "no-op keeps state");
+  assert.equal(dashboardReducer(state, { type: "setWorkspaceColor", id: "nope", color: "red" }), state);
+  state = dashboardReducer(state, { type: "newWorkspace", id: "w3", tabId: "t4" });
+  assert.equal(state.workspaces[2].color, "blue", "a picked color frees the one it replaced");
+});
+
 test("a workspace is numbered until it is named", () => {
   let state = twoWorkspaces();
   const label = (id: string) => workspaceLabel(state, state.workspaces.find((w) => w.id === id)!, untitled);
@@ -146,16 +185,6 @@ test("closing a workspace ends its sessions and shows a neighbor", () => {
   assert.deepEqual(sessionIds(state), []);
 });
 
-test("workspaces can be reordered", () => {
-  let state = dashboardReducer(twoWorkspaces(), { type: "newWorkspace", id: "w3", tabId: "t4" });
-  state = dashboardReducer(state, { type: "moveWorkspace", id: "w3", toIndex: 0 });
-  assert.deepEqual(workspaceIds(state), ["w3", "w1", "w2"]);
-  state = dashboardReducer(state, { type: "moveWorkspace", id: "w3", toIndex: 99 });
-  assert.deepEqual(workspaceIds(state), ["w1", "w2", "w3"]);
-  assert.equal(dashboardReducer(state, { type: "moveWorkspace", id: "w1", toIndex: 0 }), state, "no-op keeps state");
-  assert.equal(activeWorkspace(state).id, "w3", "moving does not change the workspace in view");
-});
-
 test("a tab can move to another workspace", () => {
   let state = twoWorkspaces();
   state = dashboardReducer(state, { type: "moveTabToWorkspace", id: "t3", workspaceId: "w1", fallbackId: "t9" });
@@ -184,7 +213,13 @@ test("a saved dashboard round-trips its workspaces", () => {
   let state = open(open(start(), "sa"), "sb");
   state = run(state, { type: "newTab", id: "t2" }, { type: "newWorkspace", id: "w2", tabId: "t3" });
   state = open(state, "sc");
-  state = run(state, { type: "renameWorkspace", id: "w2", name: "서버" }, { type: "selectTab", id: "t2" });
+  state = run(
+    state,
+    { type: "renameWorkspace", id: "w2", name: "서버" },
+    { type: "setWorkspaceIcon", id: "w2", icon: "server" },
+    { type: "setWorkspaceColor", id: "w2", color: "purple" },
+    { type: "selectTab", id: "t2" },
+  );
   const saved = toSaved(state);
   assert.equal(saved.activeTabId, "t2", "files keep the tab in view for older versions");
   const parsed = parseSavedDashboard(JSON.parse(JSON.stringify(saved)));
@@ -194,6 +229,8 @@ test("a saved dashboard round-trips its workspaces", () => {
   assert.equal(activeWorkspace(restored).id, "w1");
   assert.equal(activeTab(restored).id, "t2");
   assert.equal(workspaceLabel(restored, restored.workspaces[1], untitled), "서버");
+  assert.equal(restored.workspaces[1].icon, "server");
+  assert.equal(restored.workspaces[1].color, "purple");
 });
 
 test("taking the sessions back brings the other window's workspaces", () => {
@@ -227,6 +264,30 @@ test("a file from before workspaces opens as one workspace with all its tabs", (
   assert.equal(state.workspaces.length, 1);
   assert.deepEqual(tabIds(state), ["t1", "t2"]);
   assert.equal(activeTab(state).id, "t2");
+});
+
+test("a saved icon or color this version does not know gets the default", () => {
+  const file = {
+    ...legacyFile,
+    workspaces: [
+      { id: "wa", name: null, activeTabId: "t1", icon: "spaceship", color: "ultraviolet" },
+      { id: "wb", name: null, activeTabId: "t2", icon: "rocket" },
+    ],
+    activeWorkspaceId: "wa",
+    tabs: legacyFile.tabs.map((tab, index) => ({ ...tab, workspaceId: index === 0 ? "wa" : "wb" })),
+  };
+  const saved = parseSavedDashboard(file);
+  assert.deepEqual(
+    saved?.workspaces,
+    [
+      { id: "wa", name: null, activeTabId: "t1", icon: "layers", color: "blue" },
+      { id: "wb", name: null, activeTabId: "t2", icon: "rocket", color: "green" },
+    ],
+    "the workspaces stay, and a missing color comes from the position",
+  );
+  const legacy = parseSavedDashboard(legacyFile)?.workspaces[0];
+  assert.equal(legacy?.icon, "layers", "files from before icons");
+  assert.equal(legacy?.color, "blue", "files from before colors");
 });
 
 test("broken workspace data falls back to one workspace instead of losing the tabs", () => {

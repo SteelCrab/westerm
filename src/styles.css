@@ -18,6 +18,15 @@
   --ok: #4fc27a;
   --warn: #e5b454;
   --danger: #ef6b6b;
+  /* Workspace colors (shared/workspace-file.ts WORKSPACE_COLORS). */
+  --ws-blue: #6aa9ff;
+  --ws-green: #4fc27a;
+  --ws-yellow: #e5b454;
+  --ws-orange: #f0a35e;
+  --ws-red: #ef6b6b;
+  --ws-pink: #f07fba;
+  --ws-purple: #a78bfa;
+  --ws-gray: #8b94a1;
   --on-accent: #062218;
   --pane-bg: #1e1e1e;
   --overlay: rgba(13, 15, 18, 0.78);
@@ -67,6 +76,14 @@
     --ok: #23a058;
     --warn: #c48a12;
     --danger: #d64545;
+    --ws-blue: #2f6fde;
+    --ws-green: #1f9653;
+    --ws-yellow: #a87708;
+    --ws-orange: #c26a1a;
+    --ws-red: #d64545;
+    --ws-pink: #c43c85;
+    --ws-purple: #7c4ddb;
+    --ws-gray: #68717d;
     --on-accent: #ffffff;
     --pane-bg: #fafafa;
     --overlay: rgba(247, 248, 250, 0.82);
@@ -97,6 +114,14 @@
   --ok: #23a058;
   --warn: #c48a12;
   --danger: #d64545;
+  --ws-blue: #2f6fde;
+  --ws-green: #1f9653;
+  --ws-yellow: #a87708;
+  --ws-orange: #c26a1a;
+  --ws-red: #d64545;
+  --ws-pink: #c43c85;
+  --ws-purple: #7c4ddb;
+  --ws-gray: #68717d;
   --on-accent: #ffffff;
   --pane-bg: #fafafa;
   --overlay: rgba(247, 248, 250, 0.82);
@@ -792,6 +817,8 @@ button {
   flex: none;
   align-items: center;
   gap: 14px;
+  /* At the right end, also when the header has no tabs (sidebar layout). */
+  margin-left: auto;
 }
 
 .icon-button:disabled {
@@ -959,6 +986,233 @@ button {
 .tab-new:hover {
   background: var(--surface-2);
   color: var(--text);
+}
+
+/* ---- Workspace menu (Settings ▸ Workspaces ▸ Top) -------------------- */
+
+.ws-menu {
+  position: relative;
+  flex: none;
+  /* The header's gap is wider than the tabs need. */
+  margin-right: -6px;
+}
+
+.ws-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ws-button:hover,
+.ws-button[aria-expanded="true"] {
+  background: var(--border);
+}
+
+.ws-button:focus-visible,
+.ws-select:focus-visible,
+.ws-icon-button:focus-visible,
+.ws-color-option:focus-visible,
+.ws-icon-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.ws-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: min(260px, calc(100vw - 32px));
+  max-height: min(420px, calc(100vh - 80px));
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 16px 40px -12px var(--shadow);
+  font-size: 13px;
+}
+
+.ws-panel-title {
+  padding: 4px 8px 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ws-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  border-radius: 6px;
+}
+
+.ws-item:hover,
+.ws-create:hover {
+  background: var(--surface-2);
+}
+
+.ws-item.active {
+  background: var(--accent-soft);
+}
+
+.ws-select {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Lined up with the workspace icons above it. */
+.ws-create {
+  padding-left: 9px;
+}
+
+/* A click on a workspace's icon shows the colors and icons to pick from. */
+.ws-icon-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 3px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ws-icon-button:hover,
+.ws-icon-button[aria-expanded="true"] {
+  background: var(--border);
+}
+
+/* The color and icon choices below a workspace's row. */
+.ws-look {
+  margin: 0 4px 4px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.ws-colors {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ws-color-option {
+  display: grid;
+  place-items: center;
+  height: 26px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ws-color-option::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--swatch);
+}
+
+.ws-color-option:hover {
+  background: var(--border);
+}
+
+.ws-color-option[aria-pressed="true"]::before {
+  box-shadow:
+    0 0 0 2px var(--surface-2),
+    0 0 0 3.5px var(--swatch);
+}
+
+.ws-icons {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+}
+
+.ws-icon-option {
+  display: grid;
+  place-items: center;
+  height: 28px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ws-color);
+  cursor: pointer;
+}
+
+.ws-icon-option:hover {
+  background: var(--border);
+}
+
+.ws-icon-option[aria-pressed="true"] {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.ws-icon {
+  flex: none;
+  color: var(--ws-color);
+}
+
+/* The icon beside a rename field sits where it sits in the button. */
+.ws-item > .ws-icon {
+  margin: 0 9px;
+}
+
+.ws-rename {
+  height: 24px;
+}
+
+.ws-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-check {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.ws-item:hover .ws-action {
+  opacity: 1;
+}
+
+.ws-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
 }
 
 /* ---- Sidebar tree ---------------------------------------------------- */
@@ -1146,59 +1400,59 @@ button {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-/* ---- Sidebar workspaces ---------------------------------------------- */
+/* ---- Sidebar workspace menu ------------------------------------------ */
 
-/* Kept short so the tab tree below keeps most of the room. */
-.workspace-list {
+/* As tall as the tabs header below it. */
+.sidebar-workspace {
   display: flex;
   flex: none;
-  flex-direction: column;
-  max-height: 40%;
+  align-items: center;
+  height: 40px;
+  padding: 0 6px;
   border-bottom: 1px solid var(--border);
 }
 
-.workspace-list .tree {
-  flex: 0 1 auto;
-}
-
-.workspace-list-title {
+.ws-menu.in-sidebar {
   flex: 1;
+  min-width: 0;
+  margin-right: 0;
 }
 
-/* Outlined, to tell workspace numbers from the filled tab numbers. */
-.workspace-index {
-  display: inline-grid;
+.ws-button.labelled {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ws-button.labelled:hover,
+.ws-button.labelled[aria-expanded="true"] {
+  background: var(--surface-2);
+}
+
+.ws-button.labelled .ws-name {
+  text-align: left;
+}
+
+.ws-chevron {
   flex: none;
-  place-items: center;
-  min-width: 15px;
-  height: 15px;
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 1px var(--border-strong);
   color: var(--text-muted);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-.tree-workspace {
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.tree-workspace.active {
-  background: var(--accent-soft);
-  color: var(--text);
-}
-
-.tree-workspace.active .workspace-index {
-  background: var(--accent);
-  box-shadow: none;
-  color: var(--on-accent);
 }
 
 /* Icons only: the sidebar dragged narrow. Names show as tooltips. */
-.session-panel.compact .session-panel-header {
+.session-panel.compact .session-panel-header,
+.session-panel.compact .sidebar-workspace {
   justify-content: center;
   padding: 0;
+}
+
+.session-panel.compact .ws-menu.in-sidebar {
+  flex: none;
 }
 
 .session-panel.compact .tree {
@@ -1237,12 +1491,6 @@ button {
 }
 
 .session-panel.compact .tab-index {
-  min-width: 20px;
-  height: 20px;
-  font-size: 11px;
-}
-
-.session-panel.compact .workspace-index {
   min-width: 20px;
   height: 20px;
   font-size: 11px;

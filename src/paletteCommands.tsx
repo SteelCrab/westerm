@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { SessionKind } from "../shared/protocol.ts";
 import type { RenameTarget } from "./components/InlineRename.tsx";
+import { WorkspaceGlyph, workspaceColor } from "./components/WorkspaceMenu.tsx";
 import type { PaletteCommand } from "./components/CommandPalette.tsx";
 import { LOCALE_NAMES, LOCALES, type Locale, type Messages } from "./i18n/messages.ts";
 import { KindIcon, LAUNCHERS, RemoteWindowIcon } from "./kinds.tsx";
@@ -68,12 +69,13 @@ export interface PaletteContext {
   movePaneToNewTab: (paneId: string) => void;
   rename: (target: RenameTarget) => void;
   newWorkspace: () => void;
-  /** Opens the sidebar and edits the current workspace's name there. */
+  /** Edits the current workspace's name where the layout shows the workspaces. */
   renameWorkspace: () => void;
   closeWorkspace: (id: string) => void;
   moveTabToWorkspace: (tabId: string, workspaceId: string) => void;
   openSshPicker: () => void;
-  toggleSidebar: () => void;
+  /** Null in the top layout, which has no sidebar. */
+  toggleSidebar: (() => void) | null;
   changeFontSize: (delta: number) => void;
   resetFontSize: () => void;
   t: Messages;
@@ -323,15 +325,17 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     );
   }
 
-  commands.push(
-    {
+  if (ctx.toggleSidebar) {
+    commands.push({
       id: "toggle-sidebar",
       title: t.palette.toggleSidebar,
       group: g.view,
       icon: <PanelLeft size={14} />,
       keywords: "toggle sidebar panel",
       run: ctx.toggleSidebar,
-    },
+    });
+  }
+  commands.push(
     {
       id: "font-bigger",
       title: t.font.bigger,
@@ -398,13 +402,13 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     })),
   );
 
-  state.workspaces.forEach((item, index) => {
+  state.workspaces.forEach((item) => {
     if (item.id === workspace.id) return;
     commands.push({
       id: `go-workspace-${item.id}`,
       title: workspaceName(item),
       group: g.goWorkspace,
-      icon: <span className="workspace-index">{index + 1}</span>,
+      icon: <WorkspaceGlyph icon={item.icon} size={14} style={{ color: workspaceColor(item.color) }} />,
       keywords: "go switch workspace project",
       run: () => dispatch({ type: "selectWorkspace", id: item.id }),
     });
