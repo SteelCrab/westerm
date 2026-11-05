@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { SessionKind } from "../shared/protocol.ts";
 import type { RenameTarget } from "./components/InlineRename.tsx";
-import { workspaceColor } from "./components/WorkspaceMenu.tsx";
+import { WorkspaceGlyph, workspaceColor } from "./components/WorkspaceMenu.tsx";
 import type { PaletteCommand } from "./components/CommandPalette.tsx";
 import { LOCALE_NAMES, LOCALES, type Locale, type Messages } from "./i18n/messages.ts";
 import { KindIcon, LAUNCHERS } from "./kinds.tsx";
@@ -399,7 +399,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       id: `go-workspace-${item.id}`,
       title: workspaceName(item),
       group: g.goWorkspace,
-      icon: <Layers size={14} style={{ color: workspaceColor(index) }} />,
+      icon: <WorkspaceGlyph icon={item.icon} size={14} style={{ color: workspaceColor(index) }} />,
       keywords: "go switch workspace project",
       run: () => dispatch({ type: "selectWorkspace", id: item.id }),
     });

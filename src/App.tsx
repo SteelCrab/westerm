@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { SessionKind } from "../shared/protocol.ts";
+import type { WorkspaceIcon } from "../shared/workspace-file.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
 import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
@@ -151,6 +152,11 @@ export function App() {
   const renameWorkspace = useCallback(
     () => rename({ kind: "workspace", id: activeWorkspace(stateRef.current).id, where: "tabbar" }),
     [rename],
+  );
+
+  const setWorkspaceIcon = useCallback(
+    (id: string, icon: WorkspaceIcon) => dispatch({ type: "setWorkspaceIcon", id, icon }),
+    [dispatch],
   );
 
   const movePaneToNewTab = useCallback(
@@ -330,6 +336,7 @@ export function App() {
             onSelectWorkspace={(id) => dispatch({ type: "selectWorkspace", id })}
             onCloseWorkspace={closeWorkspace}
             onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
+            onSetWorkspaceIcon={setWorkspaceIcon}
             compact={isCompact(sidebarWidth)}
           />
           <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
@@ -350,6 +357,7 @@ export function App() {
                   onNew={newWorkspace}
                   onClose={closeWorkspace}
                   onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
+                  onSetIcon={setWorkspaceIcon}
                 />
                 <TabBar
                   state={state}

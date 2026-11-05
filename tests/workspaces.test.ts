@@ -112,6 +112,20 @@ test("tabs reorder within their workspace", () => {
   assert.equal(dashboardReducer(state, { type: "moveTab", id: "t3", toIndex: 0 }), state, "no-op keeps state");
 });
 
+test("a workspace keeps the icon picked for it", () => {
+  let state = twoWorkspaces();
+  assert.deepEqual(
+    state.workspaces.map((workspace) => workspace.icon),
+    ["layers", "layers"],
+    "new workspaces start with the default icon",
+  );
+  state = dashboardReducer(state, { type: "setWorkspaceIcon", id: "w1", icon: "rocket" });
+  assert.equal(state.workspaces[0].icon, "rocket");
+  assert.equal(state.workspaces[1].icon, "layers", "the other workspace keeps its icon");
+  assert.equal(dashboardReducer(state, { type: "setWorkspaceIcon", id: "w1", icon: "rocket" }), state, "no-op keeps state");
+  assert.equal(dashboardReducer(state, { type: "setWorkspaceIcon", id: "nope", icon: "bug" }), state);
+});
+
 test("a workspace is numbered until it is named", () => {
   let state = twoWorkspaces();
   const label = (id: string) => workspaceLabel(state, state.workspaces.find((w) => w.id === id)!, untitled);
@@ -174,7 +188,12 @@ test("a saved dashboard round-trips its workspaces", () => {
   let state = open(open(start(), "sa"), "sb");
   state = run(state, { type: "newTab", id: "t2" }, { type: "newWorkspace", id: "w2", tabId: "t3" });
   state = open(state, "sc");
-  state = run(state, { type: "renameWorkspace", id: "w2", name: "서버" }, { type: "selectTab", id: "t2" });
+  state = run(
+    state,
+    { type: "renameWorkspace", id: "w2", name: "서버" },
+    { type: "setWorkspaceIcon", id: "w2", icon: "server" },
+    { type: "selectTab", id: "t2" },
+  );
   const saved = toSaved(state);
   assert.equal(saved.activeTabId, "t2", "files keep the tab in view for older versions");
   const parsed = parseSavedDashboard(JSON.parse(JSON.stringify(saved)));
@@ -184,6 +203,7 @@ test("a saved dashboard round-trips its workspaces", () => {
   assert.equal(activeWorkspace(restored).id, "w1");
   assert.equal(activeTab(restored).id, "t2");
   assert.equal(workspaceLabel(restored, restored.workspaces[1], untitled), "서버");
+  assert.equal(restored.workspaces[1].icon, "server");
 });
 
 test("taking the sessions back brings the other window's workspaces", () => {
@@ -217,6 +237,18 @@ test("a file from before workspaces opens as one workspace with all its tabs", (
   assert.equal(state.workspaces.length, 1);
   assert.deepEqual(tabIds(state), ["t1", "t2"]);
   assert.equal(activeTab(state).id, "t2");
+});
+
+test("a saved icon this version does not know shows the default icon", () => {
+  const file = {
+    ...legacyFile,
+    workspaces: [{ id: "wa", name: null, activeTabId: "t2", icon: "spaceship" }],
+    activeWorkspaceId: "wa",
+    tabs: legacyFile.tabs.map((tab) => ({ ...tab, workspaceId: "wa" })),
+  };
+  const saved = parseSavedDashboard(file);
+  assert.deepEqual(saved?.workspaces, [{ id: "wa", name: null, activeTabId: "t2", icon: "layers" }], "the workspace itself stays");
+  assert.equal(parseSavedDashboard(legacyFile)?.workspaces[0].icon, "layers", "files from before icons");
 });
 
 test("broken workspace data falls back to one workspace instead of losing the tabs", () => {

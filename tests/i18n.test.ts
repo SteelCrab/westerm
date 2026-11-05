@@ -38,6 +38,7 @@ test("parameterized messages include their values in every language", () => {
     assert.ok(t.workspaces.close("빌드").includes("빌드"), locale);
     assert.ok(t.workspaces.switcher("빌드").includes("빌드"), locale);
     assert.ok(t.workspaces.rename("빌드").includes("빌드"), locale);
+    assert.ok(t.workspaces.changeIcon("빌드").includes("빌드"), locale);
     assert.ok(t.palette.moveTabToWorkspace("빌드").includes("빌드"), locale);
   }
 });

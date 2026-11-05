@@ -1,5 +1,5 @@
 import type { AttachMode, RemoteStage, SessionKind } from "../shared/protocol.ts";
-import type { SavedDashboard } from "../shared/workspace-file.ts";
+import { DEFAULT_WORKSPACE_ICON, type SavedDashboard, type WorkspaceIcon } from "../shared/workspace-file.ts";
 import type { Notice } from "./i18n/messages.ts";
 import {
   dockPane,
@@ -74,6 +74,7 @@ export interface Workspace {
   name: string | null;
   /** The tab this workspace shows; always one of its own. */
   activeTabId: string;
+  icon: WorkspaceIcon;
 }
 
 /**
@@ -136,6 +137,7 @@ export type DashboardAction =
   | { type: "selectWorkspace"; id: string }
   /** An empty name returns the workspace to its number. */
   | { type: "renameWorkspace"; id: string; name: string }
+  | { type: "setWorkspaceIcon"; id: string; icon: WorkspaceIcon }
   /**
    * Closes the workspace, its tabs, and their sessions. `fallbackId` and
    * `fallbackTabId` name the empty workspace that replaces the last one.
@@ -163,7 +165,7 @@ export function createDashboard(workspaceId: string, tabId: string): Dashboard {
   return {
     sessions: [],
     tabs: [emptyTab(tabId, workspaceId)],
-    workspaces: [{ id: workspaceId, name: null, activeTabId: tabId }],
+    workspaces: [{ id: workspaceId, name: null, activeTabId: tabId, icon: DEFAULT_WORKSPACE_ICON }],
     activeWorkspaceId: workspaceId,
   };
 }
@@ -330,7 +332,7 @@ export function toSaved(state: Dashboard): SavedDashboard {
       maximizedId,
     })),
     sessions: state.sessions.map(({ id, kind, title, name, url, target }) => ({ id, kind, title, name, url, target })),
-    workspaces: state.workspaces.map(({ id, name, activeTabId }) => ({ id, name, activeTabId })),
+    workspaces: state.workspaces.map(({ id, name, activeTabId, icon }) => ({ id, name, activeTabId, icon })),
     activeWorkspaceId: state.activeWorkspaceId,
   };
 }
@@ -490,7 +492,7 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
           focusedId: tab.focusedId,
           maximizedId: tab.maximizedId,
         })),
-        workspaces: saved.workspaces.map(({ id, name, activeTabId }) => ({ id, name, activeTabId })),
+        workspaces: saved.workspaces.map(({ id, name, activeTabId, icon }) => ({ id, name, activeTabId, icon })),
         activeWorkspaceId: saved.activeWorkspaceId,
       };
     }
@@ -573,7 +575,10 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
       return {
         ...state,
         tabs: [...state.tabs, emptyTab(action.tabId, action.id)],
-        workspaces: [...state.workspaces, { id: action.id, name: null, activeTabId: action.tabId }],
+        workspaces: [
+          ...state.workspaces,
+          { id: action.id, name: null, activeTabId: action.tabId, icon: DEFAULT_WORKSPACE_ICON },
+        ],
         activeWorkspaceId: action.id,
       };
     }
@@ -583,6 +588,11 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
     case "renameWorkspace":
       if (!state.workspaces.some((workspace) => workspace.id === action.id)) return state;
       return patchWorkspace(state, action.id, { name: cleanName(action.name) });
+    case "setWorkspaceIcon": {
+      const workspace = state.workspaces.find((item) => item.id === action.id);
+      if (!workspace || workspace.icon === action.icon) return state;
+      return patchWorkspace(state, action.id, { icon: action.icon });
+    }
     case "closeWorkspace": {
       const index = state.workspaces.findIndex((workspace) => workspace.id === action.id);
       if (index < 0) return state;

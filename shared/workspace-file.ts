@@ -31,12 +31,36 @@ export interface SavedTab {
   maximizedId: string | null;
 }
 
+/** Icons a workspace can show. The first is the default. */
+export const WORKSPACE_ICONS = [
+  "layers",
+  "folder",
+  "code",
+  "terminal",
+  "globe",
+  "server",
+  "database",
+  "book",
+  "flask",
+  "rocket",
+  "bug",
+  "star",
+] as const;
+export type WorkspaceIcon = (typeof WORKSPACE_ICONS)[number];
+export const DEFAULT_WORKSPACE_ICON: WorkspaceIcon = WORKSPACE_ICONS[0];
+
+export function isWorkspaceIcon(value: unknown): value is WorkspaceIcon {
+  return (WORKSPACE_ICONS as readonly unknown[]).includes(value);
+}
+
 export interface SavedWorkspace {
   id: string;
   /** User-set name, or null. */
   name: string | null;
   /** The tab the workspace shows; one of its own. */
   activeTabId: string;
+  /** Files from before icons, and icons this version does not know, get the default. */
+  icon: WorkspaceIcon;
 }
 
 /**
@@ -144,7 +168,7 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
     activeTabId,
     tabs: tabs.map((tab) => ({ ...tab, workspaceId: DEFAULT_WORKSPACE_ID })),
     sessions,
-    workspaces: [{ id: DEFAULT_WORKSPACE_ID, name: null, activeTabId }],
+    workspaces: [{ id: DEFAULT_WORKSPACE_ID, name: null, activeTabId, icon: DEFAULT_WORKSPACE_ICON }],
     activeWorkspaceId: DEFAULT_WORKSPACE_ID,
   };
 }
@@ -169,7 +193,8 @@ function parseWorkspaces(
     if (!isId(workspace.id) || !isId(workspace.activeTabId)) return null;
     if (workspaces.some((other) => other.id === workspace.id)) return null;
     if (workspace.name != null && name === null) return null;
-    workspaces.push({ id: workspace.id, name, activeTabId: workspace.activeTabId });
+    const icon = isWorkspaceIcon(workspace.icon) ? workspace.icon : DEFAULT_WORKSPACE_ICON;
+    workspaces.push({ id: workspace.id, name, activeTabId: workspace.activeTabId, icon });
   }
   const known = (id: unknown): id is string => workspaces.some((workspace) => workspace.id === id);
   const owned: SavedTab[] = [];

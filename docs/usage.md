@@ -25,6 +25,7 @@ A workspace is a set of tabs, for example one per project.
   - Click a workspace to show it. The arrow keys move in the menu, Enter picks, and Escape closes it.
   - "New workspace" opens one with one shell.
   - The pencil renames a workspace, and `×` closes it.
+  - Click a workspace's icon to pick another one. The icon is saved with the layout.
 - Closing a workspace ends all its sessions. Closing the last one leaves an empty workspace.
 - In the command palette: new workspace, rename, close, next and previous workspace, move the tab to another workspace, and go to a workspace. Going to a session in another workspace shows that workspace.
 - Tab keys (Ctrl+Shift+1–9, ⌘1–9 in the macOS app) count only the tabs of the workspace in view.
