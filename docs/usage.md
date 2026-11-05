@@ -27,6 +27,7 @@ A workspace is a set of tabs, for example one per project.
   - The pencil renames a workspace, and `×` closes it.
   - Click a workspace's icon to pick its color (8 colors) and its icon (12 icons). Picking a color keeps the choices open; picking an icon closes them. Both are saved with the layout.
   - A new workspace takes the first color that no other workspace has.
+  - The tabs show the color of the workspace in view: the line under the tab in view and its number, in the tab bar and the sidebar, and the selected session in the sidebar.
 - Closing a workspace ends all its sessions. Closing the last one leaves an empty workspace.
 - In the command palette: new workspace, rename, close, next and previous workspace, move the tab to another workspace, and go to a workspace. Going to a session in another workspace shows that workspace.
 - Tab keys (Ctrl+Shift+1–9, ⌘1–9 in the macOS app) count only the tabs of the workspace in view.
