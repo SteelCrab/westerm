@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { WORKSPACE_COLORS } from "../shared/workspace-file.ts";
 import { fuzzyScore } from "../src/components/CommandPalette.tsx";
 import { placeRename } from "../src/components/InlineRename.tsx";
+import { settingsPages } from "../src/components/SettingsDialog.tsx";
 import { clampSidebar } from "../src/components/SidebarResizer.tsx";
 import { updateShown } from "../src/components/UpdateButton.tsx";
 import { stepIndex, workspaceColor } from "../src/components/WorkspaceMenu.tsx";
@@ -106,4 +107,9 @@ test("the header shows the update button only when there is something to show", 
   assert.equal(updateShown(status(false), false), false);
   assert.equal(updateShown(status(true), false), true);
   assert.equal(updateShown(status(false), true), true, "opened from the palette");
+});
+
+test("settings are split into pages, without updates in a remote window", () => {
+  assert.deepEqual(settingsPages(true), ["general", "appearance", "terminal", "updates"]);
+  assert.deepEqual(settingsPages(false), ["general", "appearance", "terminal"]);
 });
