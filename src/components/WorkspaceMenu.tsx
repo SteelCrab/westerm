@@ -20,7 +20,12 @@ import {
   type LucideIcon,
   type LucideProps,
 } from "lucide-react";
-import { WORKSPACE_ICONS, type WorkspaceIcon } from "../../shared/workspace-file.ts";
+import {
+  WORKSPACE_COLORS,
+  WORKSPACE_ICONS,
+  type WorkspaceColor,
+  type WorkspaceIcon,
+} from "../../shared/workspace-file.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { activeWorkspace, workspaceLabel, type Dashboard } from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
@@ -34,6 +39,7 @@ interface WorkspaceMenuProps {
   onClose: (id: string) => void;
   onRenameWorkspace: (id: string, name: string) => void;
   onSetIcon: (id: string, icon: WorkspaceIcon) => void;
+  onSetColor: (id: string, color: WorkspaceColor) => void;
   /** Where the menu is: at the left of the tab bar, or at the top of the sidebar. */
   where: "tabbar" | "sidebar";
   /** The button shows the workspace's name too (the sidebar, unless dragged narrow). */
@@ -61,12 +67,9 @@ export function WorkspaceGlyph({ icon, ...rest }: { icon: WorkspaceIcon } & Luci
   return <Icon aria-hidden="true" {...rest} />;
 }
 
-// Theme colors that already have light and dark values.
-const COLORS = ["--accent", "--browser", "--editor", "--ssh", "--warn", "--danger"];
-
-/** The icon color of the workspace at this position. */
-export function workspaceColor(index: number): string {
-  return `var(${COLORS[index % COLORS.length]})`;
+/** A workspace color's theme value, with light and dark values in src/styles.css. */
+export function workspaceColor(color: WorkspaceColor): string {
+  return `var(--ws-${color})`;
 }
 
 /** The menu item that an arrow key moves to; -1 is "none focused yet". */
@@ -86,13 +89,12 @@ export function WorkspaceMenu(props: WorkspaceMenuProps) {
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  // The workspace whose icon choices show below its row.
+  // The workspace whose color and icon choices show below its row.
   const [picking, setPicking] = useState<string | null>(null);
   const editingId = renaming?.kind === "workspace" && renaming.where === props.where ? renaming.id : null;
   // The palette's "Rename workspace" opens the menu with that row as a field.
   const shown = open || editingId !== null;
   const current = activeWorkspace(state);
-  const currentIndex = state.workspaces.indexOf(current);
   const currentLabel = workspaceLabel(state, current, t.workspaces.untitled);
 
   const close = (refocus: boolean) => {
@@ -118,7 +120,7 @@ export function WorkspaceMenu(props: WorkspaceMenuProps) {
     event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
-      // The icon choices close first, then the menu.
+      // The color and icon choices close first, then the menu.
       if (picking) setPicking(null);
       else close(true);
       return;
@@ -140,7 +142,7 @@ export function WorkspaceMenu(props: WorkspaceMenuProps) {
         aria-expanded={shown}
         aria-label={t.workspaces.switcher(currentLabel)}
         title={t.workspaces.switcher(currentLabel)}
-        style={{ "--ws-color": workspaceColor(currentIndex) } as React.CSSProperties}
+        style={{ "--ws-color": workspaceColor(current.color) } as React.CSSProperties}
         onClick={() => (open ? close(false) : setOpen(true))}
       >
         <WorkspaceGlyph icon={current.icon} size={15} className="ws-icon" />
@@ -156,11 +158,11 @@ export function WorkspaceMenu(props: WorkspaceMenuProps) {
           <div className="ws-panel-title" aria-hidden="true">
             {t.workspaces.switchTitle}
           </div>
-          {state.workspaces.map((workspace, index) => {
+          {state.workspaces.map((workspace) => {
             const active = workspace.id === state.activeWorkspaceId;
             const label = workspaceLabel(state, workspace, t.workspaces.untitled);
             const startRename = () => props.onRename({ kind: "workspace", id: workspace.id, where: props.where });
-            const color = { "--ws-color": workspaceColor(index) } as React.CSSProperties;
+            const color = { "--ws-color": workspaceColor(workspace.color) } as React.CSSProperties;
             return (
               <Fragment key={workspace.id}>
                 <div role="none" className={`ws-item${active ? " active" : ""}`} style={color}>
@@ -190,9 +192,9 @@ export function WorkspaceMenu(props: WorkspaceMenuProps) {
                         type="button"
                         className="ws-icon-button"
                         tabIndex={-1}
-                        aria-label={t.workspaces.changeIcon(label)}
+                        aria-label={t.workspaces.changeLook(label)}
                         aria-expanded={picking === workspace.id}
-                        title={t.workspaces.changeIcon(label)}
+                        title={t.workspaces.changeLook(label)}
                         onClick={() => setPicking(picking === workspace.id ? null : workspace.id)}
                       >
                         <WorkspaceGlyph icon={workspace.icon} size={14} className="ws-icon" />
@@ -237,23 +239,40 @@ export function WorkspaceMenu(props: WorkspaceMenuProps) {
                   </button>
                 </div>
                 {picking === workspace.id && (
-                  <div className="ws-icons" role="group" aria-label={t.workspaces.changeIcon(label)} style={color}>
-                    {WORKSPACE_ICONS.map((icon) => (
-                      <button
-                        key={icon}
-                        type="button"
-                        className="ws-icon-option"
-                        aria-label={t.workspaces.icons[icon]}
-                        aria-pressed={workspace.icon === icon}
-                        title={t.workspaces.icons[icon]}
-                        onClick={() => {
-                          props.onSetIcon(workspace.id, icon);
-                          setPicking(null);
-                        }}
-                      >
-                        <WorkspaceGlyph icon={icon} size={14} />
-                      </button>
-                    ))}
+                  <div className="ws-look" role="group" aria-label={t.workspaces.changeLook(label)} style={color}>
+                    {/* A color keeps the choices open, so the icons below show it; an icon closes them. */}
+                    <div className="ws-colors">
+                      {WORKSPACE_COLORS.map((choice) => (
+                        <button
+                          key={choice}
+                          type="button"
+                          className="ws-color-option"
+                          aria-label={t.workspaces.colors[choice]}
+                          aria-pressed={workspace.color === choice}
+                          title={t.workspaces.colors[choice]}
+                          style={{ "--swatch": workspaceColor(choice) } as React.CSSProperties}
+                          onClick={() => props.onSetColor(workspace.id, choice)}
+                        />
+                      ))}
+                    </div>
+                    <div className="ws-icons">
+                      {WORKSPACE_ICONS.map((icon) => (
+                        <button
+                          key={icon}
+                          type="button"
+                          className="ws-icon-option"
+                          aria-label={t.workspaces.icons[icon]}
+                          aria-pressed={workspace.icon === icon}
+                          title={t.workspaces.icons[icon]}
+                          onClick={() => {
+                            props.onSetIcon(workspace.id, icon);
+                            setPicking(null);
+                          }}
+                        >
+                          <WorkspaceGlyph icon={icon} size={14} />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </Fragment>

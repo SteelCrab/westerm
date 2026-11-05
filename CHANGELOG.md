@@ -6,7 +6,7 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ### Added
 
-- Settings ▸ Workspaces and tabs picks the layout. Top: a workspace menu at the left of the tab bar, and no sidebar. Sidebar: the workspace menu at the top of the sidebar, the tabs below it, and no tab bar. Each workspace has a color and an icon you can pick in the menu, and the menu button shows the one in view.
+- Settings ▸ Workspaces and tabs picks the layout. Top: a workspace menu at the left of the tab bar, and no sidebar. Sidebar: the workspace menu at the top of the sidebar, the tabs below it, and no tab bar. Each workspace has a color and an icon, picked in the menu and saved with the layout; the menu button shows the ones of the workspace in view. A new workspace takes a color that no other workspace has.
 
 ### Changed
 

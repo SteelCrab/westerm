@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { SessionKind } from "../shared/protocol.ts";
-import type { WorkspaceIcon } from "../shared/workspace-file.ts";
+import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
 import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
@@ -156,6 +156,11 @@ export function App() {
 
   const setWorkspaceIcon = useCallback(
     (id: string, icon: WorkspaceIcon) => dispatch({ type: "setWorkspaceIcon", id, icon }),
+    [dispatch],
+  );
+
+  const setWorkspaceColor = useCallback(
+    (id: string, color: WorkspaceColor) => dispatch({ type: "setWorkspaceColor", id, color }),
     [dispatch],
   );
 
@@ -337,6 +342,7 @@ export function App() {
             onCloseWorkspace={closeWorkspace}
             onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
             onSetWorkspaceIcon={setWorkspaceIcon}
+            onSetWorkspaceColor={setWorkspaceColor}
             compact={isCompact(sidebarWidth)}
           />
           <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
@@ -358,6 +364,7 @@ export function App() {
                   onClose={closeWorkspace}
                   onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
                   onSetIcon={setWorkspaceIcon}
+                  onSetColor={setWorkspaceColor}
                 />
                 <TabBar
                   state={state}

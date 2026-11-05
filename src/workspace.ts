@@ -1,5 +1,12 @@
 import type { AttachMode, RemoteStage, SessionKind } from "../shared/protocol.ts";
-import { DEFAULT_WORKSPACE_ICON, type SavedDashboard, type WorkspaceIcon } from "../shared/workspace-file.ts";
+import {
+  DEFAULT_WORKSPACE_ICON,
+  positionColor,
+  WORKSPACE_COLORS,
+  type SavedDashboard,
+  type WorkspaceColor,
+  type WorkspaceIcon,
+} from "../shared/workspace-file.ts";
 import type { Notice } from "./i18n/messages.ts";
 import {
   dockPane,
@@ -75,6 +82,7 @@ export interface Workspace {
   /** The tab this workspace shows; always one of its own. */
   activeTabId: string;
   icon: WorkspaceIcon;
+  color: WorkspaceColor;
 }
 
 /**
@@ -138,6 +146,7 @@ export type DashboardAction =
   /** An empty name returns the workspace to its number. */
   | { type: "renameWorkspace"; id: string; name: string }
   | { type: "setWorkspaceIcon"; id: string; icon: WorkspaceIcon }
+  | { type: "setWorkspaceColor"; id: string; color: WorkspaceColor }
   /**
    * Closes the workspace, its tabs, and their sessions. `fallbackId` and
    * `fallbackTabId` name the empty workspace that replaces the last one.
@@ -165,7 +174,9 @@ export function createDashboard(workspaceId: string, tabId: string): Dashboard {
   return {
     sessions: [],
     tabs: [emptyTab(tabId, workspaceId)],
-    workspaces: [{ id: workspaceId, name: null, activeTabId: tabId, icon: DEFAULT_WORKSPACE_ICON }],
+    workspaces: [
+      { id: workspaceId, name: null, activeTabId: tabId, icon: DEFAULT_WORKSPACE_ICON, color: positionColor(0) },
+    ],
     activeWorkspaceId: workspaceId,
   };
 }
@@ -332,7 +343,7 @@ export function toSaved(state: Dashboard): SavedDashboard {
       maximizedId,
     })),
     sessions: state.sessions.map(({ id, kind, title, name, url, target }) => ({ id, kind, title, name, url, target })),
-    workspaces: state.workspaces.map(({ id, name, activeTabId, icon }) => ({ id, name, activeTabId, icon })),
+    workspaces: state.workspaces.map(({ id, name, activeTabId, icon, color }) => ({ id, name, activeTabId, icon, color })),
     activeWorkspaceId: state.activeWorkspaceId,
   };
 }
@@ -355,6 +366,12 @@ function patch(state: Dashboard, id: string, change: Partial<Session>): Dashboar
 
 function patchTab(state: Dashboard, tabId: string, change: Partial<Tab>): Dashboard {
   return { ...state, tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...change } : tab)) };
+}
+
+/** The first color no workspace has; past the last color, they repeat by position. */
+function freeColor(workspaces: readonly Workspace[]): WorkspaceColor {
+  const taken = new Set(workspaces.map((workspace) => workspace.color));
+  return WORKSPACE_COLORS.find((color) => !taken.has(color)) ?? positionColor(workspaces.length);
 }
 
 function patchWorkspace(state: Dashboard, workspaceId: string, change: Partial<Workspace>): Dashboard {
@@ -492,7 +509,7 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
           focusedId: tab.focusedId,
           maximizedId: tab.maximizedId,
         })),
-        workspaces: saved.workspaces.map(({ id, name, activeTabId, icon }) => ({ id, name, activeTabId, icon })),
+        workspaces: saved.workspaces.map(({ id, name, activeTabId, icon, color }) => ({ id, name, activeTabId, icon, color })),
         activeWorkspaceId: saved.activeWorkspaceId,
       };
     }
@@ -577,7 +594,13 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
         tabs: [...state.tabs, emptyTab(action.tabId, action.id)],
         workspaces: [
           ...state.workspaces,
-          { id: action.id, name: null, activeTabId: action.tabId, icon: DEFAULT_WORKSPACE_ICON },
+          {
+            id: action.id,
+            name: null,
+            activeTabId: action.tabId,
+            icon: DEFAULT_WORKSPACE_ICON,
+            color: freeColor(state.workspaces),
+          },
         ],
         activeWorkspaceId: action.id,
       };
@@ -592,6 +615,11 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
       const workspace = state.workspaces.find((item) => item.id === action.id);
       if (!workspace || workspace.icon === action.icon) return state;
       return patchWorkspace(state, action.id, { icon: action.icon });
+    }
+    case "setWorkspaceColor": {
+      const workspace = state.workspaces.find((item) => item.id === action.id);
+      if (!workspace || workspace.color === action.color) return state;
+      return patchWorkspace(state, action.id, { color: action.color });
     }
     case "closeWorkspace": {
       const index = state.workspaces.findIndex((workspace) => workspace.id === action.id);

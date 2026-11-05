@@ -393,13 +393,13 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     })),
   );
 
-  state.workspaces.forEach((item, index) => {
+  state.workspaces.forEach((item) => {
     if (item.id === workspace.id) return;
     commands.push({
       id: `go-workspace-${item.id}`,
       title: workspaceName(item),
       group: g.goWorkspace,
-      icon: <WorkspaceGlyph icon={item.icon} size={14} style={{ color: workspaceColor(index) }} />,
+      icon: <WorkspaceGlyph icon={item.icon} size={14} style={{ color: workspaceColor(item.color) }} />,
       keywords: "go switch workspace project",
       run: () => dispatch({ type: "selectWorkspace", id: item.id }),
     });

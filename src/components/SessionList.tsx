@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
-import type { WorkspaceIcon } from "../../shared/workspace-file.ts";
+import type { WorkspaceColor, WorkspaceIcon } from "../../shared/workspace-file.ts";
 import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME } from "../dnd.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
@@ -40,6 +40,7 @@ interface SessionListProps {
   onCloseWorkspace: (id: string) => void;
   onRenameWorkspace: (id: string, name: string) => void;
   onSetWorkspaceIcon: (id: string, icon: WorkspaceIcon) => void;
+  onSetWorkspaceColor: (id: string, color: WorkspaceColor) => void;
   /** Icons only: tab numbers and session icons, names in tooltips. */
   compact: boolean;
 }
@@ -94,6 +95,7 @@ export function SessionList(props: SessionListProps) {
           onClose={props.onCloseWorkspace}
           onRenameWorkspace={props.onRenameWorkspace}
           onSetIcon={props.onSetWorkspaceIcon}
+          onSetColor={props.onSetWorkspaceColor}
         />
       </div>
       <header className="session-panel-header">

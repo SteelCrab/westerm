@@ -21,11 +21,12 @@ A workspace is a set of tabs, for example one per project.
 
 - Only the tabs of the workspace in view show.
 - The sessions of the other workspaces keep running. Switching back shows the same tab and pane as before.
-- The workspace menu is at the left of the tab bar (top layout) or at the top of the sidebar (sidebar layout). Its button shows the workspace in view by its color, and in the sidebar also by its name.
+- The workspace menu is at the left of the tab bar (top layout) or at the top of the sidebar (sidebar layout). Its button shows the workspace in view by its icon and color, and in the sidebar also by its name.
   - Click a workspace to show it. The arrow keys move in the menu, Enter picks, and Escape closes it.
   - "New workspace" opens one with one shell.
   - The pencil renames a workspace, and `×` closes it.
-  - Click a workspace's icon to pick another one. The icon is saved with the layout.
+  - Click a workspace's icon to pick its color (8 colors) and its icon (12 icons). Picking a color keeps the choices open; picking an icon closes them. Both are saved with the layout.
+  - A new workspace takes the first color that no other workspace has.
 - Closing a workspace ends all its sessions. Closing the last one leaves an empty workspace.
 - In the command palette: new workspace, rename, close, next and previous workspace, move the tab to another workspace, and go to a workspace. Going to a session in another workspace shows that workspace.
 - Tab keys (Ctrl+Shift+1–9, ⌘1–9 in the macOS app) count only the tabs of the workspace in view.

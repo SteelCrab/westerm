@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { WORKSPACE_COLORS } from "../shared/workspace-file.ts";
 import { fuzzyScore } from "../src/components/CommandPalette.tsx";
 import { placeRename } from "../src/components/InlineRename.tsx";
 import { clampSidebar } from "../src/components/SidebarResizer.tsx";
@@ -55,11 +57,12 @@ test("sidebar width is bounded", () => {
   assert.equal(clampSidebar(300.6), 301);
 });
 
-test("workspace colors differ for the first six and then repeat", () => {
-  const first = [0, 1, 2, 3, 4, 5].map(workspaceColor);
-  assert.equal(new Set(first).size, 6);
-  assert.equal(workspaceColor(6), workspaceColor(0));
-  assert.match(workspaceColor(0), /^var\(--[a-z-]+\)$/);
+test("every workspace color has a value in the dark and both light theme blocks", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  for (const color of WORKSPACE_COLORS) {
+    assert.equal(css.split(`--ws-${color}:`).length - 1, 3, color);
+    assert.equal(workspaceColor(color), `var(--ws-${color})`);
+  }
 });
 
 test("arrow keys in the workspace menu wrap around", () => {
