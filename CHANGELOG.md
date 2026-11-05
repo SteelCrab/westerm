@@ -4,6 +4,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Docs pane: a new pane that lists a folder's Markdown files as a tree and shows them in View, Edit, or Split mode. It opens in the focused shell's folder and can follow that shell's `cd`. ⌘S saves; a file changed on disk since editing started asks before it is overwritten. Unsaved changes are kept per file across reloads. In a remote window it shows the server's files.
+
 ## [0.2.1] - 2026-11-05
 
 ### Added
