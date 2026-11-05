@@ -5,6 +5,7 @@ import { clampSidebar } from "../src/components/SidebarResizer.tsx";
 import { insertionIndex } from "../src/dnd.ts";
 import { MESSAGES } from "../src/i18n/messages.ts";
 import { urlCommands } from "../src/paletteCommands.tsx";
+import { keyboardFree } from "../src/terminal/keyboard.ts";
 
 const en = MESSAGES.en;
 
@@ -49,4 +50,17 @@ test("sidebar width is bounded", () => {
   assert.equal(clampSidebar(9999), 480);
   assert.equal(clampSidebar(Number.NaN), 240);
   assert.equal(clampSidebar(300.6), 301);
+});
+
+test("the terminal leaves the keyboard to dialogs and rename fields", () => {
+  // A palette command that starts a rename also closes the palette, and
+  // closing it asks the terminal to take the keyboard back.
+  const page = (modal: boolean, active: string | null) => ({
+    querySelector: (selector: string) => (modal && selector === '[aria-modal="true"]' ? {} : null),
+    activeElement: active === null ? null : { classList: { contains: (name: string) => name === active } },
+  });
+  assert.equal(keyboardFree(page(false, null)), true);
+  assert.equal(keyboardFree(page(false, "palette-input")), true);
+  assert.equal(keyboardFree(page(true, null)), false, "a dialog is open");
+  assert.equal(keyboardFree(page(false, "inline-rename")), false, "a rename field has the keyboard");
 });

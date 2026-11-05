@@ -4,6 +4,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- The palette's rename commands (tab, session, workspace) no longer close the name field at once.
+
 ## [0.2.0] - 2026-11-05
 
 ### Added
