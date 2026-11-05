@@ -1,10 +1,10 @@
 import { useCallback, useRef } from "react";
 import { rects, type Rect } from "../../shared/layout.ts";
 import type { SessionKind } from "../../shared/protocol.ts";
+import type { TerminalThemeColors } from "@wterm/core";
 import { useI18n } from "../i18n/index.tsx";
 import { KindIcon, LAUNCHERS } from "../kinds.tsx";
 import type { TerminalFont } from "../terminal/fonts.ts";
-import type { ColorScheme } from "../theme.ts";
 import { activeTab, sessionTab, takenOver, type Dashboard, type DashboardAction } from "../workspace.ts";
 import type { RenameTarget } from "./InlineRename.tsx";
 import { Pane } from "./Pane.tsx";
@@ -13,7 +13,7 @@ import { SplitDividers } from "./SplitDividers.tsx";
 interface PaneLayerProps {
   state: Dashboard;
   font: TerminalFont;
-  scheme: ColorScheme;
+  colors: TerminalThemeColors;
   focusNonce: number;
   renaming: RenameTarget | null;
   dragging: string | null;
@@ -68,7 +68,7 @@ export function PaneLayer(props: PaneLayerProps) {
             key={session.id}
             session={session}
             font={props.font}
-            scheme={props.scheme}
+            colors={props.colors}
             focused={active && session.id === tab.focusedId}
             maximized={maximized}
             covered={!active || (tab.maximizedId !== null && !maximized)}

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import type { TerminalThemeColors } from "@wterm/core";
+import { uiColors, type ColorThemeId } from "./colorThemes.ts";
 
 export type ColorScheme = "dark" | "light";
-/** "system" follows the OS; the others pin the theme (Settings ▸ Theme). */
+/** "system" follows the OS; the others pin the scheme (Settings ▸ Appearance ▸ Mode). */
 export type ThemeChoice = "system" | ColorScheme;
 
 const QUERY = "(prefers-color-scheme: light)";
@@ -32,27 +32,18 @@ export function useColorScheme(choice: ThemeChoice = "system"): ColorScheme {
 }
 
 /**
- * Terminal defaults for each scheme. WTerm.setThemeColors() hands them to the
- * Ghostty core too, so programs that ask for the background (OSC 11), such as
- * terminal-browser and Neovim, pick a matching theme.
+ * Colors the window with the color theme (Settings ▸ Appearance ▸ Color theme): its
+ * colors go on <html> and override the stylesheet's. The default theme
+ * keeps the stylesheet's.
  */
-export const TERMINAL_COLORS: Record<ColorScheme, TerminalThemeColors> = {
-  dark: {
-    foreground: 0xd4d4d4,
-    background: 0x1e1e1e,
-    cursor: 0xaeafad,
-    palette: [
-      0x1e1e1e, 0xf44747, 0x6a9955, 0xd7ba7d, 0x569cd6, 0xc586c0, 0x4ec9b0, 0xd4d4d4,
-      0x808080, 0xf44747, 0x6a9955, 0xd7ba7d, 0x569cd6, 0xc586c0, 0x4ec9b0, 0xffffff,
-    ],
-  },
-  light: {
-    foreground: 0x383a42,
-    background: 0xfafafa,
-    cursor: 0x526fff,
-    palette: [
-      0x383a42, 0xe45649, 0x50a14f, 0xc18401, 0x4078f2, 0xa626a4, 0x0184bc, 0xa0a1a7,
-      0x4f525e, 0xe45649, 0x50a14f, 0xc18401, 0x4078f2, 0xa626a4, 0x0184bc, 0xffffff,
-    ],
-  },
-};
+export function useWindowColors(theme: ColorThemeId, scheme: ColorScheme): void {
+  useEffect(() => {
+    const colors = uiColors(theme, scheme);
+    if (!colors) return;
+    const style = document.documentElement.style;
+    for (const [name, value] of Object.entries(colors)) style.setProperty(name, value);
+    return () => {
+      for (const name of Object.keys(colors)) style.removeProperty(name);
+    };
+  }, [theme, scheme]);
+}

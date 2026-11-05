@@ -109,7 +109,7 @@
   }
 }
 
-/* Settings ▸ Theme pins the light scheme on a dark OS. */
+/* Settings ▸ Appearance ▸ Mode pins the light scheme on a dark OS. */
 :root[data-theme="light"] {
   --bg: #eef0f3;
   --surface: #f7f8fa;
@@ -1757,7 +1757,7 @@ body.resizing-sidebar .pane-layer {
 }
 
 .settings {
-  width: min(520px, 100%);
+  width: min(680px, 100%);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border-strong);
@@ -1783,21 +1783,88 @@ body.resizing-sidebar .pane-layer {
   font-weight: 600;
 }
 
-.settings-group {
+/* The menu on the left picks the page on the right. The body keeps one
+   height, so the dialog does not jump between pages. */
+.settings-body {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
+  height: min(400px, calc(100vh - 8vh - 160px));
+  min-height: 260px;
   border-bottom: 1px solid var(--border);
 }
 
-.settings-group h3 {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.settings-nav {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  width: 168px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+}
+
+.settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-nav button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.settings-nav button[aria-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.settings-nav button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.settings-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+
+.settings-panel h3 {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Narrow windows: the menu goes across the top. */
+@media (max-width: 560px) {
+  .settings-body {
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    width: auto;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
 }
 
 .settings-row {
@@ -1887,6 +1954,91 @@ body.resizing-sidebar .pane-layer {
 
 .settings-foot .settings-hint {
   margin-left: auto;
+}
+
+/* Settings ▸ Appearance ▸ Color theme: a preview in the theme's own
+   colors, and its name below in the window's. */
+.color-themes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 12px 10px;
+}
+
+.color-theme {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.color-theme-preview {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  height: 46px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+/* A line of text in the theme's foreground. */
+.color-theme-text {
+  width: 60%;
+  height: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.85;
+}
+
+.color-theme-swatches {
+  display: flex;
+  gap: 3px;
+}
+
+.color-theme-swatches > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.color-theme:hover .color-theme-preview {
+  border-color: var(--border-strong);
+}
+
+.color-theme[aria-checked="true"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.color-theme[aria-checked="true"] .color-theme-preview {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent);
+}
+
+.color-theme:focus-visible {
+  outline: none;
+}
+
+.color-theme:focus-visible .color-theme-preview {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.color-theme-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .seg {

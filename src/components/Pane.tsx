@@ -4,9 +4,9 @@ import { carries, dropZone, PANE_MIME, startDrag, type DropZone } from "../dnd.t
 import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
 import { REMOTE_TARGET } from "../remoteWindow.ts";
+import type { TerminalThemeColors } from "@wterm/core";
 import type { ConnectionEvent } from "../terminal/connection.ts";
 import type { TerminalFont } from "../terminal/fonts.ts";
-import type { ColorScheme } from "../theme.ts";
 import { TerminalView } from "../terminal/TerminalView.tsx";
 import { sessionLabel, type Session, type DashboardAction } from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
@@ -15,7 +15,7 @@ import { StatusDot } from "./StatusDot.tsx";
 interface PaneProps {
   session: Session;
   font: TerminalFont;
-  scheme: ColorScheme;
+  colors: TerminalThemeColors;
   focused: boolean;
   maximized: boolean;
   /** Covered by a maximized pane: stays mounted, stops painting. */
@@ -42,7 +42,7 @@ function exitDetail(event: Extract<ConnectionEvent, { type: "exit" }>): string {
 
 export function Pane(props: PaneProps) {
   const { session, font, focused, maximized, covered, gridStyle, focusNonce, renaming, onRename, dispatch } = props;
-  const { dragging, onDragPane, scheme, away, mayReattach } = props;
+  const { dragging, onDragPane, colors, away, mayReattach } = props;
   const { id } = session;
   const { t } = useI18n();
   // Where a dragged pane would land: a side (split there) or the center (swap).
@@ -197,7 +197,7 @@ export function Pane(props: PaneProps) {
           target={session.target}
           label={label}
           font={font}
-          scheme={scheme}
+          colors={colors}
           focusNonce={focusNonce}
           focused={focused && !covered}
           visible={!covered}
