@@ -219,6 +219,11 @@ const en = {
     disabled: "Update checks are turned off (WESTERM_NO_UPDATE_CHECK).",
     close: "Close",
   },
+  away: {
+    title: "In use in another window",
+    hint: "Your sessions are open in another window. Click here or switch to this window to use them here.",
+    useHere: "Use here",
+  },
 };
 
 export type Messages = typeof en;
@@ -397,6 +402,11 @@ const ko: Messages = {
     disabled: "업데이트 확인이 꺼져 있습니다 (WESTERM_NO_UPDATE_CHECK).",
     close: "닫기",
   },
+  away: {
+    title: "다른 창에서 사용 중입니다",
+    hint: "세션이 다른 창에 열려 있습니다. 이 창을 클릭하거나 이 창으로 전환하면 여기서 사용합니다.",
+    useHere: "여기서 사용",
+  },
 };
 
 const ja: Messages = {
@@ -573,6 +583,11 @@ const ja: Messages = {
     disabled: "アップデートの確認はオフです (WESTERM_NO_UPDATE_CHECK)。",
     close: "閉じる",
   },
+  away: {
+    title: "別のウィンドウで使用中です",
+    hint: "セッションは別のウィンドウで開かれています。このウィンドウをクリックするか切り替えると、ここで使えます。",
+    useHere: "ここで使う",
+  },
 };
 
 const zh: Messages = {
@@ -748,6 +763,11 @@ const zh: Messages = {
     checkFailed: "无法检查更新。",
     disabled: "更新检查已关闭 (WESTERM_NO_UPDATE_CHECK)。",
     close: "关闭",
+  },
+  away: {
+    title: "正在另一个窗口中使用",
+    hint: "会话已在另一个窗口中打开。点击或切换到此窗口即可在这里使用。",
+    useHere: "在此使用",
   },
 };
 

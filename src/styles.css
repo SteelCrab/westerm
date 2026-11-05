@@ -640,6 +640,36 @@ button {
   gap: 8px;
 }
 
+/* Another window has the sessions: this one waits until it is used again. */
+.window-away {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  padding: 16px;
+  background: var(--overlay);
+  text-align: center;
+  backdrop-filter: blur(3px);
+  cursor: pointer;
+}
+
+.window-away p {
+  margin: 0;
+}
+
+.window-away-title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.window-away-hint {
+  max-width: 420px;
+  color: var(--text-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

@@ -20,7 +20,7 @@ import { parseFamilies, useSettings } from "./settings.ts";
 import { switchCommand, typingElsewhere, type SwitchCommand } from "./shortcuts.ts";
 import { appBridge } from "./useUpdate.ts";
 import { markEnding } from "./terminal/ending.ts";
-import { useWorkspacePersistence } from "./useWorkspacePersistence.ts";
+import { loadSaved, useWorkspacePersistence } from "./useWorkspacePersistence.ts";
 import {
   activeTab,
   activeWorkspace,
@@ -30,6 +30,7 @@ import {
   stepPane,
   stepTab,
   tabByNumber,
+  takenOver,
   dashboardReducer,
   workspaceTabs,
   type DashboardAction,
@@ -155,7 +156,19 @@ export function App() {
 
   // Restore the saved layout; panes then reattach to their running shells.
   // With nothing saved, start with one shell.
-  const loaded = useWorkspacePersistence(state, rawDispatch, () => open("shell"));
+  const away = takenOver(state);
+  const loaded = useWorkspacePersistence(state, rawDispatch, () => open("shell"), away);
+
+  // One window at a time has the sessions. Using this window again, by
+  // switching to it or clicking it, takes them back with the latest layout.
+  const reclaim = useCallback(() => {
+    void loadSaved().then((saved) => rawDispatch({ type: "reclaim", saved }));
+  }, []);
+  useEffect(() => {
+    if (!away) return;
+    window.addEventListener("focus", reclaim);
+    return () => window.removeEventListener("focus", reclaim);
+  }, [away, reclaim]);
 
   // Moving between tabs and panes from the keyboard; the keys are in shortcuts.ts.
   const runSwitch = useCallback(
@@ -375,6 +388,25 @@ export function App() {
           empty={sshHosts === null ? t.palette.sshLoading : t.palette.sshEmpty}
           onClose={closePalette}
         />
+      )}
+      {away && (
+        <div
+          className="window-away"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="window-away-title"
+          onMouseDown={reclaim}
+        >
+          <p id="window-away-title" className="window-away-title">
+            {t.away.title}
+          </p>
+          <p className="window-away-hint">{t.away.hint}</p>
+          <div>
+            <button type="button" className="button primary" onClick={reclaim}>
+              {t.away.useHere}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -196,6 +196,17 @@ test("a saved dashboard round-trips its workspaces", () => {
   assert.equal(workspaceLabel(restored, restored.workspaces[1], untitled), "서버");
 });
 
+test("taking the sessions back brings the other window's workspaces", () => {
+  // The other window named w1 and showed it, then saved its layout.
+  const saved = toSaved(run(twoWorkspaces(), { type: "renameWorkspace", id: "w1", name: "앱" }, { type: "selectTab", id: "t1" }));
+  let state = dashboardReducer(twoWorkspaces(), { type: "status", id: "a", status: "error", notice: "takenOver" });
+  state = dashboardReducer(state, { type: "reclaim", saved });
+  assert.equal(activeWorkspace(state).id, "w1");
+  assert.equal(activeTab(state).id, "t1");
+  assert.equal(workspaceLabel(state, activeWorkspace(state), untitled), "앱");
+  assert.deepEqual(tabsOf(state, "w2"), ["t3"]);
+});
+
 const legacyFile = {
   version: 1,
   activeTabId: "t2",
