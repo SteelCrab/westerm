@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { GripVertical, Maximize2, Minimize2, RotateCcw, X } from "lucide-react";
+import { Check, Copy, GripVertical, Maximize2, Minimize2, RotateCcw, X } from "lucide-react";
 import { carries, dropZone, PANE_MIME, startDrag, type DropZone } from "../dnd.ts";
 import { useI18n } from "../i18n/index.tsx";
+import { installHint, type InstallHint } from "../installHints.ts";
 import { KindIcon } from "../kinds.tsx";
 import { REMOTE_TARGET } from "../remoteWindow.ts";
 import type { TerminalThemeColors } from "@wterm/core";
@@ -40,6 +41,51 @@ function exitDetail(event: Extract<ConnectionEvent, { type: "exit" }>): string {
   return `exit ${event.code}`;
 }
 
+/** The install command of a missing program, with a Copy button. westerm never runs it. */
+function InstallCommand({ command }: { command: string }) {
+  const { t } = useI18n();
+  // The label goes back to "Copy" after a moment. A failed copy asks the user to select the text.
+  const [result, setResult] = useState<"copied" | "failed" | null>(null);
+  useEffect(() => {
+    if (!result) return;
+    const timer = setTimeout(() => setResult(null), 1500);
+    return () => clearTimeout(timer);
+  }, [result]);
+  const copy = () => {
+    // `navigator.clipboard` is missing outside secure contexts, and writeText can throw.
+    try {
+      void navigator.clipboard.writeText(command).then(
+        () => setResult("copied"),
+        () => setResult("failed"),
+      );
+    } catch {
+      setResult("failed");
+    }
+  };
+  return (
+    <div className="pane-install">
+      <code>{command}</code>
+      <button type="button" className="button" onClick={copy}>
+        {result === "copied" ? <Check size={14} /> : <Copy size={14} />} {result === "copied" ? t.pane.hint.copied : t.pane.hint.copy}
+      </button>
+      {result === "failed" && <span role="alert">{t.pane.hint.copyFailed}</span>}
+    </div>
+  );
+}
+
+function InstallHintView({ hint }: { hint: InstallHint }) {
+  const { t } = useI18n();
+  if (hint.type === "failed") return <p>{t.pane.hint.failed(hint.program)}</p>;
+  return (
+    <div className="pane-hint">
+      <p>{t.pane.hint.missing(hint.program, hint.remote)}</p>
+      <InstallCommand command={hint.command} />
+      <p>{t.pane.hint.installThenRestart}</p>
+      {hint.remote && <p>{t.pane.hint.runOnServer}</p>}
+    </div>
+  );
+}
+
 export function Pane(props: PaneProps) {
   const { session, font, focused, maximized, covered, gridStyle, focusNonce, renaming, onRename, dispatch } = props;
   const { dragging, onDragPane, colors, away, mayReattach } = props;
@@ -56,7 +102,7 @@ export function Pane(props: PaneProps) {
         dispatch({ type: "ready", id, pid: event.pid, mode: event.mode });
         break;
       case "exit":
-        dispatch({ type: "status", id, status: "exited", detail: exitDetail(event) });
+        dispatch({ type: "status", id, status: "exited", detail: exitDetail(event), exitCode: event.signal ? null : event.code });
         break;
       case "error":
         dispatch({ type: "status", id, status: "error", detail: event.message });
@@ -83,6 +129,7 @@ export function Pane(props: PaneProps) {
   }, [session.status, session.retries, away, mayReattach, id, dispatch]);
 
   const ended = session.status === "exited" || session.status === "error";
+  const hint = session.status === "exited" ? installHint(session.kind, session.exitCode, REMOTE_TARGET !== null) : null;
   // "pid 7 · reconnected", "exit 1", or a server message, in the UI language.
   const detail = [session.detail, session.notice && t.notice[session.notice]].filter(Boolean).join(" · ") || null;
   const classes = [
@@ -206,11 +253,13 @@ export function Pane(props: PaneProps) {
           onFocus={() => !focused && dispatch({ type: "focus", id })}
         />
         {ended && (
-          <div className="pane-overlay" role="status">
+          // A program that failed to start printed its own message: keep it readable.
+          <div className={hint?.type === "failed" ? "pane-overlay beside-text" : "pane-overlay"} role="status">
             <p>
               {session.status === "exited" ? t.pane.exited : t.pane.failed}
               {detail ? ` (${detail})` : ""}
             </p>
+            {hint && <InstallHintView hint={hint} />}
             <div className="pane-overlay-actions">
               <button type="button" className="button primary" onClick={() => dispatch({ type: "restart", id, manual: true })}>
                 <RotateCcw size={14} /> {t.pane.restart}

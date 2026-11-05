@@ -42,6 +42,8 @@ export interface Session {
   status: SessionStatus;
   /** Untranslated detail: pid, exit code, or a server message (already localized). */
   detail: string | null;
+  /** Exit code of the program once it exited; null otherwise (also for a signal). */
+  exitCode: number | null;
   /** Connection state the UI shows in its language. */
   notice: Notice | null;
   /** PTY process id once the server reports it. */
@@ -120,7 +122,7 @@ export type DashboardAction =
   | { type: "close"; id: string }
   | { type: "focus"; id: string }
   | { type: "toggleMaximize"; id: string }
-  | { type: "status"; id: string; status: SessionStatus; detail?: string | null; notice?: Notice | null }
+  | { type: "status"; id: string; status: SessionStatus; detail?: string | null; notice?: Notice | null; exitCode?: number | null }
   | { type: "title"; id: string; title: string }
   /** An empty name returns the session to the program's title. */
   | { type: "renameSession"; id: string; name: string }
@@ -323,6 +325,7 @@ function newSession(
     target,
     status: "connecting",
     detail: null,
+    exitCode: null,
     notice: null,
     pid: null,
     cwdFrom: null,
@@ -372,6 +375,7 @@ function reconnectAll(previous: Dashboard, next: Dashboard): Dashboard {
       ...session,
       status: "connecting",
       detail: null,
+      exitCode: null,
       notice: null,
       pid: null,
       retries: 0,
@@ -562,6 +566,7 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
         status: action.status,
         detail: action.detail ?? null,
         notice: action.notice ?? null,
+        exitCode: action.exitCode ?? null,
       });
     case "title": {
       const title = action.title.trim();
@@ -575,6 +580,7 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
       return patch(state, action.id, {
         status: "connecting",
         detail: null,
+        exitCode: null,
         notice: null,
         pid: null,
         retries: action.manual ? 0 : session.retries,
