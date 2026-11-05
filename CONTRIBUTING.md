@@ -111,7 +111,11 @@ Remove private data first: host names, paths, and screen contents.
 
 - Open an issue first for anything larger than a small fix, and agree on the direction.
 - Branch from `main`. Keep one topic per pull request.
-- Write the title like a commit subject (see [Commits](#commits)): imperative mood, about 72 characters or less.
+- Write the title as `<type>(<scope>): <subject>`, about 72 characters or less in all.
+  - `type`: `feat` (new behavior), `fix` (a bug fix), `docs`, `refactor`, `test`, or `chore` (build, CI, releases).
+  - `scope`: the part the change touches, such as `remote`, `host`, `ui`, `i18n`, or `macos`.
+  - `subject`: imperative mood, starting in lowercase, with no period at the end.
+  - Examples: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
 - Fill in the template. Link the issue with `Closes #123`, so the issue closes on merge.
 - Open a draft while you still work on it. Mark it ready when the checks in [Before you open a pull request](#before-you-open-a-pull-request) pass.
 - CI must pass on macOS, Linux, and Windows.
@@ -204,6 +208,7 @@ There is no formatter configuration yet. Match the code around your change.
 
 - Subject in the imperative mood, about 72 characters or less: `Add Japanese restore notice`, not `added ...`.
 - The body explains why the change is needed, when it is not obvious.
+- Pull request titles have their own format: see [Pull requests](#pull-requests).
 
 ## Releasing
 
