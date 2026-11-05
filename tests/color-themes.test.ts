@@ -89,11 +89,11 @@ test("the other themes color the window, and its text stays readable", () => {
       // Text, and the status colors that also color text.
       for (const name of ["--text", "--text-muted", "--danger", "--warn"]) atLeast(name, 4.5);
       // Hints, marks, and icons.
-      for (const name of ["--text-faint", "--accent", "--ok", "--browser", "--editor", "--ssh"]) atLeast(name, 3);
+      for (const name of ["--text-faint", "--accent", "--ok", "--browser", "--editor", "--ssh", "--docs"]) atLeast(name, 3);
       const onAccent = contrast(hex(ui["--on-accent"]), hex(ui["--accent"]));
       assert.ok(onAccent >= 4.5, `${where} --on-accent: ${onAccent.toFixed(2)}`);
       assert.equal(hex(ui["--pane-bg"]), terminalColors(id, scheme).background, `${where}: panes match the terminal`);
-      for (const name of ["--accent-soft", "--browser-soft", "--editor-soft", "--ssh-soft", "--overlay"]) {
+      for (const name of ["--accent-soft", "--browser-soft", "--editor-soft", "--ssh-soft", "--docs-soft", "--overlay"]) {
         assert.match(ui[name] ?? "", /^rgba\(\d+, \d+, \d+, 0\.\d+\)$/, `${where} ${name}`);
       }
     }
