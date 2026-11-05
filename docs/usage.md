@@ -5,7 +5,7 @@
 | Area | What it does |
 |---|---|
 | Activity bar | New shell, terminal-browser, terminal-code, SSH, and remote window at the top; a badge shows how many are open. The command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. |
-| Layout | Settings ▸ Workspaces and tabs picks one. **Top** (the default): the workspace menu and the tab bar across the top, and no sidebar. **Sidebar**: the workspace menu and the tabs in the sidebar, and no tab bar. |
+| Layout | Settings ▸ General ▸ Workspaces and tabs picks one. **Top** (the default): the workspace menu and the tab bar across the top, and no sidebar. **Sidebar**: the workspace menu and the tabs in the sidebar, and no tab bar. |
 | Tab bar (top layout) | The workspace menu at the left, then the tabs. `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Sidebar (sidebar layout) | The workspace menu, then the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: the workspace icon, tab numbers, and the session icons of the tab in view. |
 | Panes | Drag a pane's header onto another pane's edge to split there, onto its center to swap, or onto a tab or `+` to move it. Drag a divider to resize. |
@@ -68,16 +68,17 @@ The same keys work in the browser and in the macOS app. Browsers keep ⌘1–9 a
 
 ## Settings
 
-Open Settings from the gear at the bottom of the activity bar, from the palette, or with ⌘, in the macOS app. Changes apply at once and are saved in this browser (or the app).
+Open Settings from the gear at the bottom of the activity bar, from the palette, or with ⌘, in the macOS app. Pick a page from the menu on the left: General, Appearance, Terminal, or Updates. Changes apply at once and are saved in this browser (or the app).
 
-| Setting | Effect |
-|---|---|
-| Language | Same as the browser, or English, Korean, Japanese, or Simplified Chinese. |
-| Theme | System (follows the OS, live), Light, or Dark. Terminal colors follow it, and programs that ask for the background color (OSC 11) pick a matching theme. |
-| Workspaces and tabs | Top: the workspace menu and the tab bar, with no sidebar. Sidebar: the workspace menu and the tabs in the sidebar, with no tab bar. |
-| Font size | Overrides the Ghostty `font-size`. "Use the Ghostty size" goes back. |
-| Font | Overrides the Ghostty `font-family`; separate fallbacks with commas. Leave it empty for the Ghostty font. Applies on Enter or when the field loses focus. |
-| Check for updates automatically | Asks GitHub for the newest release when the dashboard opens and every 6 hours. With it off, westerm contacts GitHub only when you press Check now. |
+| Page | Setting | Effect |
+|---|---|---|
+| General | Language | Same as the browser, or English, Korean, Japanese, or Simplified Chinese. |
+| General | Workspaces and tabs | Top: the workspace menu and the tab bar, with no sidebar. Sidebar: the workspace menu and the tabs in the sidebar, with no tab bar. |
+| Appearance | Mode | System (follows the OS, live), Light, or Dark. Terminal colors follow it, and programs that ask for the background color (OSC 11) pick a matching theme. |
+| Appearance | Color theme | Default, One, GitHub, Solarized, Gruvbox, Catppuccin, Tokyo Night, Rosé Pine, Everforest, or Kanagawa. Colors the window and the terminals; each theme has a light and a dark set, which follow Mode. Default keeps the window's own colors. Programs that ask for the background color (OSC 11) get the theme's. |
+| Terminal | Font size | Overrides the Ghostty `font-size`. "Use the Ghostty size" goes back. |
+| Terminal | Font | Overrides the Ghostty `font-family`; separate fallbacks with commas. Leave it empty for the Ghostty font. Applies on Enter or when the field loses focus. |
+| Updates | Check for updates automatically | Asks GitHub for the newest release when the dashboard opens and every 6 hours. With it off, westerm contacts GitHub only when you press Check now. A remote window has no Updates page. |
 
 ## Updates
 
@@ -117,7 +118,7 @@ A window for a Linux server: its tabs, workspaces, and shells live on the server
 - A window that comes back (after sleep or a lost network) reads the server's layout first. If another computer changed the tabs meanwhile, the window takes the server's layout, and its own changes from while it was away are lost.
 - Known limit: a window that comes back also takes the sessions from the window in use, which then shows "In use in another window". Click that window to take them back.
 - When the link drops, a "Reconnecting…" banner shows and the panes keep trying. If the failure cannot fix itself (for example the SSH key is refused), the window shows the reason and a **Try again** button.
-- Theme, language, and font size are shared with the local window. Fonts follow the Ghostty config of this computer.
+- Mode, color theme, language, and font size are shared with the local window. Fonts follow the Ghostty config of this computer.
 - A remote window cannot open another remote window.
 - The plain SSH pane stays as it is, for servers where you do not want to install anything.
 
@@ -157,4 +158,4 @@ The remote westerm pane of v0.2.0 is gone. A saved layout drops those panes when
 
 - The server reads `font-family` and `font-size` from your Ghostty config (`/api/terminal-config`).
 - Ghostty has the Nerd Font icons built in; browsers do not. So the font stack adds the Nerd Fonts you have installed after your font.
-- Light and dark follow the OS unless Settings picks one. Terminal colors switch with it (`WTerm.setThemeColors`).
+- Light and dark follow the OS unless Settings picks one. Terminal colors switch with it, in the color theme picked in Settings (`src/terminalThemes.ts`, `WTerm.setThemeColors`).
