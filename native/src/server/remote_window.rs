@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use axum::body::Bytes;
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, RawQuery, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -25,6 +25,10 @@ pub(super) fn routes() -> Router<Shared> {
         .route("/remote/{target}/api/workspace", get(get_workspace).put(put_workspace))
         .route("/remote/{target}/api/ssh-hosts", get(ssh_hosts))
         .route("/remote/{target}/ws/session", get(session))
+        .route(
+            "/remote/{target}/api/docs/{name}",
+            get(docs_get).put(docs_put).post(docs_post).layer(DefaultBodyLimit::max(super::docs::MAX_BODY_BYTES)),
+        )
 }
 
 /// The target from the path, when the Host header is one of this dashboard's
@@ -95,6 +99,56 @@ async fn ssh_hosts(State(state): State<Shared>, Path(target): Path<String>, head
         Ok(target) => forward(&state, &target, "GET", "/api/ssh-hosts", None).await,
         Err(status) => status.into_response(),
     }
+}
+
+/// The docs routes a remote window may reach, by their last path part.
+const DOCS_ROUTES: [&str; 3] = ["tree", "file", "cwd"];
+
+/// The server's path for a docs route, with the page's query as it came.
+fn docs_path(name: &str, query: Option<String>) -> String {
+    match query {
+        Some(query) => format!("/api/docs/{name}?{query}"),
+        None => format!("/api/docs/{name}"),
+    }
+}
+
+/// A docs pane of a remote window reads the server's files.
+async fn docs_get(
+    State(state): State<Shared>,
+    Path((target, name)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
+) -> Response {
+    if !DOCS_ROUTES.contains(&name.as_str()) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    match checked_get_target(&state, &headers, &target) {
+        Ok(target) => forward(&state, &target, "GET", &docs_path(&name, query), None).await,
+        Err(status) => status.into_response(),
+    }
+}
+
+async fn docs_put(State(state): State<Shared>, Path((target, name)): Path<(String, String)>, headers: HeaderMap, body: Bytes) -> Response {
+    docs_change(&state, &target, &name, "PUT", &headers, &body).await
+}
+
+async fn docs_post(State(state): State<Shared>, Path((target, name)): Path<(String, String)>, headers: HeaderMap, body: Bytes) -> Response {
+    docs_change(&state, &target, &name, "POST", &headers, &body).await
+}
+
+/// Like `put_workspace`: JSON from the dashboard's own page only. Only files change.
+async fn docs_change(state: &Shared, target: &str, name: &str, method: &str, headers: &HeaderMap, body: &[u8]) -> Response {
+    if name != "file" {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let target = match checked_target(state, headers, target) {
+        Ok(target) => target,
+        Err(status) => return status.into_response(),
+    };
+    if !is_json(headers) || !origin_allowed(state, headers) {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    forward(state, &target, method, "/api/docs/file", Some(body)).await
 }
 
 /// A pane of a remote window. The server's host opens the session.

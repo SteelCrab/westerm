@@ -4,6 +4,7 @@
 //! routes a remote window needs, on a private Unix socket instead.
 
 mod config;
+mod docs;
 pub(crate) mod host_client;
 mod http1;
 mod remote;
@@ -123,6 +124,7 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         .route("/api/remote/close", post(remote_close))
         .route("/api/remote/update-host", post(remote_update_host))
         .route("/ws/session", get(session))
+        .merge(docs::routes())
         .merge(remote_window::routes())
         .fallback(asset)
         .with_state(state);
@@ -147,6 +149,7 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         .route("/api/workspace", get(get_workspace).put(put_workspace))
         .route("/api/ssh-hosts", get(ssh_hosts))
         .route("/ws/session", get(session))
+        .merge(docs::routes())
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)
 }
@@ -498,7 +501,7 @@ async fn asset(uri: Uri) -> Response {
 mod tests {
     use super::*;
 
-    fn test_state(origins: &[&str]) -> AppState {
+    pub(super) fn test_state(origins: &[&str]) -> AppState {
         AppState {
             host: HostClient::default(),
             origins: origins.iter().map(|origin| (*origin).to_owned()).collect(),
