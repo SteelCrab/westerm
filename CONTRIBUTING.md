@@ -145,7 +145,7 @@ Remove private data first: host names, paths, and screen contents.
   - Examples: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
 - Fill in the template: a summary of at most 5 bullets, one line each, and the commands a reviewer runs to test. Link the issue with `Closes #123`, so the issue closes on merge.
 - Open a draft while you still work on it. Mark it ready when the checks in [Before you open a pull request](#before-you-open-a-pull-request) pass.
-- CI must pass on macOS, Linux, and Windows.
+- CI must pass on macOS, Linux, and Windows. It runs the type check, the UI tests, and the UI build once; clippy and `cargo test` on each system; the release build on Linux; shellcheck on the shell scripts; and a type check of the macOS app's Swift code.
 - Answer review comments with new commits. Do not force-push during a review, so reviewers can see what changed.
 - A maintainer merges after review.
 
@@ -155,9 +155,10 @@ Remove private data first: host names, paths, and screen contents.
 npm test             # UI tests + cargo test (unit and integration)
 npm run type-check
 npm run build        # the release build must succeed
+cargo clippy --all-targets --manifest-path native/Cargo.toml -- -D warnings
 ```
 
-All three must pass. Then check:
+All four must pass. Then check:
 
 - [ ] One topic per pull request. Split unrelated changes.
 - [ ] New behavior has tests. A bug fix has a test that fails without the fix.
