@@ -22,7 +22,8 @@ import type { RenameTarget } from "./components/InlineRename.tsx";
 import type { PaletteCommand } from "./components/CommandPalette.tsx";
 import { LOCALE_NAMES, LOCALES, type Locale, type Messages } from "./i18n/messages.ts";
 import { KindIcon, LAUNCHERS } from "./kinds.tsx";
-import { normalizeBrowserUrl, normalizeSshTarget } from "../shared/protocol.ts";
+import { normalizeBrowserUrl, normalizeSshTarget, REMOTE_UPDATE_HOST_PATH } from "../shared/protocol.ts";
+import { postRemote } from "./remoteApi.ts";
 import type { SshHost } from "./useSshHosts.ts";
 import { shortcutLabel, type SwitchCommand } from "./shortcuts.ts";
 import { appBridge } from "./useUpdate.ts";
@@ -433,6 +434,18 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       run: () => dispatch({ type: "focus", id: session.id }),
     });
   }
+  // A kept older host on a server can be replaced later, once per server.
+  const remoteTargets = new Set(state.sessions.flatMap((session) => (session.kind === "remote" && session.target ? [session.target] : [])));
+  for (const target of remoteTargets) {
+    commands.push({
+      id: `remote-update-${target}`,
+      title: t.palette.updateRemoteHost(target),
+      group: g.remoteShell,
+      icon: <KindIcon kind="remote" size={14} />,
+      keywords: `westerm remote host update replace ${target}`,
+      run: () => void postRemote(REMOTE_UPDATE_HOST_PATH, { target }),
+    });
+  }
   return commands;
 }
 
@@ -483,6 +496,15 @@ export function sshCommands(
       icon: <KindIcon kind="ssh" size={14} />,
       keywords: `ssh remote shell ${target}`,
       run: () => open("ssh", null, target),
+    },
+    {
+      id: `remote-${target}`,
+      title: t.palette.remoteWesterm(target),
+      hint: t.palette.remoteWestermHint,
+      group: t.palette.groups.remoteShell,
+      icon: <KindIcon kind="remote" size={14} />,
+      keywords: `westerm remote quic persistent ${target}`,
+      run: () => open("remote", null, target),
     },
     {
       id: `ssh-browser-${target}`,

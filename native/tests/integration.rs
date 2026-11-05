@@ -3,14 +3,16 @@
 //! Runs on macOS, Linux (Unix socket), and Windows (named pipe).
 
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
 
-const BIN: &str = env!("CARGO_BIN_EXE_westerm");
+mod common;
+use common::{Spawned, StopHostOnDrop, Viewer, BIN};
+
 const QUERY: &str = "session=stest1&kind=shell&cols=80&rows=24&width=640&height=408&lang=ko";
 
 /// Prints MARK_42 only when the shell runs it: the typed line itself does not contain that text.
@@ -39,33 +41,6 @@ async fn connect(state: &Path) -> Stream {
     let record = std::fs::read_to_string(endpoint(state)).unwrap();
     let name = record.lines().next().unwrap();
     tokio::net::windows::named_pipe::ClientOptions::new().open(name).unwrap()
-}
-
-/// A child process that is killed when it goes out of scope, so a test that
-/// fails half way leaves nothing running in the background.
-struct Spawned(Child);
-
-impl Drop for Spawned {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-/// Runs `westerm stop` for a state folder when it goes out of scope. It stops
-/// a host the test did not start itself: the dashboard starts its host in a
-/// separate session, so killing the dashboard leaves the host running.
-struct StopHostOnDrop<'a>(&'a Path);
-
-impl Drop for StopHostOnDrop<'_> {
-    fn drop(&mut self) {
-        let _ = Command::new(BIN)
-            .arg("stop")
-            .env("WESTERM_STATE_DIR", self.0)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
 }
 
 fn start_host(state: &Path) -> Spawned {
@@ -103,87 +78,17 @@ async fn stop_host(state: &Path, mut host: Spawned) {
     }
 }
 
-struct Viewer {
-    ws: tokio_tungstenite::WebSocketStream<Stream>,
-    output: String,
-}
-
 /// A shell pane in the page `window`, as the dashboard asks for one.
 fn window_query(session: &str, window: &str) -> String {
     format!("session={session}&kind=shell&cols=80&rows=24&width=640&height=408&lang=ko&window={window}")
 }
 
-impl Viewer {
-    async fn attach(state: &Path) -> (Self, serde_json::Value) {
-        Self::attach_query(state, QUERY).await
-    }
+async fn attach_query(state: &Path, query: &str) -> (Viewer<Stream>, serde_json::Value) {
+    Viewer::attach_over(connect(state).await, query).await
+}
 
-    async fn attach_query(state: &Path, query: &str) -> (Self, serde_json::Value) {
-        let stream = connect(state).await;
-        let (mut ws, _) = tokio_tungstenite::client_async(format!("ws://host/session?{query}"), stream).await.unwrap();
-        ws.send(Message::text(r#"{"type":"resize","cols":80,"rows":24,"width":640,"height":408}"#)).await.unwrap();
-        let mut viewer = Self { ws, output: String::new() };
-        let ready = viewer.next_json().await;
-        assert_eq!(ready["type"], "ready");
-        (viewer, ready)
-    }
-
-    async fn next_json(&mut self) -> serde_json::Value {
-        loop {
-            match self.ws.next().await.unwrap().unwrap() {
-                Message::Text(text) => return serde_json::from_str(&text).unwrap(),
-                Message::Binary(bytes) => self.take(&bytes).await,
-                _ => {}
-            }
-        }
-    }
-
-    async fn take(&mut self, bytes: &[u8]) {
-        let text = String::from_utf8_lossy(bytes);
-        // Answer "where is the cursor?" (DSR 6) as a terminal does. Windows
-        // ConPTY asks once at start and holds the shell until it gets a reply;
-        // in the dashboard, wterm answers it.
-        let questions = text.matches("\x1b[6n").count();
-        self.output.push_str(&text);
-        let ack = format!(r#"{{"type":"ack","bytes":{}}}"#, bytes.len());
-        let _ = self.ws.send(Message::text(ack)).await;
-        for _ in 0..questions {
-            let _ = self.ws.send(Message::text(r#"{"type":"input","data":"\u001b[1;1R"}"#)).await;
-        }
-    }
-
-    async fn wait_for(&mut self, needle: &str) {
-        // PowerShell on a fresh CI machine can take several seconds to start.
-        let deadline = Instant::now() + Duration::from_secs(30);
-        while !self.output.contains(needle) {
-            let left = deadline.saturating_duration_since(Instant::now());
-            assert!(!left.is_zero(), "output contains {needle:?}; got {:?}", self.output);
-            if let Ok(Some(Ok(Message::Binary(bytes)))) = tokio::time::timeout(left, self.ws.next()).await {
-                self.take(&bytes).await;
-            }
-        }
-    }
-
-    async fn send(&mut self, json: &str) {
-        self.ws.send(Message::text(json)).await.unwrap();
-    }
-
-    /// The close code the host sends, skipping output before it.
-    async fn close_code(&mut self) -> u16 {
-        loop {
-            match tokio::time::timeout(Duration::from_secs(5), self.ws.next()).await.unwrap() {
-                Some(Ok(Message::Close(Some(frame)))) => return u16::from(frame.code),
-                Some(Ok(_)) => continue,
-                other => panic!("expected a close frame, got {other:?}"),
-            }
-        }
-    }
-
-    async fn detach(mut self) {
-        let _ = self.ws.close(None).await;
-        // Give the host a moment to see the close before the next attach.
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+async fn attach(state: &Path) -> (Viewer<Stream>, serde_json::Value) {
+    attach_query(state, QUERY).await
 }
 
 fn session_files(state: &Path) -> Vec<String> {
@@ -199,7 +104,7 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
     let state = tempfile::tempdir().unwrap();
     let host = start_host(state.path());
 
-    let (mut first, ready) = Viewer::attach(state.path()).await;
+    let (mut first, ready) = attach(state.path()).await;
     assert_eq!(ready["mode"], "new");
     let pid = ready["pid"].clone();
     first.send(MARK_INPUT).await;
@@ -207,7 +112,7 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
     first.detach().await;
 
     // Same process; the screen is replayed from the host's copy.
-    let (mut second, ready) = Viewer::attach(state.path()).await;
+    let (mut second, ready) = attach(state.path()).await;
     assert_eq!(ready["mode"], "reattached");
     assert_eq!(ready["pid"], pid, "the same shell process");
     second.wait_for("MARK_42").await;
@@ -217,7 +122,7 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
     stop_host(state.path(), host).await;
     assert!(session_files(state.path()).contains(&"stest1.screen".to_owned()), "screen saved on shutdown");
     let host = start_host(state.path());
-    let (mut third, ready) = Viewer::attach(state.path()).await;
+    let (mut third, ready) = attach(state.path()).await;
     assert_eq!(ready["mode"], "revived");
     assert_ne!(ready["pid"], pid, "a new process");
     third.wait_for("MARK_42").await;
@@ -235,8 +140,8 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
 async fn a_second_window_takes_over_and_the_first_is_told() {
     let state = tempfile::tempdir().unwrap();
     let host = start_host(state.path());
-    let (mut first, _) = Viewer::attach(state.path()).await;
-    let (_second, ready) = Viewer::attach(state.path()).await;
+    let (mut first, _) = attach(state.path()).await;
+    let (_second, ready) = attach(state.path()).await;
     assert_eq!(ready["mode"], "reattached");
     let code = loop {
         match tokio::time::timeout(Duration::from_secs(5), first.ws.next()).await.unwrap() {
@@ -253,21 +158,21 @@ async fn a_second_window_takes_over_and_the_first_is_told() {
 async fn one_window_at_a_time_owns_every_session() {
     let state = tempfile::tempdir().unwrap();
     let host = start_host(state.path());
-    let (mut app_one, _) = Viewer::attach_query(state.path(), &window_query("sone1", "wapp")).await;
-    let (mut app_two, ready) = Viewer::attach_query(state.path(), &window_query("stwo1", "wapp")).await;
+    let (mut app_one, _) = attach_query(state.path(), &window_query("sone1", "wapp")).await;
+    let (mut app_two, ready) = attach_query(state.path(), &window_query("stwo1", "wapp")).await;
     let two_pid = ready["pid"].clone();
     // More panes in the same window keep the ones before them.
     app_one.send(MARK_INPUT).await;
     app_one.wait_for("MARK_42").await;
 
     // Another window opens one of them and takes both.
-    let (mut web, ready) = Viewer::attach_query(state.path(), &window_query("sone1", "wweb")).await;
+    let (mut web, ready) = attach_query(state.path(), &window_query("sone1", "wweb")).await;
     assert_eq!(ready["mode"], "reattached");
     assert_eq!(app_one.close_code().await, 4001);
     assert_eq!(app_two.close_code().await, 4001, "a session the new window did not open");
 
     // Back in the first window: the shells kept running, and the other window is told.
-    let (_app, ready) = Viewer::attach_query(state.path(), &window_query("stwo1", "wapp")).await;
+    let (_app, ready) = attach_query(state.path(), &window_query("stwo1", "wapp")).await;
     assert_eq!(ready["mode"], "reattached");
     assert_eq!(ready["pid"], two_pid, "the same shell process");
     assert_eq!(web.close_code().await, 4001, "a session this window did not open");
@@ -339,4 +244,16 @@ async fn a_second_host_refuses_to_start_while_one_is_running() {
     // The first host still owns the endpoint and answers.
     assert!(http(state.path(), "GET", "/health").await.contains("\"build\""));
     stop_host(state.path(), first).await;
+}
+
+#[tokio::test]
+async fn health_reports_the_protocol() {
+    let state = tempfile::tempdir().unwrap();
+    let host = start_host(state.path());
+    let response = http(state.path(), "GET", "/health").await;
+    let body = response.split_once("\r\n\r\n").map(|(_, body)| body).unwrap_or_default();
+    let health: serde_json::Value = serde_json::from_str(body).expect("health is JSON");
+    assert_eq!(health["protocol"], 1);
+    assert!(health["build"].as_str().is_some_and(|build| build.starts_with("rs-")));
+    stop_host(state.path(), host).await;
 }

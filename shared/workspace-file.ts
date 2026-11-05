@@ -13,7 +13,7 @@ export interface SavedSession {
   /** User-set name, or null. */
   name: string | null;
   url: string | null;
-  /** ssh destination, for ssh sessions and remote browsers. */
+  /** ssh destination, for ssh and remote sessions and remote browsers. */
   target?: string | null;
 }
 
@@ -91,7 +91,8 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
     if (title === null || (session.url !== null && url === null)) return null;
     if (session.name != null && name === null) return null;
     const target = session.target == null ? null : normalizeSshTarget(String(session.target));
-    if ((session.target != null && target === null) || (session.kind === "ssh" && !target)) return null;
+    const needsTarget = session.kind === "ssh" || session.kind === "remote";
+    if ((session.target != null && target === null) || (needsTarget && !target)) return null;
     sessionIds.add(session.id);
     sessions.push({ id: session.id, kind: session.kind, title, name, url, target });
   }

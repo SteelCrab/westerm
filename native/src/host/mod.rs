@@ -18,7 +18,7 @@ use axum::{Json, Router};
 use tokio::sync::{mpsc, oneshot, Notify};
 
 use crate::ipc;
-use crate::protocol::AttachRequest;
+use crate::protocol::{AttachRequest, PROTOCOL};
 use crate::state_dir::{private_file, state_dir};
 use registry::RegistryCommand;
 use store::SessionStore;
@@ -116,7 +116,7 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     let (reply, count) = oneshot::channel();
     let _ = state.registry.send(RegistryCommand::Count { reply });
     let sessions = count.await.unwrap_or(0);
-    Json(serde_json::json!({ "build": HOST_BUILD, "pid": std::process::id(), "sessions": sessions }))
+    Json(serde_json::json!({ "build": HOST_BUILD, "protocol": PROTOCOL, "pid": std::process::id(), "sessions": sessions }))
 }
 
 async fn shutdown(State(state): State<AppState>) -> StatusCode {

@@ -16,9 +16,19 @@ pub const FLOW_LOW_WATER: u64 = 2 * 1024 * 1024;
 /// reconnect until it is used again.
 pub const CLOSE_TAKEN_OVER: u16 = 4001;
 
+/// The rules between a dashboard and a host: attach queries and the JSON
+/// messages. Raised only when they change, so a dashboard can keep using an
+/// older remote host that speaks the same rules. The host reports it in /health.
+pub const PROTOCOL: u32 = 1;
+
 pub const MAX_COLS: u16 = 1024;
 pub const MAX_ROWS: u16 = 512;
 
+/// A remote westerm failed in a way that reconnecting does not fix.
+pub const CLOSE_REMOTE_FAILED: u16 = 4003;
+
+/// remote: a shell on a server's own westerm host, reached through the
+/// dashboard over QUIC (or an SSH tunnel). The local host never runs it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionKind {
@@ -26,6 +36,7 @@ pub enum SessionKind {
     Browser,
     Editor,
     Ssh,
+    Remote,
 }
 
 impl SessionKind {
@@ -35,6 +46,7 @@ impl SessionKind {
             "browser" => Some(Self::Browser),
             "editor" => Some(Self::Editor),
             "ssh" => Some(Self::Ssh),
+            "remote" => Some(Self::Remote),
             _ => None,
         }
     }
@@ -45,14 +57,66 @@ impl SessionKind {
             Self::Browser => "browser",
             Self::Editor => "editor",
             Self::Ssh => "ssh",
+            Self::Remote => "remote",
         }
     }
 
     /// Kinds whose process outlives its viewer and whose screen is replayed.
     /// The others draw with Kitty images and restart on every attach.
     pub fn is_text(self) -> bool {
-        matches!(self, Self::Shell | Self::Ssh)
+        matches!(self, Self::Shell | Self::Ssh | Self::Remote)
     }
+}
+
+/// How the dashboard reaches a remote westerm.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteVia {
+    Quic,
+    Tunnel,
+}
+
+/// Why a remote pane could not connect. The browser shows each in its language.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoteFailure {
+    /// SSH refused the key (or wanted a password).
+    Auth,
+    /// The server's host key is not in known_hosts.
+    HostKey,
+    Unreachable,
+    /// Not Linux, or a CPU without a release build.
+    Unsupported,
+    Download,
+    /// A source build has no release to install; WESTERM_REMOTE_BINARY_DIR is needed.
+    DevBinary,
+    NewerRemote,
+    /// The user kept an older remote host that speaks another protocol.
+    Incompatible,
+    /// Neither QUIC nor an SSH tunnel connected.
+    Transport,
+    Setup,
+}
+
+impl RemoteFailure {
+    /// False for failures that a later try can get past on its own.
+    pub fn is_permanent(self) -> bool {
+        !matches!(self, Self::Unreachable | Self::Transport)
+    }
+}
+
+/// Where a remote pane is while the dashboard prepares the server.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "stage", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum RemoteStage {
+    Checking,
+    Installing { version: String },
+    Starting,
+    Connecting,
+    /// The server's host is an older build with running shells: replace it?
+    Confirm { sessions: usize },
+    Connected { via: RemoteVia, kill_on_logout: bool },
+    Failed { reason: RemoteFailure, detail: String },
 }
 
 /// Grid and pixel size. Kitty clients read the pixel size with TIOCGWINSZ.
@@ -109,6 +173,8 @@ pub enum ServerMessage {
     Ready { pid: u32, mode: AttachMode },
     Exit { code: i64, signal: i64 },
     Error { message: String },
+    /// Sent by the dashboard, never the host, while a remote pane connects.
+    Remote(RemoteStage),
 }
 
 impl ServerMessage {
@@ -213,7 +279,7 @@ impl AttachRequest {
             Some(raw) => Some(normalize_ssh_target(raw)?),
             None => None,
         };
-        if kind == SessionKind::Ssh && target.is_none() {
+        if matches!(kind, SessionKind::Ssh | SessionKind::Remote) && target.is_none() {
             return None;
         }
         let url = if kind == SessionKind::Browser {
@@ -228,6 +294,22 @@ impl AttachRequest {
             None => None,
         };
         Some(Self { id, kind, url, target, cwd_from, size, lang, window })
+    }
+
+    /// What the dashboard asks a remote host for: a plain shell there, with
+    /// the same id, size, language, and window.
+    pub fn for_remote_host(&self) -> AttachRequest {
+        AttachRequest {
+            id: self.id.clone(),
+            kind: SessionKind::Shell,
+            url: None,
+            target: None,
+            cwd_from: None,
+            size: self.size,
+            lang: self.lang,
+            // The server's host follows the same one-window rule as the local one.
+            window: self.window.clone(),
+        }
     }
 
     /// The same request as a query string, from validated fields only.
@@ -345,5 +427,53 @@ mod tests {
         ssh.insert("kind".into(), "ssh".into());
         ssh.remove("target");
         assert!(AttachRequest::from_query(&ssh).is_none(), "ssh needs a destination");
+    }
+
+    fn shell_query() -> HashMap<String, String> {
+        [("session", "sabc1"), ("kind", "shell"), ("cols", "80"), ("rows", "24"), ("width", "640"), ("height", "408"), ("lang", "ko")]
+            .into_iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn remote_needs_a_destination_and_becomes_a_plain_shell_remotely() {
+        let mut q = shell_query();
+        q.insert("kind".into(), "remote".into());
+        assert!(AttachRequest::from_query(&q).is_none(), "remote needs a destination");
+        q.insert("target".into(), "prod".into());
+        q.insert("cwdFrom".into(), "sother1".into());
+        q.insert("window".into(), "wabc1".into());
+        let request = AttachRequest::from_query(&q).unwrap();
+        assert_eq!(request.kind, SessionKind::Remote);
+        let remote = request.for_remote_host();
+        assert_eq!((remote.kind, remote.target.clone(), remote.url.clone(), remote.cwd_from.clone()), (SessionKind::Shell, None, None, None));
+        assert_eq!((remote.id.as_str(), remote.size, remote.lang), (request.id.as_str(), request.size, request.lang));
+        assert!(remote.to_query().contains("kind=shell") && !remote.to_query().contains("target"));
+        // The server's host follows the same one-window rule as the local one.
+        assert_eq!(remote.window.as_deref(), Some("wabc1"));
+        assert!(remote.to_query().contains("window=wabc1"));
+    }
+
+    #[test]
+    fn remote_stages_serialize_for_the_browser() {
+        let json = |stage| ServerMessage::Remote(stage).to_json();
+        assert_eq!(
+            json(RemoteStage::Connected { via: RemoteVia::Quic, kill_on_logout: false }),
+            r#"{"type":"remote","stage":"connected","via":"quic","killOnLogout":false}"#
+        );
+        assert_eq!(
+            json(RemoteStage::Failed { reason: RemoteFailure::HostKey, detail: "x".into() }),
+            r#"{"type":"remote","stage":"failed","reason":"hostKey","detail":"x"}"#
+        );
+        assert_eq!(json(RemoteStage::Installing { version: "0.2.0".into() }), r#"{"type":"remote","stage":"installing","version":"0.2.0"}"#);
+        assert_eq!(json(RemoteStage::Confirm { sessions: 3 }), r#"{"type":"remote","stage":"confirm","sessions":3}"#);
+        assert_eq!(json(RemoteStage::Checking), r#"{"type":"remote","stage":"checking"}"#);
+    }
+
+    #[test]
+    fn only_transient_remote_failures_retry() {
+        assert!(!RemoteFailure::Unreachable.is_permanent() && !RemoteFailure::Transport.is_permanent());
+        assert!(RemoteFailure::Auth.is_permanent() && RemoteFailure::NewerRemote.is_permanent());
     }
 }

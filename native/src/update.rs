@@ -188,6 +188,66 @@ impl Drop for WorkDir {
     }
 }
 
+const RELEASES: &str = "https://github.com/SteelCrab/westerm/releases";
+
+/// Downloads the Linux build `westerm-<triple>` of release `version` for a
+/// remote server, checks its SHA-256 sum, and puts the executable at `dest`.
+/// WESTERM_RELEASES_URL points at another copy of the releases (install.sh
+/// reads the same variable).
+pub fn download_release_binary(version: &str, triple: &str, dest: &Path) -> Result<(), String> {
+    let base = std::env::var("WESTERM_RELEASES_URL").unwrap_or_else(|_| RELEASES.to_owned());
+    download_from(&base, version, triple, dest)
+}
+
+fn download_from(base: &str, version: &str, triple: &str, dest: &Path) -> Result<(), String> {
+    let name = format!("westerm-{triple}.tar.gz");
+    let url = format!("{}/download/v{version}/{name}", base.trim_end_matches('/'));
+    let work = WorkDir::new()?;
+    let archive = work.0.join(&name);
+    curl(&url, Some(&archive), 600)?;
+    let expected = String::from_utf8_lossy(&curl(&format!("{url}.sha256"), None, 60)?)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if expected.is_empty() || expected != sha256_hex(&archive)? {
+        return Err(format!("{name} does not match its SHA-256 sum"));
+    }
+    let unpacked = Command::new("tar")
+        .arg("-xf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&work.0)
+        .status()
+        .map_err(|e| format!("cannot run tar: {e}"))?;
+    if !unpacked.success() {
+        return Err(format!("cannot unpack {name}"));
+    }
+    let binary = work.0.join(format!("westerm-{triple}")).join("westerm");
+    if !binary.is_file() {
+        return Err(format!("{name} has no westerm executable"));
+    }
+    let folder = dest.parent().ok_or("the download has no folder")?;
+    fs::create_dir_all(folder).map_err(|e| format!("cannot create {}: {e}", folder.display()))?;
+    let staged = staging_path(folder);
+    fs::copy(&binary, &staged).map_err(|e| format!("cannot write {}: {e}", staged.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&staged, dest).map_err(|e| format!("cannot write {}: {e}", dest.display()))
+}
+
+/// Where a download is put together before it is renamed into place. Each
+/// call gets its own name: two downloads into one folder must not truncate
+/// each other's file.
+fn staging_path(folder: &Path) -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    folder.join(format!(".westerm-download-{}-{n}", std::process::id()))
+}
+
 /// Downloads `release`, checks it, and puts it in place of the executable at `exe`.
 pub fn install(release: &Release, exe: &Path) -> Result<(), String> {
     match channel_of(exe) {
@@ -305,6 +365,66 @@ pub fn run_cli(check_only: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TRIPLE: &str = "x86_64-unknown-linux-musl";
+
+    /// A release folder laid out like GitHub's download URLs, holding one
+    /// Linux archive and its sum (or `sum`).
+    #[cfg(unix)]
+    fn release_fixture(sum: Option<&str>) -> (tempfile::TempDir, String) {
+        let root = tempfile::tempdir().unwrap();
+        let release = root.path().join("download/v9.9.9");
+        let folder = root.path().join(format!("stage/westerm-{TRIPLE}"));
+        fs::create_dir_all(&release).unwrap();
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("westerm"), "#!/bin/sh\necho fake\n").unwrap();
+        let archive = release.join(format!("westerm-{TRIPLE}.tar.gz"));
+        let packed = Command::new("tar")
+            .arg("-czf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(root.path().join("stage"))
+            .arg(format!("westerm-{TRIPLE}"))
+            .status()
+            .unwrap();
+        assert!(packed.success());
+        let sum = sum.map(str::to_owned).unwrap_or_else(|| sha256_hex(&archive).unwrap());
+        fs::write(release.join(format!("westerm-{TRIPLE}.tar.gz.sha256")), format!("{sum}  westerm-{TRIPLE}.tar.gz\n")).unwrap();
+        let base = format!("file://{}", root.path().display());
+        (root, base)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn downloads_and_checks_a_linux_release() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_root, base) = release_fixture(None);
+        let out = tempfile::tempdir().unwrap();
+        let dest = out.path().join(format!("bin/9.9.9/{TRIPLE}/westerm"));
+        download_from(&base, "9.9.9", TRIPLE, &dest).unwrap();
+        assert_eq!(fs::read_to_string(&dest).unwrap(), "#!/bin/sh\necho fake\n");
+        assert_eq!(fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o755);
+    }
+
+    /// Two servers of the same CPU opened at once download into the same
+    /// folder; each download must stage its own file.
+    #[test]
+    fn each_download_stages_its_own_file() {
+        let folder = Path::new("/tmp/cache");
+        assert_ne!(staging_path(folder), staging_path(folder));
+        assert_eq!(staging_path(folder).parent(), Some(folder));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_release_with_a_wrong_sum() {
+        let (_root, base) = release_fixture(Some(&"0".repeat(64)));
+        let out = tempfile::tempdir().unwrap();
+        let dest = out.path().join("westerm");
+        let error = download_from(&base, "9.9.9", TRIPLE, &dest).unwrap_err();
+        assert!(error.contains("SHA-256"), "{error}");
+        assert!(!dest.exists());
+    }
 
     #[test]
     fn versions_compare_by_number() {

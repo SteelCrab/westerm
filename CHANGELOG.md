@@ -8,10 +8,13 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 - A disk image for the macOS app, `westerm-macos-app.dmg`. Open it and drag westerm onto the Applications folder to install. `westerm-macos-app.zip` stays for the app's updater.
 - Workspaces: separate sets of tabs, for example one per project. The sidebar lists them above the tabs; only the workspace in view shows its tabs, and the others keep running. Drop a tab or a pane on a workspace to move it there. The command palette creates, switches, renames, and closes workspaces. A layout saved before workspaces opens as one workspace.
+- Remote westerm: a shell on a Linux server that keeps running when the network drops. westerm installs itself on the server over SSH (the server needs no internet access) and connects over QUIC, or through an SSH tunnel when UDP is blocked. Pick a host, then `westerm <host>`. New commands for the server side: `westerm gate` and `westerm remote-setup`.
 
 ### Changed
 
 - The macOS app explains how to update when it runs from the disk image: move it to Applications first.
+- The PTY host build id no longer depends on line ends, so the same source gives the same id on every platform. After this update, open shells come back once as "restored".
+- `westerm stop` also stops a remote westerm gate.
 
 ### Fixed
 
