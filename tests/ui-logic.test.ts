@@ -6,7 +6,7 @@ import { fuzzyScore } from "../src/components/CommandPalette.tsx";
 import { placeRename } from "../src/components/InlineRename.tsx";
 import { clampSidebar } from "../src/components/SidebarResizer.tsx";
 import { updateShown } from "../src/components/UpdateButton.tsx";
-import { stepIndex, workspaceColor } from "../src/components/WorkspaceMenu.tsx";
+import { stepIndex, tabColors, workspaceColor } from "../src/components/WorkspaceMenu.tsx";
 import { insertionIndex } from "../src/dnd.ts";
 import { MESSAGES } from "../src/i18n/messages.ts";
 import { urlCommands } from "../src/paletteCommands.tsx";
@@ -61,7 +61,34 @@ test("every workspace color has a value in the dark and both light theme blocks"
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   for (const color of WORKSPACE_COLORS) {
     assert.equal(css.split(`--ws-${color}:`).length - 1, 3, color);
+    assert.equal(css.split(`--ws-${color}-soft:`).length - 1, 3, `${color}-soft`);
     assert.equal(workspaceColor(color), `var(--ws-${color})`);
+  }
+});
+
+/** The declarations of the first CSS rule whose selector list has `selector`. */
+function cssRule(css: string, selector: string): string {
+  const plain = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const [, selectors, body] of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (selectors.split(",").some((part) => part.trim() === selector)) return body;
+  }
+  return assert.fail(`no rule for ${selector}`);
+}
+
+test("the tabs take the color of the workspace in view", () => {
+  assert.deepEqual(tabColors("pink"), { "--tab-color": "var(--ws-pink)", "--tab-color-soft": "var(--ws-pink-soft)" });
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const colored = [
+    ".tab.active::after",
+    ".tab.active .tab-index",
+    ".tree-tab.active .tab-index",
+    ".session-panel.compact .tree-tab.active .tab-index",
+    ".tree-session.active",
+  ];
+  for (const selector of colored) {
+    const rule = cssRule(css, selector);
+    assert.match(rule, /var\(--tab-color(-soft)?\)/, selector);
+    assert.doesNotMatch(rule, /--accent/, `${selector} keeps the accent color`);
   }
 });
 
