@@ -27,6 +27,14 @@
   --ws-pink: #f07fba;
   --ws-purple: #a78bfa;
   --ws-gray: #8b94a1;
+  --ws-blue-soft: #6aa9ff29;
+  --ws-green-soft: #4fc27a29;
+  --ws-yellow-soft: #e5b45429;
+  --ws-orange-soft: #f0a35e29;
+  --ws-red-soft: #ef6b6b29;
+  --ws-pink-soft: #f07fba29;
+  --ws-purple-soft: #a78bfa29;
+  --ws-gray-soft: #8b94a129;
   --on-accent: #062218;
   --pane-bg: #1e1e1e;
   --overlay: rgba(13, 15, 18, 0.78);
@@ -84,6 +92,14 @@
     --ws-pink: #c43c85;
     --ws-purple: #7c4ddb;
     --ws-gray: #68717d;
+    --ws-blue-soft: #2f6fde1f;
+    --ws-green-soft: #1f96531f;
+    --ws-yellow-soft: #a877081f;
+    --ws-orange-soft: #c26a1a1f;
+    --ws-red-soft: #d645451f;
+    --ws-pink-soft: #c43c851f;
+    --ws-purple-soft: #7c4ddb1f;
+    --ws-gray-soft: #68717d1f;
     --on-accent: #ffffff;
     --pane-bg: #fafafa;
     --overlay: rgba(247, 248, 250, 0.82);
@@ -122,6 +138,14 @@
   --ws-pink: #c43c85;
   --ws-purple: #7c4ddb;
   --ws-gray: #68717d;
+  --ws-blue-soft: #2f6fde1f;
+  --ws-green-soft: #1f96531f;
+  --ws-yellow-soft: #a877081f;
+  --ws-orange-soft: #c26a1a1f;
+  --ws-red-soft: #d645451f;
+  --ws-pink-soft: #c43c851f;
+  --ws-purple-soft: #7c4ddb1f;
+  --ws-gray-soft: #68717d1f;
   --on-accent: #ffffff;
   --pane-bg: #fafafa;
   --overlay: rgba(247, 248, 250, 0.82);
@@ -889,7 +913,7 @@ button {
   left: 10px;
   height: 2px;
   border-radius: 1px;
-  background: var(--accent);
+  background: var(--tab-color);
   content: "";
 }
 
@@ -1269,7 +1293,7 @@ button {
 }
 
 .tree-session.active {
-  background: var(--accent-soft);
+  background: var(--tab-color-soft);
 }
 
 .tree-chevron {
@@ -1496,10 +1520,15 @@ button {
   font-size: 11px;
 }
 
+/* The number of the tab in view, in the color of its workspace (App sets --tab-color). */
+.tab.active .tab-index,
+.tree-tab.active .tab-index,
 .session-panel.compact .tree-tab.active .tab-index {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--tab-color-soft);
+  box-shadow: inset 0 0 0 1px var(--tab-color);
+  color: var(--text);
 }
+
 
 /* ---- Rename fields --------------------------------------------------- */
 

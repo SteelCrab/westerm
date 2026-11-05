@@ -72,6 +72,11 @@ export function workspaceColor(color: WorkspaceColor): string {
   return `var(--ws-${color})`;
 }
 
+/** The tab bar and the sidebar's tabs show the color of the workspace in view. */
+export function tabColors(color: WorkspaceColor): Record<"--tab-color" | "--tab-color-soft", string> {
+  return { "--tab-color": workspaceColor(color), "--tab-color-soft": `var(--ws-${color}-soft)` };
+}
+
 /** The menu item that an arrow key moves to; -1 is "none focused yet". */
 export function stepIndex(current: number, delta: 1 | -1, count: number): number {
   if (current < 0) return delta > 0 ? 0 : count - 1;
