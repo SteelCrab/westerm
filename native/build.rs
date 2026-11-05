@@ -1,6 +1,8 @@
 // The PTY host build id. The dashboard replaces a running host whose id
 // differs, which restarts every shell (screens are restored), so the id
-// covers only the files the host runs.
+// covers only the files the host runs. Line ends are hashed as LF, so a
+// Windows checkout (CRLF) gets the same id as macOS and Linux: a remote
+// Linux host must match the dashboard that installed it.
 
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
@@ -27,7 +29,7 @@ fn main() {
         println!("cargo:rerun-if-changed={file}");
         file.hash(&mut hasher);
         if let Ok(bytes) = fs::read(file) {
-            bytes.hash(&mut hasher);
+            String::from_utf8_lossy(&bytes).replace("\r\n", "\n").as_bytes().hash(&mut hasher);
         }
     }
     println!("cargo:rustc-env=WESTERM_HOST_BUILD=rs-{:016x}", hasher.finish());

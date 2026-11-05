@@ -3,14 +3,16 @@
 //! Runs on macOS, Linux (Unix socket), and Windows (named pipe).
 
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
 
-const BIN: &str = env!("CARGO_BIN_EXE_westerm");
+mod common;
+use common::{Spawned, StopHostOnDrop, Viewer, BIN};
+
 const QUERY: &str = "session=stest1&kind=shell&cols=80&rows=24&width=640&height=408&lang=ko";
 
 /// Prints MARK_42 only when the shell runs it: the typed line itself does not contain that text.
@@ -39,33 +41,6 @@ async fn connect(state: &Path) -> Stream {
     let record = std::fs::read_to_string(endpoint(state)).unwrap();
     let name = record.lines().next().unwrap();
     tokio::net::windows::named_pipe::ClientOptions::new().open(name).unwrap()
-}
-
-/// A child process that is killed when it goes out of scope, so a test that
-/// fails half way leaves nothing running in the background.
-struct Spawned(Child);
-
-impl Drop for Spawned {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-/// Runs `westerm stop` for a state folder when it goes out of scope. It stops
-/// a host the test did not start itself: the dashboard starts its host in a
-/// separate session, so killing the dashboard leaves the host running.
-struct StopHostOnDrop<'a>(&'a Path);
-
-impl Drop for StopHostOnDrop<'_> {
-    fn drop(&mut self) {
-        let _ = Command::new(BIN)
-            .arg("stop")
-            .env("WESTERM_STATE_DIR", self.0)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
 }
 
 fn start_host(state: &Path) -> Spawned {
@@ -103,67 +78,8 @@ async fn stop_host(state: &Path, mut host: Spawned) {
     }
 }
 
-struct Viewer {
-    ws: tokio_tungstenite::WebSocketStream<Stream>,
-    output: String,
-}
-
-impl Viewer {
-    async fn attach(state: &Path) -> (Self, serde_json::Value) {
-        let stream = connect(state).await;
-        let (mut ws, _) = tokio_tungstenite::client_async(format!("ws://host/session?{QUERY}"), stream).await.unwrap();
-        ws.send(Message::text(r#"{"type":"resize","cols":80,"rows":24,"width":640,"height":408}"#)).await.unwrap();
-        let mut viewer = Self { ws, output: String::new() };
-        let ready = viewer.next_json().await;
-        assert_eq!(ready["type"], "ready");
-        (viewer, ready)
-    }
-
-    async fn next_json(&mut self) -> serde_json::Value {
-        loop {
-            match self.ws.next().await.unwrap().unwrap() {
-                Message::Text(text) => return serde_json::from_str(&text).unwrap(),
-                Message::Binary(bytes) => self.take(&bytes).await,
-                _ => {}
-            }
-        }
-    }
-
-    async fn take(&mut self, bytes: &[u8]) {
-        let text = String::from_utf8_lossy(bytes);
-        // Answer "where is the cursor?" (DSR 6) as a terminal does. Windows
-        // ConPTY asks once at start and holds the shell until it gets a reply;
-        // in the dashboard, wterm answers it.
-        let questions = text.matches("\x1b[6n").count();
-        self.output.push_str(&text);
-        let ack = format!(r#"{{"type":"ack","bytes":{}}}"#, bytes.len());
-        let _ = self.ws.send(Message::text(ack)).await;
-        for _ in 0..questions {
-            let _ = self.ws.send(Message::text(r#"{"type":"input","data":"\u001b[1;1R"}"#)).await;
-        }
-    }
-
-    async fn wait_for(&mut self, needle: &str) {
-        // PowerShell on a fresh CI machine can take several seconds to start.
-        let deadline = Instant::now() + Duration::from_secs(30);
-        while !self.output.contains(needle) {
-            let left = deadline.saturating_duration_since(Instant::now());
-            assert!(!left.is_zero(), "output contains {needle:?}; got {:?}", self.output);
-            if let Ok(Some(Ok(Message::Binary(bytes)))) = tokio::time::timeout(left, self.ws.next()).await {
-                self.take(&bytes).await;
-            }
-        }
-    }
-
-    async fn send(&mut self, json: &str) {
-        self.ws.send(Message::text(json)).await.unwrap();
-    }
-
-    async fn detach(mut self) {
-        let _ = self.ws.close(None).await;
-        // Give the host a moment to see the close before the next attach.
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+async fn attach(state: &Path) -> (Viewer<Stream>, serde_json::Value) {
+    Viewer::attach_over(connect(state).await, QUERY).await
 }
 
 fn session_files(state: &Path) -> Vec<String> {
@@ -179,7 +95,7 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
     let state = tempfile::tempdir().unwrap();
     let host = start_host(state.path());
 
-    let (mut first, ready) = Viewer::attach(state.path()).await;
+    let (mut first, ready) = attach(state.path()).await;
     assert_eq!(ready["mode"], "new");
     let pid = ready["pid"].clone();
     first.send(MARK_INPUT).await;
@@ -187,7 +103,7 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
     first.detach().await;
 
     // Same process; the screen is replayed from the host's copy.
-    let (mut second, ready) = Viewer::attach(state.path()).await;
+    let (mut second, ready) = attach(state.path()).await;
     assert_eq!(ready["mode"], "reattached");
     assert_eq!(ready["pid"], pid, "the same shell process");
     second.wait_for("MARK_42").await;
@@ -197,7 +113,7 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
     stop_host(state.path(), host).await;
     assert!(session_files(state.path()).contains(&"stest1.screen".to_owned()), "screen saved on shutdown");
     let host = start_host(state.path());
-    let (mut third, ready) = Viewer::attach(state.path()).await;
+    let (mut third, ready) = attach(state.path()).await;
     assert_eq!(ready["mode"], "revived");
     assert_ne!(ready["pid"], pid, "a new process");
     third.wait_for("MARK_42").await;
@@ -215,8 +131,8 @@ async fn a_shell_survives_a_dropped_connection_and_a_host_restart() {
 async fn a_second_window_takes_over_and_the_first_is_told() {
     let state = tempfile::tempdir().unwrap();
     let host = start_host(state.path());
-    let (mut first, _) = Viewer::attach(state.path()).await;
-    let (_second, ready) = Viewer::attach(state.path()).await;
+    let (mut first, _) = attach(state.path()).await;
+    let (_second, ready) = attach(state.path()).await;
     assert_eq!(ready["mode"], "reattached");
     let code = loop {
         match tokio::time::timeout(Duration::from_secs(5), first.ws.next()).await.unwrap() {
@@ -294,4 +210,16 @@ async fn a_second_host_refuses_to_start_while_one_is_running() {
     // The first host still owns the endpoint and answers.
     assert!(http(state.path(), "GET", "/health").await.contains("\"build\""));
     stop_host(state.path(), first).await;
+}
+
+#[tokio::test]
+async fn health_reports_the_protocol() {
+    let state = tempfile::tempdir().unwrap();
+    let host = start_host(state.path());
+    let response = http(state.path(), "GET", "/health").await;
+    let body = response.split_once("\r\n\r\n").map(|(_, body)| body).unwrap_or_default();
+    let health: serde_json::Value = serde_json::from_str(body).expect("health is JSON");
+    assert_eq!(health["protocol"], 1);
+    assert!(health["build"].as_str().is_some_and(|build| build.starts_with("rs-")));
+    stop_host(state.path(), host).await;
 }

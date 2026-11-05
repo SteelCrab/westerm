@@ -1,19 +1,28 @@
 import {
   ACK_THRESHOLD,
   CLOSE_TAKEN_OVER,
+  isPermanentFailure,
+  REMOTE_CLOSE_PATH,
   WS_PATH,
   type AttachMode,
   type ClientMessage,
   type PtySize,
+  type RemoteFailure,
+  type RemoteStage,
   type ServerMessage,
   type SessionKind,
 } from "../../shared/protocol.ts";
 import type { Locale } from "../i18n/messages.ts";
+import { postRemote, shouldPostRemoteClose } from "../remoteApi.ts";
 
 export type ConnectionEvent =
   | { type: "ready"; pid: number; mode: AttachMode }
   | { type: "exit"; code: number; signal: number }
   | { type: "error"; message: string }
+  /** A remote pane's stage while the dashboard reaches the server. */
+  | { type: "remote"; stage: RemoteStage }
+  /** A remote pane failed in a way that reconnecting does not fix. */
+  | { type: "remoteFailed"; reason: RemoteFailure; detail: string }
   /** The socket closed without an exit. `takenOver`: another window has the session. */
   | { type: "closed"; takenOver: boolean };
 
@@ -91,6 +100,10 @@ export class PtyConnection {
   close({ end }: { end: boolean }): void {
     this.finished = true;
     this.clearAckTimer();
+    const { kind, target, session } = this.options;
+    if (target && shouldPostRemoteClose(kind, target, end, this.ws.readyState)) {
+      void postRemote(REMOTE_CLOSE_PATH, { target, session });
+    }
     if (end && this.ws.readyState === WebSocket.CONNECTING) {
       // Closing now would leave the new process running unseen.
       this.ws.onopen = () => {
@@ -117,7 +130,16 @@ export class PtyConnection {
       return;
     }
     if (message.type === "exit" || message.type === "error") this.finish(message);
-    else this.options.onEvent(message);
+    else if (message.type === "ready") this.options.onEvent(message);
+    else if (message.type === "remote") this.remote(message);
+  }
+
+  private remote({ type: _, ...stage }: Extract<ServerMessage, { type: "remote" }>): void {
+    if (stage.stage === "failed" && isPermanentFailure(stage.reason)) {
+      this.finish({ type: "remoteFailed", reason: stage.reason, detail: stage.detail });
+    } else {
+      this.options.onEvent({ type: "remote", stage });
+    }
   }
 
   /** Acknowledge parsed bytes in batches so the server can keep the PTY flowing. */

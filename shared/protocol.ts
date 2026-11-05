@@ -1,10 +1,13 @@
 // Messages between the browser and the dashboard server (native/, Rust).
 // Keep in step with native/src/protocol.rs, which validates the same fields.
 
-/** shell: login shell · browser: terminal-browser · editor: terminal-code (tode) · ssh: remote shell */
-export type SessionKind = "shell" | "browser" | "editor" | "ssh";
+/**
+ * shell: login shell · browser: terminal-browser · editor: terminal-code (tode) · ssh: remote shell ·
+ * remote: a shell kept by the server's own westerm, reached over QUIC or an SSH tunnel
+ */
+export type SessionKind = "shell" | "browser" | "editor" | "ssh" | "remote";
 
-const SESSION_KINDS: readonly SessionKind[] = ["shell", "browser", "editor", "ssh"];
+const SESSION_KINDS: readonly SessionKind[] = ["shell", "browser", "editor", "ssh", "remote"];
 
 export function isSessionKind(value: unknown): value is SessionKind {
   return SESSION_KINDS.includes(value as SessionKind);
@@ -38,14 +41,56 @@ export type ClientMessage =
  */
 export type AttachMode = "new" | "reattached" | "revived";
 
+/** How the dashboard reaches a remote westerm. */
+export type RemoteVia = "quic" | "tunnel";
+
+/** Why a remote pane could not connect; the UI shows each in its language. */
+export type RemoteFailure =
+  | "auth"
+  | "hostKey"
+  | "unreachable"
+  | "unsupported"
+  | "download"
+  | "devBinary"
+  | "newerRemote"
+  | "incompatible"
+  | "transport"
+  | "setup";
+
+/** Where a remote pane is while the dashboard prepares the server. */
+export type RemoteStage =
+  | { stage: "checking" }
+  | { stage: "installing"; version: string }
+  | { stage: "starting" }
+  | { stage: "connecting" }
+  /** The server's host is an older build with running shells: replace it? */
+  | { stage: "confirm"; sessions: number }
+  | { stage: "connected"; via: RemoteVia; killOnLogout: boolean }
+  | { stage: "failed"; reason: RemoteFailure; detail: string };
+
+/** False for failures that a later try can get past on its own. Same rule as native/src/protocol.rs. */
+export function isPermanentFailure(reason: RemoteFailure): boolean {
+  return reason !== "unreachable" && reason !== "transport";
+}
+
 export type ServerMessage =
   | { type: "ready"; pid: number; mode: AttachMode }
   | { type: "exit"; code: number; signal: number }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  /** From the dashboard, while a remote pane connects. */
+  | ({ type: "remote" } & RemoteStage);
 
 export const WS_PATH = "/ws/session";
 /** Another window attached to the same session. Do not reconnect automatically. */
 export const CLOSE_TAKEN_OVER = 4001;
+/** A remote westerm failed in a way that reconnecting does not fix. */
+export const CLOSE_REMOTE_FAILED = 4003;
+/** POST {target, replace}: the answer to a remote host replacement question. */
+export const REMOTE_DECISION_PATH = "/api/remote/decision";
+/** POST {target, session}: end a remote session whose pane closed while disconnected. */
+export const REMOTE_CLOSE_PATH = "/api/remote/close";
+/** POST {target}: replace the server's westerm host now. */
+export const REMOTE_UPDATE_HOST_PATH = "/api/remote/update-host";
 export const CONFIG_PATH = "/api/terminal-config";
 /** Concrete Host aliases from ~/.ssh/config. */
 export const SSH_HOSTS_PATH = "/api/ssh-hosts";

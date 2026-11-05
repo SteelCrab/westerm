@@ -34,6 +34,11 @@
 	</dict>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<!-- macOS asks before an app talks to the local network. Remote westerm
+	     reaches servers on the LAN over QUIC; without the permission it falls
+	     back to an SSH tunnel. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>westerm connects to remote westerm servers on your local network over QUIC.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 SteelCrab. MIT License.</string>
 	<key>NSPrincipalClass</key>

@@ -85,10 +85,11 @@ export function App() {
     rawDispatch(action);
   }, []);
 
-  // A new editor opens the focused shell's directory. SSH asks for a host first.
+  // A new editor opens the focused shell's directory. SSH and remote westerm
+  // ask for a host first.
   const open = useCallback(
     (kind: SessionKind, url: string | null = null, target: string | null = null) => {
-      if (kind === "ssh" && !target) {
+      if ((kind === "ssh" || kind === "remote") && !target) {
         setPalette("ssh");
         return;
       }
@@ -208,7 +209,7 @@ export function App() {
   const sshPaletteCommands = useMemo(() => sshCommands(sshHosts ?? [], null, open, t), [sshHosts, open, t]);
   const sshDynamicCommands = useCallback((query: string) => sshCommands([], query, open, t), [open, t]);
 
-  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0 } satisfies Record<SessionKind, number>;
+  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0, remote: 0 } satisfies Record<SessionKind, number>;
   for (const session of state.sessions) counts[session.kind] += 1;
 
   return (

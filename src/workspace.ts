@@ -1,4 +1,4 @@
-import type { AttachMode, SessionKind } from "../shared/protocol.ts";
+import type { AttachMode, RemoteStage, SessionKind } from "../shared/protocol.ts";
 import type { SavedWorkspace } from "../shared/workspace-file.ts";
 import type { Notice } from "./i18n/messages.ts";
 import {
@@ -43,6 +43,8 @@ export interface Session {
   cwdFrom: string | null;
   /** Reconnect attempts since the last successful attach. */
   retries: number;
+  /** Remote panes: the dashboard's last stage (connecting, connected via …); null before one arrives. */
+  remote: RemoteStage | null;
   /** Bumped on restart so the pane remounts with a fresh terminal and PTY. */
   generation: number;
 }
@@ -83,6 +85,8 @@ export type WorkspaceAction =
       aspect?: number;
     }
   | { type: "ready"; id: string; pid: number; mode: AttachMode }
+  /** A remote pane's connection stage, from the dashboard. */
+  | { type: "remoteStage"; id: string; stage: RemoteStage }
   /** The connection dropped; the pane reconnects to the same session. */
   | { type: "disconnected"; id: string }
   /** Replaces the whole workspace with a saved one, e.g. on page load. */
@@ -126,6 +130,7 @@ const TITLE_PREFIX: Record<SessionKind, string> = {
   browser: "Browser",
   editor: "Code",
   ssh: "SSH",
+  remote: "Remote",
 };
 
 export const NAME_MAX = 60;
@@ -231,8 +236,11 @@ function newSession(
     cwdFrom: null,
     retries: 0,
     generation: 0,
+    remote: null,
   };
 }
+
+const TARGET_TITLE: Partial<Record<SessionKind, string>> = { ssh: "ssh", remote: "westerm", browser: "browser" };
 
 /** Layout and names only; processes and screens live in the PTY host. */
 export function toSaved(state: Workspace): SavedWorkspace {
@@ -302,7 +310,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
         ...newSession(
           action.id,
           action.kind,
-          action.target ? `${action.kind === "ssh" ? "ssh" : "browser"} ${action.target}` : defaultTitle(state.sessions, action.kind),
+          action.target ? `${TARGET_TITLE[action.kind] ?? action.kind} ${action.target}` : defaultTitle(state.sessions, action.kind),
           action.url ?? null,
           action.target ?? null,
         ),
@@ -349,7 +357,8 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
       const session = state.sessions.find((item) => item.id === action.id);
       if (!session) return state;
       const retries = session.retries + 1;
-      return retries > MAX_RECONNECTS
+      // A remote shell keeps running on its server, so its pane keeps trying.
+      return retries > MAX_RECONNECTS && session.kind !== "remote"
         ? patch(state, action.id, { status: "error", detail: null, notice: "unreachable", retries })
         : patch(state, action.id, { status: "disconnected", detail: null, notice: "reconnecting", retries });
     }
@@ -392,8 +401,11 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
         pid: null,
         retries: action.manual ? 0 : session.retries,
         generation: session.generation + 1,
+        remote: null,
       });
     }
+    case "remoteStage":
+      return patch(state, action.id, { remote: action.stage });
     case "newTab":
       if (state.tabs.some((tab) => tab.id === action.id)) return state;
       return { ...state, tabs: [...state.tabs, emptyTab(action.id)], activeTabId: action.id };

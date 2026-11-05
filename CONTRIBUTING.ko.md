@@ -60,6 +60,24 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 - `npm run dev`는 항상 :4317로 전달합니다. 평소 쓰는 대시보드를 먼저 끕니다(Ctrl+C). 셸은 호스트 안에 그대로 남습니다.
 - 시험용 호스트는 같은 `WESTERM_STATE_DIR`로 `westerm stop`을 실행해 끄고, 폴더를 지웁니다.
 
+### 개발 빌드로 원격 westerm 시험하기
+
+소스 빌드의 코드는 릴리스에 없습니다. 그래서 원격 westerm은 직접 만든 Linux 빌드를 설치합니다. 두 빌드는 같은 소스에서 만듭니다. westerm이 양쪽의 버전 줄을 비교하기 때문입니다.
+
+```bash
+brew install zig && cargo install cargo-zigbuild   # 한 번만 (zig가 Linux 빌드를 링크합니다)
+npx vite build
+cargo build --release --manifest-path native/Cargo.toml
+cargo zigbuild --release --target x86_64-unknown-linux-musl --manifest-path native/Cargo.toml
+mkdir -p /tmp/wrb
+cp native/target/x86_64-unknown-linux-musl/release/westerm /tmp/wrb/westerm-x86_64-unknown-linux-musl
+WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/target/release/westerm --port 4318
+```
+
+- Arm 서버에는 `aarch64-unknown-linux-musl`을 씁니다.
+- `WESTERM_REMOTE_TRANSPORT=tunnel`로 SSH 터널 경로를 시험합니다.
+- `native/tests/remote.rs`는 가짜 `ssh`로 전체 경로를 시험합니다. 서버가 필요 없습니다.
+
 ## 프로젝트 구조
 
 | 경로 | 내용 |
@@ -73,6 +91,8 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 | `native/src/protocol.rs` | 메시지 형식과 검증 |
 | `native/src/i18n.rs` | 호스트가 터미널에 쓰는 문구의 모든 언어 |
 | `native/src/ipc.rs` | 대시보드 ↔ 호스트 통로: Unix 소켓, Windows는 named pipe |
+| `native/src/remote/` | 서버 쪽 원격 westerm: `westerm gate`, `westerm remote-setup`, 인증서, QUIC 설정 |
+| `native/src/server/remote/` | 대시보드 쪽 원격 westerm: SSH 준비, 설치, QUIC과 터널 연결 |
 | `tests/` | 화면 테스트(`node:test`) |
 | `native/tests/` | 실제 실행 파일로 돌리는 Rust 통합 테스트 |
 | `macos/` | macOS 앱: Swift 창(`app/main.swift`), 아이콘, `build-app.sh` |

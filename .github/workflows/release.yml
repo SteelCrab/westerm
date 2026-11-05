@@ -54,6 +54,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      # ring (the crypto under QUIC for remote westerm) compiles C, so the
+      # static Linux builds need a musl C compiler.
+      - name: musl C compiler
+        if: contains(matrix.target, 'linux-musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          echo "CC_$(echo '${{ matrix.target }}' | tr '-' '_')=musl-gcc" >> "$GITHUB_ENV"
       - run: npm ci
       - run: npx vite build
       - name: Test

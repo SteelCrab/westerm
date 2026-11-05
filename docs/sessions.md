@@ -42,6 +42,21 @@
 - When the connection drops, a pane reconnects up to 8 times, waiting from 0.5 to 8 seconds between tries.
 - When another window opens the same session, the first window does not reconnect on its own.
 
+## Remote sessions
+
+A remote westerm pane's shell lives in the PTY host on the server, not on this computer.
+
+| What happens | What you get |
+|---|---|
+| Wi‑Fi changes, or a short drop | QUIC moves the connection to the new network, or the pane reconnects to the same shell. |
+| Sleep, a long drop, a dashboard restart | The pane reconnects to the same shell, its screen replayed ("reconnected"). |
+| The server reboots | The next connection starts westerm there again. Shells come back from their saved screens ("restored"). |
+| westerm on this computer is updated | The server gets the same version. If its running host is older and has open shells, the pane asks before replacing it, because replacing ends their programs. |
+
+- Remote panes keep trying to reconnect for as long as they are open (local panes stop after 8 tries).
+- Closing a remote pane ends its shell on the server. When the server is out of reach at that moment, the shell ends at the next connection.
+- A server that ends a user's processes at logout (systemd-logind `KillUserProcesses=yes`, without lingering) ends these shells too; the pane says so.
+
 ## Host replacement
 
 - When the host code (`HOST_SOURCES` in `native/build.rs`) changes, the dashboard replaces the running host. `westerm --version` shows the host build id.
