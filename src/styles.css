@@ -670,6 +670,115 @@ button {
   color: var(--text-muted);
 }
 
+/* ---- Remote window --------------------------------------------------- */
+
+/* Until the link to the server is up for the first time. The palette and
+   settings still open above it. */
+.remote-connect {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 16px;
+  background: var(--bg);
+  text-align: center;
+}
+
+.remote-connect-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.remote-message {
+  max-width: 460px;
+  margin: 0;
+  color: var(--text);
+}
+
+.remote-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.remote-error {
+  color: var(--danger);
+}
+
+.remote-detail {
+  max-width: 460px;
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.remote-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* A link that was up is down: the panes stay and keep reconnecting. */
+.remote-banner {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.remote-banner .remote-message,
+.remote-banner .remote-detail {
+  max-width: none;
+}
+
+.remote-banner .button {
+  height: 26px;
+}
+
+/* The header names the server and how the dashboard reaches it. */
+.remote-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.remote-badge-target {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.remote-badge-via {
+  padding: 1px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+}
+
+.remote-badge-warn {
+  flex: none;
+  color: var(--warn);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

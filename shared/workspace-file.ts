@@ -6,6 +6,11 @@ import { isId, isSessionKind, normalizeSshTarget, type SessionKind } from "./pro
 
 export { isId };
 
+/** A valid ssh destination exactly as written, not trimmed: what a saved session or a window address may name. */
+export function isSshTarget(value: unknown): value is string {
+  return typeof value === "string" && normalizeSshTarget(value) === value;
+}
+
 export interface SavedSession {
   id: string;
   kind: SessionKind;
@@ -13,7 +18,7 @@ export interface SavedSession {
   /** User-set name, or null. */
   name: string | null;
   url: string | null;
-  /** ssh destination, for ssh and remote sessions and remote browsers. */
+  /** ssh destination, for ssh sessions and remote browsers. */
   target?: string | null;
 }
 
@@ -52,6 +57,13 @@ export interface SavedDashboard {
   sessions: SavedSession[];
   workspaces: SavedWorkspace[];
   activeWorkspaceId: string;
+  /**
+   * Files from v0.2.0 may hold `remote` sessions, which no longer exist. They
+   * load as placeholder `ssh` sessions so the rest of the file is checked as
+   * usual; the dashboard closes these ids when it loads the file. Only a
+   * parsed file that held some has this; it is never written.
+   */
+  legacyRemoteIds?: string[];
 }
 
 export const WORKSPACE_PATH = "/api/workspace";
@@ -80,6 +92,7 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
   if (raw.tabs.length === 0 || raw.tabs.length > MAX_TABS || raw.sessions.length > MAX_SESSIONS) return null;
 
   const sessions: SavedSession[] = [];
+  const legacyRemoteIds: string[] = [];
   const sessionIds = new Set<string>();
   for (const item of raw.sessions as unknown[]) {
     if (typeof item !== "object" || item === null) return null;
@@ -87,14 +100,16 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
     const title = text(session.title);
     const url = session.url === null ? null : text(session.url, 2048);
     const name = session.name == null ? null : text(session.name);
-    if (!isId(session.id) || sessionIds.has(session.id) || !isSessionKind(session.kind)) return null;
+    const legacyRemote = session.kind === "remote";
+    if (!isId(session.id) || sessionIds.has(session.id) || !(legacyRemote || isSessionKind(session.kind))) return null;
     if (title === null || (session.url !== null && url === null)) return null;
     if (session.name != null && name === null) return null;
     const target = session.target == null ? null : normalizeSshTarget(String(session.target));
-    const needsTarget = session.kind === "ssh" || session.kind === "remote";
-    if ((session.target != null && target === null) || (needsTarget && !target)) return null;
+    const kind = legacyRemote ? "ssh" : (session.kind as SessionKind);
+    if ((session.target != null && target === null) || (kind === "ssh" && !target)) return null;
     sessionIds.add(session.id);
-    sessions.push({ id: session.id, kind: session.kind, title, name, url, target });
+    if (legacyRemote) legacyRemoteIds.push(session.id);
+    sessions.push({ id: session.id, kind, title, name, url, target });
   }
 
   const tabs: Omit<SavedTab, "workspaceId">[] = [];
@@ -138,7 +153,8 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
 
   // Broken workspace data costs the grouping, not the tabs.
   const grouped = parseWorkspaces(raw.workspaces, raw.activeWorkspaceId, tabs, owners);
-  if (grouped) return { version: 1, activeTabId, sessions, ...grouped };
+  const legacy = legacyRemoteIds.length > 0 ? { legacyRemoteIds } : {};
+  if (grouped) return { version: 1, activeTabId, sessions, ...grouped, ...legacy };
   return {
     version: 1,
     activeTabId,
@@ -146,6 +162,7 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
     sessions,
     workspaces: [{ id: DEFAULT_WORKSPACE_ID, name: null, activeTabId }],
     activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+    ...legacy,
   };
 }
 

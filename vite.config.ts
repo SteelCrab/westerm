@@ -19,8 +19,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": server,
+      // ws: a remote window's status stream is /api/remote/link.
+      "/api": { target: server, ws: true },
       "/ws": { target: server, ws: true },
+      "/remote": { target: server, ws: true },
     },
   },
   build: { target: "es2022" },

@@ -102,7 +102,6 @@ pub fn command_for(kind: SessionKind, url: Option<&str>, target: Option<&str>) -
         }
         // `tode <folder>` without --split opens VS Code in this pane.
         SessionKind::Editor => vec!["-l".into(), "-c".into(), "exec tode .".into(), "tode".into()],
-        SessionKind::Remote => return Err("remote sessions run on the remote host".into()),
     };
     Ok((shell, args))
 }
@@ -144,7 +143,6 @@ pub fn command_for(kind: SessionKind, url: Option<&str>, target: Option<&str>) -
             ("terminal-browser".into(), args)
         }
         SessionKind::Editor => ("tode".into(), vec![".".into()]),
-        SessionKind::Remote => return Err("remote sessions run on the remote host".into()),
     })
 }
 
@@ -202,11 +200,6 @@ mod tests {
         assert!(command_for(SessionKind::Browser, Some("example.com/?a=1&b=2"), None).is_err(), "cmd.exe syntax");
         let (shell, _) = command_for(SessionKind::Shell, None, None).unwrap();
         assert!(shell.ends_with(".exe"));
-    }
-
-    #[test]
-    fn remote_sessions_never_start_locally() {
-        assert!(command_for(SessionKind::Remote, None, Some("prod")).is_err());
     }
 
     #[test]

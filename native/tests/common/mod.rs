@@ -50,7 +50,13 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Viewer<S> {
     /// Attaches over `stream`, sends the fitted size first as the browser
     /// does, and waits for "ready".
     pub async fn attach_over(stream: S, query: &str) -> (Self, serde_json::Value) {
-        let (mut ws, _) = tokio_tungstenite::client_async(format!("ws://host/session?{query}"), stream).await.unwrap();
+        Self::attach_path(stream, &format!("/session?{query}")).await
+    }
+
+    /// Like `attach_over`, for a server with another route, such as
+    /// `/ws/session?…` on a dashboard.
+    pub async fn attach_path(stream: S, path_and_query: &str) -> (Self, serde_json::Value) {
+        let (mut ws, _) = tokio_tungstenite::client_async(format!("ws://host{path_and_query}"), stream).await.unwrap();
         ws.send(Message::text(r#"{"type":"resize","cols":80,"rows":24,"width":640,"height":408}"#)).await.unwrap();
         let mut viewer = Self { ws, output: String::new() };
         let ready = viewer.next_json().await;

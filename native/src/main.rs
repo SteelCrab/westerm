@@ -6,6 +6,7 @@
 //!   westerm update [--check]  (installs the newest release)
 //!   westerm host        (started by `serve`; owns the PTYs)
 //!   westerm gate        (on a server: QUIC entrance to the host for remote dashboards)
+//!   westerm remote-dashboard  (on a server: the dashboard a remote window talks to, on a Unix socket)
 //!   westerm remote-setup [--replace-host]  (run over SSH by a remote dashboard)
 
 mod cwd;
@@ -21,12 +22,12 @@ mod state_dir;
 mod time;
 mod update;
 
-const USAGE: &str = "usage: westerm [serve] [--port N] [--allow-origin URL]...\n       westerm stop\n       westerm update [--check]\n       westerm host\n       westerm gate\n       westerm remote-setup [--replace-host]\n       westerm --version";
+const USAGE: &str = "usage: westerm [serve] [--port N] [--allow-origin URL]...\n       westerm stop\n       westerm update [--check]\n       westerm host\n       westerm gate\n       westerm remote-dashboard\n       westerm remote-setup [--replace-host]\n       westerm --version";
 
 fn main() {
     let mut args = std::env::args().skip(1).peekable();
     let command = match args.peek().map(String::as_str) {
-        Some("serve" | "host" | "stop" | "update" | "gate" | "remote-setup") => args.next().unwrap(),
+        Some("serve" | "host" | "stop" | "update" | "gate" | "remote-dashboard" | "remote-setup") => args.next().unwrap(),
         _ => "serve".to_owned(),
     };
     let mut port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(4317);
@@ -61,6 +62,7 @@ fn main() {
         "host" => runtime.block_on(host::run()),
         "stop" => runtime.block_on(server::stop_host()),
         "gate" => gate(&runtime),
+        "remote-dashboard" => remote_dashboard(&runtime),
         "remote-setup" => remote_setup(&runtime, replace_host),
         _ => runtime.block_on(server::run(server::Options { port, allow_origins })),
     };
@@ -82,6 +84,11 @@ fn gate(runtime: &tokio::runtime::Runtime) -> std::io::Result<()> {
 }
 
 #[cfg(unix)]
+fn remote_dashboard(runtime: &tokio::runtime::Runtime) -> std::io::Result<()> {
+    runtime.block_on(remote::dashboard::run(&state_dir::state_dir()?))
+}
+
+#[cfg(unix)]
 fn remote_setup(runtime: &tokio::runtime::Runtime, replace_host: bool) -> std::io::Result<()> {
     runtime.block_on(remote::setup::run(replace_host))
 }
@@ -90,6 +97,11 @@ fn remote_setup(runtime: &tokio::runtime::Runtime, replace_host: bool) -> std::i
 #[cfg(windows)]
 fn gate(_runtime: &tokio::runtime::Runtime) -> std::io::Result<()> {
     unix_only("gate")
+}
+
+#[cfg(windows)]
+fn remote_dashboard(_runtime: &tokio::runtime::Runtime) -> std::io::Result<()> {
+    unix_only("remote-dashboard")
 }
 
 #[cfg(windows)]

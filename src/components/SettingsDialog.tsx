@@ -17,6 +17,8 @@ interface SettingsDialogProps {
   update: UpdateState;
   /** Opens the update panel in the header. */
   onShowUpdate: () => void;
+  /** Shows the update section. False in a remote window: the server's westerm follows this one. */
+  updates: boolean;
   onClose: () => void;
 }
 
@@ -193,32 +195,34 @@ export function SettingsDialog(props: SettingsDialogProps) {
           </div>
         </section>
 
-        <section className="settings-group" aria-labelledby="settings-updates">
-          <h3 id="settings-updates">{t.settings.updates}</h3>
-          <div className="settings-row stacked">
-            <label className="settings-check" htmlFor="settings-auto-update">
-              <input
-                id="settings-auto-update"
-                type="checkbox"
-                checked={settings.autoUpdate}
-                onChange={(event) => onChange({ autoUpdate: event.target.checked })}
-              />
-              {t.settings.autoUpdate}
-            </label>
-            <p className="settings-hint">{t.settings.autoUpdateHint}</p>
-          </div>
-          <div className="settings-row">
-            <span className="settings-version">{t.settings.version(status?.current ?? "…")}</span>
-            <button type="button" className="button" disabled={checking} onClick={checkNow}>
-              {t.settings.checkNow}
-            </button>
-          </div>
-          {updateLine && (
-            <p className="settings-hint" role="status">
-              {updateLine}
-            </p>
-          )}
-        </section>
+        {props.updates && (
+          <section className="settings-group" aria-labelledby="settings-updates">
+            <h3 id="settings-updates">{t.settings.updates}</h3>
+            <div className="settings-row stacked">
+              <label className="settings-check" htmlFor="settings-auto-update">
+                <input
+                  id="settings-auto-update"
+                  type="checkbox"
+                  checked={settings.autoUpdate}
+                  onChange={(event) => onChange({ autoUpdate: event.target.checked })}
+                />
+                {t.settings.autoUpdate}
+              </label>
+              <p className="settings-hint">{t.settings.autoUpdateHint}</p>
+            </div>
+            <div className="settings-row">
+              <span className="settings-version">{t.settings.version(status?.current ?? "…")}</span>
+              <button type="button" className="button" disabled={checking} onClick={checkNow}>
+                {t.settings.checkNow}
+              </button>
+            </div>
+            {updateLine && (
+              <p className="settings-hint" role="status">
+                {updateLine}
+              </p>
+            )}
+          </section>
+        )}
 
         <footer className="settings-foot">
           <a href={REPOSITORY} target="_blank" rel="noreferrer">

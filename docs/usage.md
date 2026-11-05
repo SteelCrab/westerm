@@ -4,7 +4,7 @@
 
 | Area | What it does |
 |---|---|
-| Activity bar | New shell, terminal-browser, terminal-code, SSH, and remote westerm at the top; a badge shows how many are open. The command palette, Settings, and the sidebar switch at the bottom. |
+| Activity bar | New shell, terminal-browser, terminal-code, SSH, and remote window at the top; a badge shows how many are open. The command palette, Settings, and the sidebar switch at the bottom. |
 | Sidebar | The workspaces at the top. Below them, the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: workspace numbers, tab numbers, and the session icons of the tab in view. |
 | Tab bar | `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Panes | Drag a pane's header onto another pane's edge to split there, onto its center to swap, or onto a tab or `+` to move it. Drag a divider to resize. |
@@ -99,14 +99,21 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 - **Remote browser**: opens `terminal-browser --ssh <host>`. Pages load through the remote server, so `localhost:3000` is that server's dev server.
 - Authentication uses your SSH keys and agent. Type passwords into the terminal when a server asks; the dashboard never stores or sends them.
 
-## Remote westerm
+## Remote windows
 
-A shell on a Linux server that keeps running when your network does not.
+A window for a Linux server: its tabs, workspaces, and shells live on the server and keep running when your network does not.
 
-- Open it from the activity bar (the server icon with a gear) or the palette: pick a host, then `westerm <host>`.
-- The first time, westerm checks the server over SSH, copies the same version of itself to `~/.local/bin/westerm`, and starts it there. The server needs no internet access.
-- The pane then talks to the server over QUIC. Its status line shows `QUIC`, or `SSH tunnel` when UDP does not get through.
-- The shell lives on the server. Closing the laptop, changing networks, or restarting the dashboard does not end it; the pane reconnects to the same shell. See [Remote sessions](sessions.md#remote-sessions).
+- Open it from the activity bar (the server icon) or the command palette: pick a host from `~/.ssh/config` under "Open in a new window", or type `user@host`.
+- In a browser, it opens a new browser window. The browser may block it as a popup: allow popups for `127.0.0.1`. The window's address is `/?remote=<target>` on the dashboard, for example `http://127.0.0.1:4317/?remote=prod`. In westerm.app, it opens an app window; the window of each server remembers its size and position. Opening the same server again brings its window to the front.
+- The window title is `westerm — <target>`. The header shows the server name and how the window is connected: `QUIC`, or `SSH tunnel` when UDP does not get through.
+- The first time, a connecting screen shows the stages: checking the server, installing westerm, starting, connecting. westerm copies the same version of itself to `~/.local/bin/westerm` on the server over SSH and starts it there. The server needs no internet access.
+- Tabs, workspaces, and layout are saved on the server. Shells, terminal-browser, and terminal-code run on the server, started by your login shell there. Programs are found on the PATH of your interactive login shell on the server, so folders that `~/.zshrc` or a similar file adds (such as `~/.local/bin`) count. This applies once westerm next starts the server's host, for example after `westerm stop` there. Plain SSH panes and remote browsers opened inside a remote window run from the server too.
+- Closing the window or losing the network does not end anything. Open the server again to see the same tabs and shells, also from another computer. See [Remote sessions](sessions.md#remote-sessions).
+- A window that comes back (after sleep or a lost network) reads the server's layout first. If another computer changed the tabs meanwhile, the window takes the server's layout, and its own changes from while it was away are lost.
+- Known limit: a window that comes back also takes the sessions from the window in use, which then shows "In use in another window". Click that window to take them back.
+- When the link drops, a "Reconnecting…" banner shows and the panes keep trying. If the failure cannot fix itself (for example the SSH key is refused), the window shows the reason and a **Try again** button.
+- Theme, language, and font size are shared with the local window. Fonts follow the Ghostty config of this computer.
+- A remote window cannot open another remote window.
 - The plain SSH pane stays as it is, for servers where you do not want to install anything.
 
 | Needs | |
@@ -117,11 +124,16 @@ A shell on a Linux server that keeps running when your network does not.
 | Firewall | UDP 4317 open on the server (4318–4326 when another user's westerm holds 4317). Without it, westerm falls back to an SSH tunnel. |
 | macOS, server on your LAN | Local Network access for the app that runs westerm: your terminal app, or westerm.app (System Settings ▸ Privacy & Security ▸ Local Network). Without it, macOS blocks UDP to local addresses and westerm uses the SSH tunnel. Servers on the internet do not need it. |
 
-When the server's westerm host is older than this one and has open shells, the pane asks before replacing it: replacing ends the programs in those shells, which then come back from their saved screens. **Keep the old host** keeps them running; the palette's **Update the remote host** replaces it later. westerm never replaces a newer westerm on the server; update this computer first.
+### Updating a server
 
-On the server:
+- A remote window has no update button, no update commands, and no update section in Settings. Update westerm on this computer. The server follows at the next connection: westerm installs the new version there, then asks about the host if shells run. When westerm on this computer updates, open remote windows reload.
+- When the server's westerm host is older than this one and has open shells, the connecting screen asks before replacing it: replacing ends the programs in those shells, which then come back from their saved screens. **Replace now** does it. **Keep the old host** keeps them running; the window's command palette has **Update this server's westerm host** to replace it later.
+- westerm never replaces a newer westerm on the server. The window shows "The server has a newer westerm. Update westerm here first".
+- Two computers with different westerm versions: the newer one wins. On the older computer, update westerm first.
 
-- `westerm stop` stops the host and the gate.
+### On the server
+
+- `westerm stop` stops the gate, the remote dashboard (the part that serves the layout and sessions to windows), and then the host. Shells end after their screens are saved. The next connection from a window starts westerm there again, and the shells come back as "restored".
 - To stop a computer from connecting, delete its line from `~/.local/state/westerm/remote/authorized_clients`.
 - If the server ends your processes at logout (systemd-logind `KillUserProcesses=yes`), run `loginctl enable-linger` once, or the shells end with your SSH login.
 
@@ -131,6 +143,10 @@ On the server:
 | `WESTERM_REMOTE_BINARY_DIR` | this computer | A folder with `westerm-<target>` Linux builds to install, for source builds. |
 | `WESTERM_RELEASES_URL` | this computer | Another copy of the GitHub releases, as for `install.sh`. |
 | `WESTERM_GATE_PORT` | the server | The gate's UDP port; `0` picks any free port. |
+
+### From v0.2.0
+
+The remote westerm pane of v0.2.0 is gone. A saved layout drops those panes when it loads; a layout with only remote panes opens with one shell. Their shells keep running on the server until you run `westerm stop` there.
 
 ## Fonts and themes
 

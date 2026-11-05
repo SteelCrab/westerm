@@ -4,6 +4,24 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Remote windows: open a Linux server's westerm in its own window, from the activity bar or the command palette (a host from `~/.ssh/config`, or `user@host`). The window shows the server's tabs, workspaces, and shells, saved on the server. Closing the window or losing the network ends nothing, and another computer sees the same tabs. The header shows `QUIC` or `SSH tunnel`; a "Reconnecting…" banner and a "Try again" button cover link loss and permanent failures. In the macOS app, each server gets an app window that remembers its size and position.
+- A remote window that comes back after sleep or a lost network reads the server's layout before it saves. If another computer changed the layout meanwhile, the window takes that layout instead of replacing it with its old one. Its disconnected panes reconnect as soon as the link is back.
+- Programs in a remote window (terminal-code, terminal-browser) are found on the PATH of the server user's interactive login shell, such as folders that `~/.zshrc` adds. This applies once westerm next starts the server's host.
+- `westerm remote-dashboard`, the server side of a remote window. It listens only on a Unix socket (mode 0600) and opens no TCP port. `westerm remote-setup` starts it.
+
+### Removed
+
+- The remote westerm pane of v0.2.0. A saved layout drops remote panes when it loads. Their shells keep running on the server until you run `westerm stop` there.
+
+### Changed
+
+- The gate passes each authenticated stream to the server's remote dashboard. It no longer reaches the PTY host itself. A server set up by v0.2.0 gets this version at its next connection; `westerm remote-setup` there now reports in a new format (version 2).
+- When the gate stops, connected windows learn it at once and reconnect, instead of freezing for about 15 seconds.
+- `westerm stop` also stops the remote dashboard on a server. It stops the gate and the remote dashboard before the host, so a window cannot start a new host in between.
+- After this update, open local shells come back once as "restored".
+
 ## [0.2.0] - 2026-11-05
 
 ### Added
