@@ -1,5 +1,5 @@
 //! Remote westerm with the real binary.
-//! - The server side: `remote-setup` starts a host and a gate, and a QUIC
+//! - The server side: `remote-setup` starts a host, a dashboard and a gate, and a QUIC
 //!   client reaches a shell through it. That client is written from the
 //!   outside (accept any certificate, then compare its fingerprint with the
 //!   report).
@@ -9,7 +9,8 @@
 
 use std::io::Write;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -154,7 +155,9 @@ async fn stream(connection: &quinn::Connection) -> QuicStream {
 
 async fn attach(connection: &quinn::Connection) -> (Viewer<QuicStream>, serde_json::Value) {
     let stream = stream(connection).await;
-    tokio::time::timeout(Duration::from_secs(10), Viewer::attach_over(stream, QUERY)).await.expect("attach in time")
+    tokio::time::timeout(Duration::from_secs(10), Viewer::attach_path(stream, &format!("/ws/session?{QUERY}")))
+        .await
+        .expect("attach in time")
 }
 
 /// Sends `request` raw on a new stream and returns everything that comes back.
@@ -186,24 +189,33 @@ fn gate_pid(state: &Path) -> u64 {
     record["pid"].as_u64().unwrap()
 }
 
+fn dashboard_pid(state: &Path) -> u64 {
+    let record: serde_json::Value = serde_json::from_slice(&std::fs::read(state.join("dashboard.json")).unwrap()).unwrap();
+    record["pid"].as_u64().unwrap()
+}
+
 fn port_of(report: &serde_json::Value) -> u16 {
     report["port"].as_u64().unwrap() as u16
 }
 
 #[tokio::test]
-async fn setup_starts_a_gate_that_relays_a_shell() {
+async fn setup_starts_a_dashboard_behind_the_gate() {
     let state = state();
     let _stop = StopHostOnDrop(state.path());
     let id = ClientId::new();
     let report = setup(state.path(), &id, &[]);
-    assert_eq!(report["v"], 1);
+    assert_eq!(report["v"], 2);
     assert_eq!(report["host"]["protocol"], 1);
     assert_eq!(report["host"]["build"], host_build());
     let fingerprint = report["fingerprint"].as_str().unwrap().to_owned();
     assert!(fingerprint.len() == 64 && fingerprint.bytes().all(|b| b.is_ascii_hexdigit()));
-    assert!(report["socket"].as_str().unwrap().ends_with("host.sock"));
+    assert_eq!(report["dashboard"], state.path().join("dashboard.sock").to_str().unwrap());
+    assert!(report.get("socket").is_none(), "the host socket is not reported any more");
 
     let connection = quic(port_of(&report), &id, &fingerprint).await.unwrap();
+    let answer = raw(&connection, b"GET /api/workspace HTTP/1.1\r\nHost: remote\r\nConnection: close\r\n\r\n").await;
+    let answer = String::from_utf8_lossy(&answer);
+    assert!(answer.starts_with("HTTP/1.1 200") && answer.ends_with("null"), "got {answer:?}");
     let (mut first, ready) = attach(&connection).await;
     assert_eq!(ready["mode"], "new");
     first.send(MARK_INPUT).await;
@@ -224,16 +236,18 @@ async fn setup_twice_keeps_one_gate_and_one_authorized_line() {
     let id = ClientId::new();
     let first = setup(state.path(), &id, &[]);
     let pid = gate_pid(state.path());
+    let dashboard = dashboard_pid(state.path());
     let second = setup(state.path(), &id, &[]);
     assert_eq!(first["port"], second["port"]);
     assert_eq!(first["fingerprint"], second["fingerprint"]);
     assert_eq!(gate_pid(state.path()), pid, "the running gate is kept");
+    assert_eq!(dashboard_pid(state.path()), dashboard, "the running dashboard is kept");
     let authorized = std::fs::read_to_string(state.path().join("remote/authorized_clients")).unwrap();
     assert_eq!(authorized.lines().count(), 1);
 }
 
 #[tokio::test]
-async fn the_gate_refuses_unknown_clients_and_other_requests() {
+async fn the_gate_refuses_unknown_clients() {
     let state = state();
     let _stop = StopHostOnDrop(state.path());
     let id = ClientId::new();
@@ -245,50 +259,83 @@ async fn the_gate_refuses_unknown_clients_and_other_requests() {
         let stream = stream(&connection).await;
         let attached = tokio::time::timeout(
             Duration::from_secs(5),
-            tokio_tungstenite::client_async(format!("ws://host/session?{QUERY}"), stream),
+            tokio_tungstenite::client_async(format!("ws://remote/ws/session?{QUERY}"), stream),
         )
         .await;
         assert!(!matches!(attached, Ok(Ok(_))), "an unknown client attached");
     }
 
+    // A known client reaches the server dashboard, which refuses what a remote window never asks.
     let connection = quic(port_of(&report), &id, &fingerprint).await.unwrap();
-    let answer = raw(&connection, b"POST /shutdown HTTP/1.1\r\nHost: host\r\nContent-Length: 0\r\n\r\n").await;
-    assert!(answer.is_empty(), "got {:?}", String::from_utf8_lossy(&answer));
-    let smuggled = b"GET /session?bad HTTP/1.1\r\nHost: host\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
-Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n\
-POST /shutdown HTTP/1.1\r\nHost: host\r\nContent-Length: 0\r\n\r\n";
-    let answer = raw(&connection, smuggled).await;
-    assert!(answer.starts_with(b"HTTP/1.1 400"), "got {:?}", String::from_utf8_lossy(&answer));
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    let answer = raw(&connection, b"GET /api/update HTTP/1.1\r\nHost: remote\r\nConnection: close\r\n\r\n").await;
+    assert!(answer.starts_with(b"HTTP/1.1 404"), "got {:?}", String::from_utf8_lossy(&answer));
     assert!(host_health(state.path()).await.contains("\"build\""), "the host still runs");
 }
 
 #[tokio::test]
-async fn stop_ends_the_host_and_the_gate() {
+async fn stop_ends_the_host_the_gate_and_the_dashboard() {
     let state = state();
     let _stop = StopHostOnDrop(state.path());
     let id = ClientId::new();
     setup(state.path(), &id, &[]);
     assert!(state.path().join("gate.json").exists());
-    let status = Command::new(BIN)
-        .arg("stop")
-        .env("WESTERM_STATE_DIR", state.path())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .unwrap();
-    assert!(status.success());
+    assert!(state.path().join("dashboard.sock").exists());
+    let output = Command::new(BIN).arg("stop").env("WESTERM_STATE_DIR", state.path()).stderr(Stdio::null()).output().unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("the remote dashboard stopped"));
     let deadline = Instant::now() + Duration::from_secs(5);
-    while state.path().join("gate.json").exists() || state.path().join("host.sock").exists() {
-        assert!(Instant::now() < deadline, "the gate and the host stop");
+    while ["gate.json", "host.sock", "dashboard.json", "dashboard.sock"].iter().any(|name| state.path().join(name).exists()) {
+        assert!(Instant::now() < deadline, "the gate, the dashboard and the host stop");
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+}
+
+/// Sends `signal` (such as "-TERM") to `pid`.
+fn signal(pid: u64, signal: &str) {
+    assert!(Command::new("kill").args([signal, &pid.to_string()]).status().unwrap().success());
+}
+
+#[tokio::test]
+async fn a_stopping_gate_tells_its_clients() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    let report = setup(state.path(), &id, &[]);
+    let fingerprint = report["fingerprint"].as_str().unwrap().to_owned();
+    let connection = quic(port_of(&report), &id, &fingerprint).await.unwrap();
+    signal(gate_pid(state.path()), "-TERM");
+    // Without the close, the client would notice only at its idle timeout.
+    let closed = tokio::time::timeout(Duration::from_secs(2), connection.closed()).await;
+    assert!(
+        matches!(closed, Ok(quinn::ConnectionError::ApplicationClosed(_))),
+        "the client learns at once that the gate closed: {closed:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_gate_logs_a_stream_the_dashboard_refuses() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    let report = setup(state.path(), &id, &[]);
+    let fingerprint = report["fingerprint"].as_str().unwrap().to_owned();
+    signal(dashboard_pid(state.path()), "-TERM");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while state.path().join("dashboard.json").exists() {
+        assert!(Instant::now() < deadline, "the dashboard stops");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let connection = quic(port_of(&report), &id, &fingerprint).await.unwrap();
+    let answer = raw(&connection, b"GET /api/workspace HTTP/1.1\r\nHost: remote\r\nConnection: close\r\n\r\n").await;
+    assert!(answer.is_empty(), "no dashboard answers");
+    let log = std::fs::read_to_string(state.path().join("gate.log")).unwrap();
+    assert!(log.lines().any(|line| line.contains("dashboard.sock")), "gate.log names the refusal: {log}");
 }
 
 // ---------------------------------------------------------------------------
 // Through the dashboard, with a fake ssh.
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
@@ -301,14 +348,16 @@ const SETUP: &str = "~/.local/bin/westerm remote-setup";
 const RESIZE: &str = r#"{"type":"resize","cols":80,"rows":24,"width":640,"height":408}"#;
 
 /// `-G` prints a config pointing at this machine; any other call runs its
-/// last argument (the remote command) here, as the "server" user.
+/// last argument (the remote command) here, as the "server" user. The
+/// server's sh reads `home/.shrc` (`$ENV`) only when interactive, as zsh
+/// reads `~/.zshrc`.
 const FAKE_SSH: &str = r#"#!/bin/sh
 for last; do :; done
 case " $* " in *" -G "*) printf 'hostname 127.0.0.1\nport 22\nproxyjump none\n'; exit 0 ;; esac
 printf '%s\n' "$last" >> "$FAKE_ROOT/ssh.log"
 [ -n "$FAKE_SSH_DELAY" ] && sleep "$FAKE_SSH_DELAY"
-HOME="$FAKE_ROOT/home" PATH="$FAKE_ROOT/rbin:$PATH" WESTERM_STATE_DIR="$FAKE_ROOT/rstate" \
-  WESTERM_GATE_PORT=0 SHELL=/bin/sh exec sh -c "$last"
+HOME="$FAKE_ROOT/home" PATH="$FAKE_ROOT/rbin:${FAKE_SERVER_PATH:-$PATH}" WESTERM_STATE_DIR="$FAKE_ROOT/rstate" \
+  WESTERM_GATE_PORT=0 SHELL=/bin/sh ENV="$FAKE_ROOT/home/.shrc" exec sh -c "$last"
 "#;
 
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
@@ -330,6 +379,11 @@ fn write_script(path: &Path, text: &str) {
 
 impl FakeRemote {
     fn start(ssh_delay: Option<&str>) -> Self {
+        Self::start_with(ssh_delay, &[])
+    }
+
+    /// Like `start`, with extra environment for the dashboard.
+    fn start_with(ssh_delay: Option<&str>, env: &[(&str, &str)]) -> Self {
         let root = state();
         let r = root.path();
         for dir in ["bin", "rbin", "bins", "home", "lhome", "rstate", "lstate"] {
@@ -355,6 +409,7 @@ impl FakeRemote {
         if let Some(delay) = ssh_delay {
             command.env("FAKE_SSH_DELAY", delay);
         }
+        command.envs(env.iter().copied());
         let server = Spawned(command.spawn().unwrap());
         let deadline = Instant::now() + Duration::from_secs(10);
         while std::net::TcpStream::connect(("127.0.0.1", port)).is_err() {
@@ -383,185 +438,120 @@ impl Drop for FakeRemote {
     }
 }
 
-async fn connect_pane(port: u16, session: &str) -> Socket {
-    let url = format!(
-        "ws://127.0.0.1:{port}/ws/session?session={session}&kind=remote&target=fake&cols=80&rows=24&width=640&height=408&lang=en"
-    );
-    let mut request = url.into_client_request().unwrap();
-    request.headers_mut().insert("Origin", format!("http://127.0.0.1:{port}").parse().unwrap());
-    tokio_tungstenite::connect_async(request).await.unwrap().0
-}
-
 type Pane = Viewer<MaybeTlsStream<tokio::net::TcpStream>>;
 
-/// Opens a remote pane as the browser does and reads until "ready": the
-/// pane, the remote stages seen on the way, and the ready message. A socket
-/// closed first gives its close code.
-async fn open_pane(port: u16, session: &str) -> Result<(Pane, Vec<serde_json::Value>, serde_json::Value), Option<u16>> {
-    let mut ws = connect_pane(port, session).await;
-    ws.send(Message::text(RESIZE)).await.unwrap();
-    let mut stages = Vec::new();
-    loop {
-        match tokio::time::timeout(Duration::from_secs(30), ws.next()).await.expect("the pane answers in time") {
-            Some(Ok(Message::Text(text))) => {
-                let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-                match value["type"].as_str() {
-                    Some("remote") => stages.push(value),
-                    Some("ready") => return Ok((Viewer { ws, output: String::new() }, stages, value)),
-                    _ => panic!("unexpected message {value}"),
-                }
-            }
-            Some(Ok(Message::Close(frame))) => return Err(frame.map(|frame| u16::from(frame.code))),
-            Some(Ok(_)) => {}
-            None | Some(Err(_)) => return Err(None),
-        }
-    }
+async fn http(port: u16, method: &str, path: &str, body: Option<&str>, with_origin: bool) -> (u16, String) {
+    let origin = if with_origin { format!("Origin: http://127.0.0.1:{port}\r\n") } else { String::new() };
+    http_raw(port, method, path, &format!("127.0.0.1:{port}"), &origin, body).await
 }
 
 /// A JSON POST to the dashboard; the response status.
 async fn post(port: u16, path: &str, with_origin: bool, body: &str) -> u16 {
+    http(port, "POST", path, Some(body), with_origin).await.0
+}
+
+/// A GET-like request with another Host header (a DNS rebinding attempt), and the dashboard's own Origin.
+async fn http_with_host(port: u16, method: &str, path: &str, host: &str) -> (u16, String) {
+    http_raw(port, method, path, host, &format!("Origin: http://127.0.0.1:{port}\r\n"), None).await
+}
+
+/// A request with one extra header line, e.g. `Origin: http://evil.example`, and no other Origin.
+async fn http_with_header(port: u16, method: &str, path: &str, header: &str) -> (u16, String) {
+    http_raw(port, method, path, &format!("127.0.0.1:{port}"), &format!("{header}\r\n"), None).await
+}
+
+async fn http_raw(port: u16, method: &str, path: &str, host: &str, origin: &str, body: Option<&str>) -> (u16, String) {
     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-    let origin = if with_origin { format!("Origin: http://127.0.0.1:{port}\r\n") } else { String::new() };
-    let request = format!(
-        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n{origin}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    );
+    let mut request = format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\n{origin}Connection: close\r\n");
+    match body {
+        Some(body) => request.push_str(&format!("Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len())),
+        None => request.push_str("Content-Length: 0\r\n\r\n"),
+    }
     stream.write_all(request.as_bytes()).await.unwrap();
-    let mut response = String::new();
-    stream.read_to_string(&mut response).await.unwrap();
-    response.split_whitespace().nth(1).unwrap().parse().unwrap()
+    let mut response = Vec::new();
+    tokio::time::timeout(Duration::from_secs(30), stream.read_to_end(&mut response)).await.expect("an answer in time").unwrap();
+    let text = String::from_utf8_lossy(&response).into_owned();
+    let (head, body) = text.split_once("\r\n\r\n").expect("a response head");
+    (head.split_whitespace().nth(1).unwrap().parse().unwrap(), body.to_owned())
 }
 
-#[tokio::test]
-async fn a_remote_pane_installs_westerm_and_survives_a_reconnect() {
-    let remote = FakeRemote::start(None);
-    let (mut pane, stages, ready) = open_pane(remote.port, "sr1").await.expect("the pane opens");
-    assert!(stages.iter().any(|s| s["stage"] == "connected" && s["via"] == "quic"), "{stages:?}");
-    assert!(!stages.iter().any(|s| s["stage"] == "failed"), "{stages:?}");
-    assert_eq!(ready["mode"], "new");
-    assert!(remote.path().join("home/.local/bin/westerm").is_file(), "westerm is installed on the server");
-    assert_eq!(remote.count(UPLOAD), 1);
-    pane.send(MARK_INPUT).await;
-    pane.wait_for("MARK_42").await;
-    drop(pane);
-
-    let (mut again, _, ready) = open_pane(remote.port, "sr1").await.expect("the pane opens again");
-    assert_eq!(ready["mode"], "reattached");
-    again.wait_for("MARK_42").await;
-}
-
-#[tokio::test]
-async fn two_panes_opening_at_once_install_once() {
-    let remote = FakeRemote::start(Some("1"));
-    let (first, second) = tokio::join!(open_pane(remote.port, "sa1"), open_pane(remote.port, "sb1"));
-    assert!(first.is_ok() && second.is_ok());
-    assert_eq!(remote.count(PROBE), 2, "one check, and one after the upload");
-    assert_eq!(remote.count(UPLOAD), 1);
-    assert_eq!(remote.count(SETUP), 1);
-}
-
-#[tokio::test]
-async fn closing_a_pane_while_connecting_ends_it_on_the_server() {
-    let remote = FakeRemote::start(Some("2"));
-    let mut closing = connect_pane(remote.port, "sclose").await;
-    closing.send(Message::text(RESIZE)).await.unwrap();
-    match tokio::time::timeout(Duration::from_secs(10), closing.next()).await.unwrap() {
-        Some(Ok(Message::Text(text))) => assert!(text.contains(r#""type":"remote""#), "{text}"),
-        other => panic!("expected a stage, got {other:?}"),
+/// The status of a WebSocket upgrade to the dashboard: 101 when it opens.
+async fn ws_status(port: u16, path_and_query: &str, origin: Option<&str>) -> u16 {
+    let mut request = format!("ws://127.0.0.1:{port}{path_and_query}").into_client_request().unwrap();
+    if let Some(origin) = origin {
+        request.headers_mut().insert("Origin", origin.parse().unwrap());
     }
-    closing.send(Message::text(r#"{"type":"close"}"#)).await.unwrap();
-    let closed = tokio::time::timeout(Duration::from_secs(5), async {
-        while let Some(Ok(message)) = closing.next().await {
-            if matches!(message, Message::Close(_)) {
-                break;
-            }
-        }
-    })
-    .await;
-    assert!(closed.is_ok(), "the dashboard closes the pane");
+    match tokio_tungstenite::connect_async(request).await {
+        Ok(_) => 101,
+        Err(tokio_tungstenite::tungstenite::Error::Http(response)) => response.status().as_u16(),
+        Err(error) => panic!("the upgrade failed without a status: {error}"),
+    }
+}
 
-    let (_keep, _, ready) = open_pane(remote.port, "skeep").await.expect("another pane opens");
-    assert_eq!(ready["mode"], "new");
-    let rstate = remote.path().join("rstate");
-    let deadline = Instant::now() + Duration::from_secs(10);
+/// Opens a shell in a remote window as the browser does: the fitted size first, then until "ready".
+async fn window_pane(port: u16, target: &str, session: &str) -> (Pane, serde_json::Value) {
+    window_pane_of(port, target, session, "shell").await
+}
+
+/// Like `window_pane`, for a pane of `kind`.
+async fn window_pane_of(port: u16, target: &str, session: &str, kind: &str) -> (Pane, serde_json::Value) {
+    let url = format!(
+        "ws://127.0.0.1:{port}/remote/{target}/ws/session?session={session}&kind={kind}&cols=80&rows=24&width=640&height=408&lang=en&window=wa"
+    );
+    let mut request = url.into_client_request().unwrap();
+    request.headers_mut().insert("Origin", format!("http://127.0.0.1:{port}").parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut pane = Viewer { ws, output: String::new() };
+    pane.send(RESIZE).await;
+    let ready = tokio::time::timeout(Duration::from_secs(30), pane.next_json()).await.expect("the pane answers in time");
+    assert_eq!(ready["type"], "ready", "{ready}");
+    (pane, ready)
+}
+
+/// Opens a window's status stream for `target`: the socket and its first message.
+async fn open_link(port: u16, target: &str) -> (Socket, serde_json::Value) {
+    let mut request = format!("ws://127.0.0.1:{port}/api/remote/link?target={target}").into_client_request().unwrap();
+    request.headers_mut().insert("Origin", format!("http://127.0.0.1:{port}").parse().unwrap());
+    let (mut link, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let hello = next_message(&mut link).await;
+    (link, hello)
+}
+
+/// The next JSON message on a status stream, within 30 s.
+async fn next_message(link: &mut Socket) -> serde_json::Value {
     loop {
-        let response = host_health(&rstate).await;
-        let body = response.split_once("\r\n\r\n").map(|(_, body)| body).unwrap_or_default();
-        let health: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
-        if health["sessions"] == 1 {
-            break;
+        match tokio::time::timeout(Duration::from_secs(30), link.next()).await.expect("a message in time") {
+            Some(Ok(Message::Text(text))) => return serde_json::from_str(&text).unwrap(),
+            Some(Ok(_)) => {}
+            other => panic!("the status stream ended: {other:?}"),
         }
-        assert!(Instant::now() < deadline, "the closed pane's session ends on the server: {health}");
-        tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    let pending = std::fs::read_to_string(remote.path().join("lstate/remote/pending-close.json")).unwrap_or_default();
-    assert!(!pending.contains("sclose"), "{pending}");
 }
 
-#[tokio::test]
-async fn a_lost_gate_comes_back_and_the_shell_is_reattached() {
-    let remote = FakeRemote::start(None);
-    let (mut pane, _, _) = open_pane(remote.port, "sg1").await.expect("the pane opens");
-    pane.send(MARK_INPUT).await;
-    pane.wait_for("MARK_42").await;
-    let pid = gate_pid(&remote.path().join("rstate"));
-    assert!(Command::new("kill").args(["-9", &pid.to_string()]).status().unwrap().success());
-    drop(pane);
+/// The stages a status stream shows, up to and including "connected" (30 s at most).
+async fn stages_until_connected(link: &mut Socket) -> Vec<String> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut stages: Vec<String> = Vec::new();
+    while stages.last().is_none_or(|stage| stage != "connected") {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let message = tokio::time::timeout(left, next_message(link)).await.unwrap_or_else(|_| panic!("connected within 30 s; saw {stages:?}"));
+        assert_eq!(message["type"], "remote", "{message}");
+        stages.push(message["stage"].as_str().unwrap().to_owned());
+    }
+    stages
+}
 
-    let deadline = Instant::now() + Duration::from_secs(20);
-    let (mut again, ready) = loop {
-        match open_pane(remote.port, "sg1").await {
-            Ok((pane, _, ready)) => break (pane, ready),
-            Err(code) => {
-                assert!(Instant::now() < deadline, "the pane reconnects (last close: {code:?})");
-                tokio::time::sleep(Duration::from_millis(300)).await;
+/// The first stage message named `name` (30 s at most).
+async fn stage_named(link: &mut Socket, name: &str) -> serde_json::Value {
+    let wait = async {
+        loop {
+            let message = next_message(link).await;
+            if message["stage"] == name {
+                return message;
             }
         }
     };
-    assert_eq!(ready["mode"], "reattached");
-    again.wait_for("MARK_42").await;
-}
-
-/// The pane's socket to the dashboard is fine, but the link to the server
-/// has gone silent (a lost network): a close sent then cannot arrive, and
-/// the shell must still end once the server is reachable again.
-#[tokio::test]
-async fn closing_a_pane_over_a_silent_link_ends_it_later() {
-    let remote = FakeRemote::start(None);
-    let rstate = remote.path().join("rstate");
-    let (mut pane, _, _) = open_pane(remote.port, "sdead1").await.expect("the pane opens");
-    pane.send(MARK_INPUT).await;
-    pane.wait_for("MARK_42").await;
-    let gate = gate_pid(&rstate).to_string();
-    assert!(Command::new("kill").args(["-STOP", &gate]).status().unwrap().success());
-    pane.send(r#"{"type":"close"}"#).await;
-    let _ = pane.ws.close(None).await;
-    // Give the dashboard time to see that the close went unanswered; then
-    // the silent gate is gone for good, with whatever it never read.
-    tokio::time::sleep(Duration::from_secs(4)).await;
-    assert!(Command::new("kill").args(["-KILL", &gate]).status().unwrap().success());
-
-    let deadline = Instant::now() + Duration::from_secs(25);
-    let _other = loop {
-        match open_pane(remote.port, "sdead2").await {
-            Ok((pane, _, _)) => break pane,
-            Err(code) => {
-                assert!(Instant::now() < deadline, "the dashboard reconnects (last close: {code:?})");
-                tokio::time::sleep(Duration::from_millis(300)).await;
-            }
-        }
-    };
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let response = host_health(&rstate).await;
-        let body = response.split_once("\r\n\r\n").map(|(_, body)| body).unwrap_or_default();
-        let health: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
-        if health["sessions"] == 1 {
-            break;
-        }
-        assert!(Instant::now() < deadline, "the closed pane's shell ends on the server: {health}");
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
+    tokio::time::timeout(Duration::from_secs(30), wait).await.unwrap_or_else(|_| panic!("a {name} stage within 30 s"))
 }
 
 #[tokio::test]
@@ -572,4 +562,273 @@ async fn remote_apis_check_the_origin() {
     assert_eq!(post(remote.port, "/api/remote/close", true, close).await, 204);
     assert_eq!(post(remote.port, "/api/remote/close", true, r#"{"target":"-oProxyCommand=x","session":"sx1"}"#).await, 400);
     assert_eq!(post(remote.port, "/api/remote/decision", true, r#"{"target":"fake","replace":true}"#).await, 409);
+    assert_eq!(post(remote.port, "/api/remote/retry", false, r#"{"target":"fake"}"#).await, 400);
+    assert_eq!(ws_status(remote.port, "/api/remote/link?target=fake", None).await, 403);
+}
+
+#[tokio::test]
+async fn a_watched_link_shows_its_stages_until_connected() {
+    let fake = FakeRemote::start(None);
+    let (mut link, hello) = open_link(fake.port, "fake").await;
+    assert_eq!(hello["type"], "hello");
+    assert!(hello["version"].as_str().unwrap().starts_with("westerm "));
+    // The stream shows the latest stage, so a quick one (such as "connecting")
+    // can be skipped; the ones shown keep this order and end at "connected".
+    let order = ["checking", "installing", "starting", "connecting", "connected"];
+    let stages = stages_until_connected(&mut link).await;
+    let mut rest = order.iter();
+    assert!(stages.iter().all(|stage| rest.any(|known| known == stage)), "{stages:?} is not in the order {order:?}");
+    assert_eq!(stages.last().map(String::as_str), Some("connected"));
+}
+
+#[tokio::test]
+async fn two_windows_opening_at_once_set_up_once() {
+    let fake = FakeRemote::start(Some("1"));
+    let (mut a, _) = open_link(fake.port, "fake").await;
+    let (mut b, _) = open_link(fake.port, "fake").await;
+    stages_until_connected(&mut a).await;
+    stages_until_connected(&mut b).await;
+    assert_eq!(fake.count(UPLOAD), 1);
+    assert_eq!(fake.count(SETUP), 1);
+}
+
+#[tokio::test]
+async fn remote_window_requests_wait_for_a_watched_link() {
+    let fake = FakeRemote::start(None);
+    assert_eq!(http(fake.port, "GET", "/remote/fake/api/workspace", None, true).await.0, 503, "no window watches the link yet");
+    assert_eq!(fake.count(PROBE), 0, "requests alone never start ssh");
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    stages_until_connected(&mut link).await;
+    assert_eq!(http(fake.port, "GET", "/remote/fake/api/workspace", None, true).await.0, 200);
+}
+
+#[tokio::test]
+async fn a_permanent_failure_waits_for_retry() {
+    let fake = FakeRemote::start(None);
+    let newer = fake.path().join("home/.local/bin/westerm");
+    std::fs::create_dir_all(newer.parent().unwrap()).unwrap();
+    write_script(&newer, "#!/bin/sh\necho 'westerm 99.0.0 (host rs-0)'\n");
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    let failed = stage_named(&mut link, "failed").await;
+    assert_eq!(failed["reason"], "newerRemote");
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(fake.count(PROBE), 1, "no retry on its own");
+    std::fs::remove_file(&newer).unwrap();
+    // Within 30 s of the failed SSH check: "Try again" still runs SSH at once.
+    assert_eq!(post(fake.port, "/api/remote/retry", true, r#"{"target":"fake"}"#).await, 204);
+    stages_until_connected(&mut link).await;
+    assert!(fake.count(PROBE) > 1, "the retry ran SSH again");
+}
+
+#[tokio::test]
+async fn the_link_closes_after_the_last_window_leaves() {
+    let fake = FakeRemote::start_with(None, &[("WESTERM_REMOTE_LINGER_MS", "200")]);
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    stages_until_connected(&mut link).await;
+    drop(link);
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(http(fake.port, "GET", "/remote/fake/api/workspace", None, true).await.0, 503);
+}
+
+/// The number of sessions in the host of `state`.
+async fn host_sessions(state: &Path) -> serde_json::Value {
+    let response = host_health(state).await;
+    let body = response.split_once("\r\n\r\n").map(|(_, body)| body).unwrap_or_default();
+    let health: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+    health["sessions"].clone()
+}
+
+/// Waits up to 30 s for a pane's socket to end.
+async fn wait_until_closed(pane: &mut Pane) {
+    let ended = tokio::time::timeout(Duration::from_secs(30), async {
+        while let Some(Ok(message)) = pane.ws.next().await {
+            if matches!(message, Message::Close(_)) {
+                break;
+            }
+        }
+    })
+    .await;
+    assert!(ended.is_ok(), "the pane's socket ends");
+}
+
+#[tokio::test]
+async fn a_lost_gate_comes_back_and_the_shell_is_reattached() {
+    let fake = FakeRemote::start(None);
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    stages_until_connected(&mut link).await;
+    let (mut pane, _) = window_pane(fake.port, "fake", "sw1").await;
+    pane.send(MARK_INPUT).await;
+    pane.wait_for("MARK_42").await;
+    let pid = gate_pid(&fake.path().join("rstate"));
+    assert!(Command::new("kill").args(["-9", &pid.to_string()]).status().unwrap().success());
+    wait_until_closed(&mut pane).await;
+    stages_until_connected(&mut link).await;
+    let (mut again, ready) = window_pane(fake.port, "fake", "sw1").await;
+    assert_eq!(ready["mode"], "reattached");
+    again.wait_for("MARK_42").await; // the screen comes back after "ready"
+}
+
+/// The window's socket to the dashboard is fine, but the link to the server
+/// has gone silent (a lost network): a close sent then cannot arrive, and
+/// the shell must still end once the server is reachable again.
+#[tokio::test]
+async fn a_session_closed_while_disconnected_ends_after_reconnect() {
+    let fake = FakeRemote::start(None);
+    let rstate = fake.path().join("rstate");
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    stages_until_connected(&mut link).await;
+    let (pane, ready) = window_pane(fake.port, "fake", "sw2").await;
+    assert_eq!(ready["mode"], "new");
+    drop(pane);
+    let gate = gate_pid(&rstate).to_string();
+    assert!(Command::new("kill").args(["-STOP", &gate]).status().unwrap().success());
+    assert_eq!(post(fake.port, "/api/remote/close", true, r#"{"target":"fake","session":"sw2"}"#).await, 204);
+    // The close goes over the silent link and gets no answer within 5 s;
+    // then the silent gate is gone for good, with whatever it never read.
+    tokio::time::sleep(Duration::from_secs(6)).await;
+    let pending = std::fs::read_to_string(fake.path().join("lstate/remote/pending-close.json")).unwrap_or_default();
+    assert!(pending.contains("sw2"), "the close waits for the next connection: {pending}");
+    assert!(Command::new("kill").args(["-KILL", &gate]).status().unwrap().success());
+
+    stages_until_connected(&mut link).await;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while host_sessions(&rstate).await != 0 {
+        assert!(Instant::now() < deadline, "the closed session ends on the server");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    let (_pane, ready) = window_pane(fake.port, "fake", "sw2").await;
+    assert_eq!(ready["mode"], "new");
+}
+
+#[tokio::test]
+async fn a_remote_window_saves_and_reads_the_servers_layout() {
+    let fake = FakeRemote::start(None);
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    stages_until_connected(&mut link).await;
+    let saved = r#"{"sessions":[],"tabs":[],"version":1}"#; // write_workspace stores keys sorted
+    assert_eq!(http(fake.port, "PUT", "/remote/fake/api/workspace", Some(saved), true).await.0, 204);
+    assert_eq!(std::fs::read_to_string(fake.path().join("rstate/workspace.json")).unwrap(), saved);
+    assert_eq!(http(fake.port, "GET", "/remote/fake/api/workspace", None, true).await, (200, saved.to_owned()));
+    assert!(!fake.path().join("lstate/workspace.json").exists(), "the local layout is untouched");
+}
+
+#[tokio::test]
+async fn a_remote_window_opens_a_shell_on_the_server() {
+    let fake = FakeRemote::start(None);
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    stages_until_connected(&mut link).await;
+    let (mut pane, ready) = window_pane(fake.port, "fake", "sw1").await;
+    assert_eq!(ready["mode"], "new");
+    pane.send(MARK_INPUT).await;
+    pane.wait_for("MARK_42").await;
+    pane.detach().await;
+    let (mut pane, ready) = window_pane(fake.port, "fake", "sw1").await;
+    assert_eq!(ready["mode"], "reattached");
+    pane.wait_for("MARK_42").await; // the screen comes back after "ready"
+}
+
+/// Programs installed where only the user's interactive shell looks (zsh's
+/// `~/.zshrc` adds `~/.local/bin` on many servers) still start in a pane.
+#[tokio::test]
+async fn a_remote_editor_finds_programs_on_the_interactive_path() {
+    // The server sees only the system folders, not a real tode of this machine.
+    let fake = FakeRemote::start_with(None, &[("FAKE_SERVER_PATH", "/usr/bin:/bin:/usr/sbin:/sbin")]);
+    let home = fake.path().join("home");
+    std::fs::write(home.join(".shrc"), "PATH=\"$PATH:$HOME/.interactive/bin\"\n").unwrap();
+    std::fs::create_dir_all(home.join(".interactive/bin")).unwrap();
+    write_script(&home.join(".interactive/bin/tode"), "#!/bin/sh\necho FAKE_TODE_RAN\nsleep 5\n");
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    stages_until_connected(&mut link).await;
+    let (mut pane, _) = window_pane_of(fake.port, "fake", "se1", "editor").await;
+    pane.wait_for("FAKE_TODE_RAN").await;
+}
+
+#[tokio::test]
+async fn remote_window_routes_check_origin_and_host() {
+    let fake = FakeRemote::start(None);
+    let body = r#"{"version":1,"tabs":[],"sessions":[]}"#;
+    assert_eq!(http(fake.port, "PUT", "/remote/fake/api/workspace", Some(body), false).await.0, 400, "no Origin");
+    assert_eq!(http_with_host(fake.port, "GET", "/remote/fake/api/workspace", "evil.example:80").await.0, 403, "DNS rebinding");
+    assert_eq!(http(fake.port, "GET", "/remote/-oProxyCommand=x/api/workspace", None, true).await.0, 400);
+    // A page on another site can fire a GET at 127.0.0.1 (an <img>); it must not make ssh connect.
+    for path in ["/remote/fake/api/workspace", "/remote/fake/api/ssh-hosts"] {
+        for header in ["Sec-Fetch-Site: cross-site", "Sec-Fetch-Site: same-site", "Origin: http://evil.example"] {
+            assert_eq!(http_with_header(fake.port, "GET", path, header).await.0, 403, "{path} with {header}");
+        }
+    }
+    let query = "session=sw2&kind=shell&cols=80&rows=24&width=640&height=408&lang=en";
+    assert_eq!(ws_status(fake.port, &format!("/remote/fake/ws/session?{query}"), Some("http://evil.example")).await, 403);
+    assert_eq!(fake.count(PROBE), 0, "refused requests never reach ssh");
+}
+
+// ---------------------------------------------------------------------------
+// The dashboard on a server (`remote-dashboard`).
+
+/// Waits up to 10 s for `path` to exist.
+async fn wait_for_file(path: &Path) -> PathBuf {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !path.exists() {
+        assert!(Instant::now() < deadline, "{} did not appear", path.display());
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    path.to_path_buf()
+}
+
+/// One HTTP request over a Unix socket, answered to the end:
+/// (status, body). A body is sent as JSON.
+async fn unix_http(socket: &Path, method: &str, path: &str, body: Option<&str>) -> (u16, String) {
+    let mut stream = tokio::net::UnixStream::connect(socket).await.unwrap();
+    let mut request = format!("{method} {path} HTTP/1.1\r\nHost: host\r\nConnection: close\r\n");
+    match body {
+        Some(body) => request.push_str(&format!("Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len())),
+        None => request.push_str("Content-Length: 0\r\n\r\n"),
+    }
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut response = Vec::new();
+    tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut response)).await.expect("an answer in time").unwrap();
+    let text = String::from_utf8_lossy(&response).into_owned();
+    let (head, body) = text.split_once("\r\n\r\n").expect("a response head");
+    let status = head.split_whitespace().nth(1).and_then(|code| code.parse().ok()).expect("a status");
+    (status, body.to_owned())
+}
+
+/// The addresses a process listens on over TCP. Empty, with a note, when
+/// `lsof` is not installed.
+fn listening_tcp_ports(pid: u32) -> Vec<String> {
+    let output = match Command::new("lsof").args(["-nP", "-a", "-p", &pid.to_string(), "-iTCP", "-sTCP:LISTEN", "-Fn"]).output() {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("lsof is not available ({error}): the no-TCP check is skipped");
+            return Vec::new();
+        }
+    };
+    String::from_utf8_lossy(&output.stdout).lines().filter_map(|line| line.strip_prefix('n')).map(str::to_owned).collect()
+}
+
+#[tokio::test]
+async fn the_remote_dashboard_answers_only_its_routes_on_a_private_socket() {
+    let state = state();
+    let _host = StopHostOnDrop(state.path());
+    let dashboard = Spawned(
+        Command::new(BIN).arg("remote-dashboard").env("WESTERM_STATE_DIR", state.path()).env("SHELL", "/bin/sh").spawn().unwrap(),
+    );
+    let socket = wait_for_file(&state.path().join("dashboard.sock")).await;
+    assert_eq!(std::fs::metadata(&socket).unwrap().permissions().mode() & 0o777, 0o600);
+    assert!(listening_tcp_ports(dashboard.0.id()).is_empty(), "no TCP port on the server");
+    assert_eq!(unix_http(&socket, "GET", "/api/workspace", None).await, (200, "null".to_owned()));
+    // write_workspace stores the keys sorted, so this order reads back unchanged.
+    let saved = r#"{"sessions":[],"tabs":[],"version":1}"#;
+    assert_eq!(unix_http(&socket, "PUT", "/api/workspace", Some(saved)).await.0, 204, "no Origin needed on the socket");
+    assert_eq!(unix_http(&socket, "GET", "/api/workspace", None).await.1, saved);
+    for path in ["/", "/index.html", "/api/update", "/api/terminal-config", "/api/remote/decision"] {
+        assert_eq!(unix_http(&socket, "GET", path, None).await.0, 404, "{path}");
+    }
+    let stream = tokio::net::UnixStream::connect(&socket).await.unwrap();
+    let (mut viewer, _) = Viewer::attach_path(stream, &format!("/ws/session?{QUERY}")).await;
+    viewer.send(MARK_INPUT).await;
+    viewer.wait_for("MARK_42").await;
+    viewer.detach().await;
+    let stop = Command::new(BIN).arg("stop").env("WESTERM_STATE_DIR", state.path()).output().unwrap();
+    assert!(String::from_utf8_lossy(&stop.stdout).contains("the remote dashboard stopped"));
+    assert!(!socket.exists());
 }

@@ -16,6 +16,12 @@ pub const FLOW_LOW_WATER: u64 = 2 * 1024 * 1024;
 /// reconnect until it is used again.
 pub const CLOSE_TAKEN_OVER: u16 = 4001;
 
+/// WebSocket `?target=`: a remote window's status stream ("hello", then
+/// each stage). The dashboard keeps the link up while a window watches it.
+pub const REMOTE_LINK_PATH: &str = "/api/remote/link";
+/// POST `{target}`: try again after a permanent failure.
+pub const REMOTE_RETRY_PATH: &str = "/api/remote/retry";
+
 /// The rules between a dashboard and a host: attach queries and the JSON
 /// messages. Raised only when they change, so a dashboard can keep using an
 /// older remote host that speaks the same rules. The host reports it in /health.
@@ -24,11 +30,6 @@ pub const PROTOCOL: u32 = 1;
 pub const MAX_COLS: u16 = 1024;
 pub const MAX_ROWS: u16 = 512;
 
-/// A remote westerm failed in a way that reconnecting does not fix.
-pub const CLOSE_REMOTE_FAILED: u16 = 4003;
-
-/// remote: a shell on a server's own westerm host, reached through the
-/// dashboard over QUIC (or an SSH tunnel). The local host never runs it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionKind {
@@ -36,7 +37,6 @@ pub enum SessionKind {
     Browser,
     Editor,
     Ssh,
-    Remote,
 }
 
 impl SessionKind {
@@ -46,7 +46,6 @@ impl SessionKind {
             "browser" => Some(Self::Browser),
             "editor" => Some(Self::Editor),
             "ssh" => Some(Self::Ssh),
-            "remote" => Some(Self::Remote),
             _ => None,
         }
     }
@@ -57,14 +56,13 @@ impl SessionKind {
             Self::Browser => "browser",
             Self::Editor => "editor",
             Self::Ssh => "ssh",
-            Self::Remote => "remote",
         }
     }
 
     /// Kinds whose process outlives its viewer and whose screen is replayed.
     /// The others draw with Kitty images and restart on every attach.
     pub fn is_text(self) -> bool {
-        matches!(self, Self::Shell | Self::Ssh | Self::Remote)
+        matches!(self, Self::Shell | Self::Ssh)
     }
 }
 
@@ -76,7 +74,7 @@ pub enum RemoteVia {
     Tunnel,
 }
 
-/// Why a remote pane could not connect. The browser shows each in its language.
+/// Why the dashboard could not connect to a remote westerm. The browser shows each in its language.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RemoteFailure {
@@ -105,7 +103,7 @@ impl RemoteFailure {
     }
 }
 
-/// Where a remote pane is while the dashboard prepares the server.
+/// Where a remote connection is while the dashboard prepares the server.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "stage", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum RemoteStage {
@@ -173,7 +171,10 @@ pub enum ServerMessage {
     Ready { pid: u32, mode: AttachMode },
     Exit { code: i64, signal: i64 },
     Error { message: String },
-    /// Sent by the dashboard, never the host, while a remote pane connects.
+    /// The first message on a remote window's status stream: the local
+    /// westerm's version line, so a window can tell that westerm changed.
+    Hello { version: String },
+    /// On a remote window's status stream: where the link to the server is.
     Remote(RemoteStage),
 }
 
@@ -279,7 +280,7 @@ impl AttachRequest {
             Some(raw) => Some(normalize_ssh_target(raw)?),
             None => None,
         };
-        if matches!(kind, SessionKind::Ssh | SessionKind::Remote) && target.is_none() {
+        if kind == SessionKind::Ssh && target.is_none() {
             return None;
         }
         let url = if kind == SessionKind::Browser {
@@ -294,22 +295,6 @@ impl AttachRequest {
             None => None,
         };
         Some(Self { id, kind, url, target, cwd_from, size, lang, window })
-    }
-
-    /// What the dashboard asks a remote host for: a plain shell there, with
-    /// the same id, size, language, and window.
-    pub fn for_remote_host(&self) -> AttachRequest {
-        AttachRequest {
-            id: self.id.clone(),
-            kind: SessionKind::Shell,
-            url: None,
-            target: None,
-            cwd_from: None,
-            size: self.size,
-            lang: self.lang,
-            // The server's host follows the same one-window rule as the local one.
-            window: self.window.clone(),
-        }
     }
 
     /// The same request as a query string, from validated fields only.
@@ -437,22 +422,12 @@ mod tests {
     }
 
     #[test]
-    fn remote_needs_a_destination_and_becomes_a_plain_shell_remotely() {
+    fn remote_is_no_longer_a_session_kind() {
+        assert_eq!(SessionKind::parse("remote"), None);
         let mut q = shell_query();
         q.insert("kind".into(), "remote".into());
-        assert!(AttachRequest::from_query(&q).is_none(), "remote needs a destination");
         q.insert("target".into(), "prod".into());
-        q.insert("cwdFrom".into(), "sother1".into());
-        q.insert("window".into(), "wabc1".into());
-        let request = AttachRequest::from_query(&q).unwrap();
-        assert_eq!(request.kind, SessionKind::Remote);
-        let remote = request.for_remote_host();
-        assert_eq!((remote.kind, remote.target.clone(), remote.url.clone(), remote.cwd_from.clone()), (SessionKind::Shell, None, None, None));
-        assert_eq!((remote.id.as_str(), remote.size, remote.lang), (request.id.as_str(), request.size, request.lang));
-        assert!(remote.to_query().contains("kind=shell") && !remote.to_query().contains("target"));
-        // The server's host follows the same one-window rule as the local one.
-        assert_eq!(remote.window.as_deref(), Some("wabc1"));
-        assert!(remote.to_query().contains("window=wabc1"));
+        assert_eq!(AttachRequest::from_query(&q), None);
     }
 
     #[test]
@@ -469,6 +444,8 @@ mod tests {
         assert_eq!(json(RemoteStage::Installing { version: "0.2.0".into() }), r#"{"type":"remote","stage":"installing","version":"0.2.0"}"#);
         assert_eq!(json(RemoteStage::Confirm { sessions: 3 }), r#"{"type":"remote","stage":"confirm","sessions":3}"#);
         assert_eq!(json(RemoteStage::Checking), r#"{"type":"remote","stage":"checking"}"#);
+        let hello = ServerMessage::Hello { version: "westerm 0.3.0 (host rs-a)".into() }.to_json();
+        assert_eq!(hello, r#"{"type":"hello","version":"westerm 0.3.0 (host rs-a)"}"#);
     }
 
     #[test]

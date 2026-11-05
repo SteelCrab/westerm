@@ -6,56 +6,55 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 
+use super::http1;
 use crate::host::HOST_BUILD;
 use crate::ipc;
 use crate::state_dir::{legacy_state_dir, private_file, state_dir};
 
 /// Caches the state directory of a host known to run the current build.
-#[derive(Default)]
 pub struct HostClient {
     ready: Mutex<Option<PathBuf>>,
+    /// Whether a running host of another build is stopped and replaced.
+    replace_outdated: bool,
 }
 
-/// Status and body of an HTTP/1.1 response read to the end. Handles chunked
-/// bodies: Node writes them when it sends no Content-Length, and the
-/// Node-era host answers /health that way.
-fn parse_response(raw: &[u8]) -> Option<(u16, String)> {
-    let text = String::from_utf8_lossy(raw);
-    let (head, body) = text.split_once("\r\n\r\n")?;
-    let status = head.split_whitespace().nth(1)?.parse().ok()?;
-    let chunked = head
-        .lines()
-        .any(|line| line.to_ascii_lowercase().replace(' ', "") == "transfer-encoding:chunked");
-    if !chunked {
-        return Some((status, body.to_owned()));
+impl Default for HostClient {
+    /// A dashboard that runs on its own replaces an outdated host.
+    fn default() -> Self {
+        Self { ready: Mutex::new(None), replace_outdated: true }
     }
-    let mut decoded = String::new();
-    let mut rest = body;
-    loop {
-        let (size_line, after) = rest.split_once("\r\n")?;
-        let size = usize::from_str_radix(size_line.split(';').next()?.trim(), 16).ok()?;
-        if size == 0 {
-            return Some((status, decoded));
-        }
-        decoded.push_str(after.get(..size)?);
-        rest = after.get(size..)?.strip_prefix("\r\n")?;
+}
+
+/// What to do about the host of the state directory.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum HostAction {
+    /// Connect to the running host.
+    Use,
+    /// Stop the running host, which is of another build, and start ours.
+    Replace,
+    /// None runs: start ours.
+    Start,
+}
+
+/// `running` is the build of the host that answers, if any; `local` is ours.
+pub(crate) fn host_action(running: Option<&str>, local: &str, replace_outdated: bool) -> HostAction {
+    match running {
+        Some(build) if build == local || !replace_outdated => HostAction::Use,
+        Some(_) => HostAction::Replace,
+        None => HostAction::Start,
     }
 }
 
 /// One HTTP/1.1 request to the host of the state directory `dir`. Returns (status, body).
 async fn request(dir: &Path, method: &str, path: &str) -> Option<(u16, String)> {
-    let exchange = async {
-        let mut stream = ipc::connect(dir).await.ok()?;
-        let head = format!("{method} {path} HTTP/1.1\r\nHost: host\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
-        stream.write_all(head.as_bytes()).await.ok()?;
-        let mut response = Vec::new();
-        stream.read_to_end(&mut response).await.ok()?;
-        parse_response(&response)
+    let asked = async {
+        let stream = ipc::connect(dir).await.ok()?;
+        let (status, body) = http1::exchange(stream, method, path, None).await?;
+        Some((status, String::from_utf8_lossy(&body).into_owned()))
     };
-    tokio::time::timeout(Duration::from_millis(1500), exchange).await.ok().flatten()
+    tokio::time::timeout(Duration::from_millis(1500), asked).await.ok().flatten()
 }
 
 /// What a running host reports at /health.
@@ -87,13 +86,22 @@ async fn running_build(dir: &Path) -> Option<String> {
 }
 
 impl HostClient {
+    /// A client that uses a running host of any build, and only starts one
+    /// when none runs. The server's dashboard does this: its host may hold
+    /// shells that an older westerm started, and a remote window must not
+    /// end them.
+    #[cfg(unix)]
+    pub fn keeping_running() -> Self {
+        Self { ready: Mutex::new(None), replace_outdated: false }
+    }
+
     /// The state directory of a running host, started if needed; pass it to `ipc::connect`.
     pub async fn ensure(&self) -> Result<PathBuf, String> {
         let mut ready = self.ready.lock().await;
         if let Some(dir) = ready.as_ref() {
             return Ok(dir.clone());
         }
-        let dir = start().await?;
+        let dir = start(self.replace_outdated).await?;
         *ready = Some(dir.clone());
         Ok(dir)
     }
@@ -174,23 +182,25 @@ pub(crate) async fn stop_and_wait(dir: &Path) {
     }
 }
 
-async fn start() -> Result<PathBuf, String> {
+async fn start(replace_outdated: bool) -> Result<PathBuf, String> {
     let dir = state_dir().map_err(|e| e.to_string())?;
-    match running_build(&dir).await {
-        Some(build) if build == HOST_BUILD => return Ok(dir),
-        Some(build) => {
-            println!("> pty host {build} is outdated; restarting it as {HOST_BUILD}");
+    let running = running_build(&dir).await;
+    match host_action(running.as_deref(), HOST_BUILD, replace_outdated) {
+        HostAction::Use => return Ok(dir),
+        HostAction::Replace => {
+            println!("> pty host {} is outdated; restarting it as {HOST_BUILD}", running.unwrap_or_default());
             stop_and_wait(&dir).await;
         }
-        None => {}
+        HostAction::Start => {}
     }
-    start_host(&dir).await?;
+    start_host(&dir, &[]).await?;
     Ok(dir)
 }
 
 /// Starts this executable's host for the state directory `dir` (this
-/// process's own, see state_dir()) and waits until it answers.
-pub(crate) async fn start_host(dir: &Path) -> Result<(), String> {
+/// process's own, see state_dir()) and waits until it answers. `env` is set
+/// on the host over this process's environment.
+pub(crate) async fn start_host(dir: &Path, env: &[(String, String)]) -> Result<(), String> {
     let log = private_file()
         .create(true)
         .append(true)
@@ -200,6 +210,7 @@ pub(crate) async fn start_host(dir: &Path) -> Result<(), String> {
     let mut command = std::process::Command::new(exe);
     command
         .arg("host")
+        .envs(env.iter().map(|(key, value)| (key, value)))
         .stdin(Stdio::null())
         .stdout(log.try_clone().map_err(|e| e.to_string())?)
         .stderr(log);
@@ -251,7 +262,15 @@ pub(crate) fn spawn_detached(command: &mut std::process::Command) -> std::io::Re
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_health, parse_response};
+    use super::{host_action, parse_health, HostAction};
+
+    #[test]
+    fn a_remote_dashboard_never_replaces_a_running_host() {
+        assert_eq!(host_action(Some("rs-old"), "rs-new", false), HostAction::Use);
+        assert_eq!(host_action(Some("rs-old"), "rs-new", true), HostAction::Replace);
+        assert_eq!(host_action(Some("rs-new"), "rs-new", true), HostAction::Use);
+        assert_eq!(host_action(None, "rs-new", false), HostAction::Start);
+    }
 
     #[test]
     fn reads_health_with_and_without_protocol() {
@@ -259,17 +278,6 @@ mod tests {
         assert_eq!((h.build.as_str(), h.protocol, h.sessions), ("rs-1", 1, 2));
         assert_eq!(parse_health(r#"{"build":"rs-0","pid":3,"sessions":0}"#).unwrap().protocol, 0);
         assert!(parse_health("x").is_none());
-    }
-
-    #[test]
-    fn reads_plain_and_chunked_responses() {
-        let plain = b"HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\n{\"build\":\"x\"}";
-        assert_eq!(parse_response(plain), Some((200, r#"{"build":"x"}"#.to_owned())));
-        // What the Node host sends for res.end(JSON.stringify(...)).
-        let chunked = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n26\r\n{\"build\":\"8ff41cb4215e\",\"pid\":1,\"x\":2}\r\n0\r\n\r\n";
-        assert_eq!(parse_response(chunked), Some((200, r#"{"build":"8ff41cb4215e","pid":1,"x":2}"#.to_owned())));
-        assert_eq!(parse_response(b"HTTP/1.1 204 No Content\r\n\r\n"), Some((204, String::new())));
-        assert_eq!(parse_response(b"garbage"), None);
     }
 }
 

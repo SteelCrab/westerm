@@ -1,5 +1,5 @@
 //! The fallback when UDP does not get through: `ssh -L` forwards a local
-//! Unix socket to the host's socket on the server. Each connection to it is
+//! Unix socket to the server dashboard's socket. Each connection to it is
 //! a new SSH channel, so panes still get a stream each. Shells survive on
 //! the server as with QUIC, but a network change ends the tunnel, and the
 //! panes reconnect through a new one. The tunnel never outlives the
