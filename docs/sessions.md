@@ -40,7 +40,15 @@
 ## Reconnecting
 
 - When the connection drops, a pane reconnects up to 8 times, waiting from 0.5 to 8 seconds between tries.
-- When another window opens the same session, the first window does not reconnect on its own.
+
+## Several windows
+
+The macOS app and browser tabs use the same sessions. One window at a time has them all.
+
+- When a window opens a session, every other window lets go of every session, and shows "In use in another window".
+- Switching to that window or clicking it takes the sessions back. It first loads the layout the other window saved, so tabs and panes added or closed there show here too.
+- Shells and SSH sessions keep running while they move between windows. terminal-browser and terminal-code start again in the window that takes them, and restore their own tabs and folders.
+- A window that does not have the sessions does not reconnect and does not save its layout.
 
 ## Remote sessions
 

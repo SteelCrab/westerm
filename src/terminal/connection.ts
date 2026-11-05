@@ -23,7 +23,7 @@ export type ConnectionEvent =
   | { type: "remote"; stage: RemoteStage }
   /** A remote pane failed in a way that reconnecting does not fix. */
   | { type: "remoteFailed"; reason: RemoteFailure; detail: string }
-  /** The socket closed without an exit. `takenOver`: another window has the session. */
+  /** The socket closed without an exit. `takenOver`: another window has the sessions. */
   | { type: "closed"; takenOver: boolean };
 
 export interface ConnectionOptions {
@@ -45,6 +45,12 @@ export interface ConnectionOptions {
 
 const ACK_DELAY_MS = 30;
 
+/**
+ * Names this page to the PTY host. One window at a time owns every session:
+ * a pane from another window takes them all (see native/src/host/registry.rs).
+ */
+const WINDOW_ID = `w${Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+
 /** One WebSocket ↔ one PTY on the local server. */
 export class PtyConnection {
   private readonly ws: WebSocket;
@@ -64,6 +70,7 @@ export class PtyConnection {
       width: String(options.size.width),
       height: String(options.size.height),
       lang: options.lang,
+      window: WINDOW_ID,
     });
     if (options.url) query.set("url", options.url);
     if (options.cwdFrom) query.set("cwdFrom", options.cwdFrom);

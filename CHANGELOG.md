@@ -15,6 +15,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 - The PTY host build id no longer depends on line ends, so the same source gives the same id on every platform. After this update, open shells come back once as "restored".
 - `westerm stop` also stops a remote westerm gate.
 
+### Fixed
+
+- The macOS app and a browser tab no longer take single sessions from each other. One window at a time has every session; the others show "In use in another window" and take the sessions back when you switch to them or click them, with the latest saved layout.
+
 ## [0.1.0] - 2026-11-05
 
 The first release.

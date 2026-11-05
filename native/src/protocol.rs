@@ -12,7 +12,8 @@ use crate::i18n::Lang;
 pub const FLOW_HIGH_WATER: u64 = 8 * 1024 * 1024;
 pub const FLOW_LOW_WATER: u64 = 2 * 1024 * 1024;
 
-/// Another window attached to the same session; the old one must not reconnect.
+/// Another window took this session, or every session; the old one must not
+/// reconnect until it is used again.
 pub const CLOSE_TAKEN_OVER: u16 = 4001;
 
 /// The rules between a dashboard and a host: attach queries and the JSON
@@ -251,6 +252,8 @@ pub struct AttachRequest {
     pub size: PtySize,
     /// UI language for text the host writes (restore notice, errors).
     pub lang: Lang,
+    /// The page that asks. One window at a time owns every session.
+    pub window: Option<String>,
 }
 
 impl AttachRequest {
@@ -285,11 +288,16 @@ impl AttachRequest {
             None
         };
         let lang = Lang::parse(query.get("lang").map(String::as_str));
-        Some(Self { id, kind, url, target, cwd_from, size, lang })
+        let window = match query.get("window") {
+            Some(id) if is_id(id) => Some(id.clone()),
+            Some(_) => return None,
+            None => None,
+        };
+        Some(Self { id, kind, url, target, cwd_from, size, lang, window })
     }
 
     /// What the dashboard asks a remote host for: a plain shell there, with
-    /// the same id, size, and language.
+    /// the same id, size, language, and window.
     pub fn for_remote_host(&self) -> AttachRequest {
         AttachRequest {
             id: self.id.clone(),
@@ -299,6 +307,8 @@ impl AttachRequest {
             cwd_from: None,
             size: self.size,
             lang: self.lang,
+            // The server's host follows the same one-window rule as the local one.
+            window: self.window.clone(),
         }
     }
 
@@ -321,6 +331,9 @@ impl AttachRequest {
         }
         if let Some(cwd_from) = &self.cwd_from {
             pairs.push(("cwdFrom", cwd_from.clone()));
+        }
+        if let Some(window) = &self.window {
+            pairs.push(("window", window.clone()));
         }
         pairs
             .into_iter()
@@ -395,6 +408,7 @@ mod tests {
             ("url", "localhost:3000"),
             ("target", "prod"),
             ("lang", "ja"),
+            ("window", "wabc1"),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_owned(), v.to_owned()))
@@ -404,6 +418,11 @@ mod tests {
         assert!(request.to_query().contains("url=localhost%3A3000"));
         assert_eq!(request.lang, Lang::Ja);
         assert!(request.to_query().contains("lang=ja"));
+        assert_eq!(request.window.as_deref(), Some("wabc1"));
+        assert!(request.to_query().contains("window=wabc1"));
+        let mut bad_window = query.clone();
+        bad_window.insert("window".into(), "../x".into());
+        assert!(AttachRequest::from_query(&bad_window).is_none(), "window ids are checked");
         let mut ssh = query.clone();
         ssh.insert("kind".into(), "ssh".into());
         ssh.remove("target");
@@ -424,12 +443,16 @@ mod tests {
         assert!(AttachRequest::from_query(&q).is_none(), "remote needs a destination");
         q.insert("target".into(), "prod".into());
         q.insert("cwdFrom".into(), "sother1".into());
+        q.insert("window".into(), "wabc1".into());
         let request = AttachRequest::from_query(&q).unwrap();
         assert_eq!(request.kind, SessionKind::Remote);
         let remote = request.for_remote_host();
         assert_eq!((remote.kind, remote.target.clone(), remote.url.clone(), remote.cwd_from.clone()), (SessionKind::Shell, None, None, None));
         assert_eq!((remote.id.as_str(), remote.size, remote.lang), (request.id.as_str(), request.size, request.lang));
         assert!(remote.to_query().contains("kind=shell") && !remote.to_query().contains("target"));
+        // The server's host follows the same one-window rule as the local one.
+        assert_eq!(remote.window.as_deref(), Some("wabc1"));
+        assert!(remote.to_query().contains("window=wabc1"));
     }
 
     #[test]

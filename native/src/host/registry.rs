@@ -1,5 +1,10 @@
 //! Live sessions by id, and revival of ended ones from the store. One task
 //! handles every attach in order, so two windows cannot spawn a session twice.
+//!
+//! One window at a time owns every session. When a pane from another window
+//! attaches, the panes of every other window are closed with
+//! CLOSE_TAKEN_OVER, so the macOS app and a browser tab never fight over
+//! single sessions; the old window takes them back when it is used again.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -26,7 +31,7 @@ pub enum RegistryCommand {
 
 pub fn start(store: Arc<SessionStore>) -> mpsc::UnboundedSender<RegistryCommand> {
     let (tx, rx) = mpsc::unbounded_channel();
-    tokio::spawn(Registry { store, live: HashMap::new(), serial: 0 }.run(rx));
+    tokio::spawn(Registry { store, live: HashMap::new(), serial: 0, owner: None }.run(rx));
     tx
 }
 
@@ -34,6 +39,8 @@ struct Registry {
     store: Arc<SessionStore>,
     live: HashMap<String, Handle>,
     serial: u64,
+    /// The window that attached last.
+    owner: Option<String>,
 }
 
 fn refuse(mut ws: WebSocket, message: String) {
@@ -69,9 +76,19 @@ impl Registry {
     }
 
     async fn attach(&mut self, ws: WebSocket, request: AttachRequest, ended: &mpsc::UnboundedSender<(String, u64)>) {
+        if let Some(window) = &request.window
+            && self.owner.as_ref() != Some(window)
+        {
+            self.owner = Some(window.clone());
+            for handle in self.live.values() {
+                let _ = handle.tx.send(Command::Evict { owner: window.clone() });
+            }
+        }
+        let window = request.window.clone();
         if let Some(running) = self.live.get(&request.id) {
             if running.alive() && running.kind == request.kind && running.kind.is_text() {
-                let _ = running.tx.send(Command::Attach { ws, size: request.size, mode: AttachMode::Reattached });
+                let mode = AttachMode::Reattached;
+                let _ = running.tx.send(Command::Attach { ws, size: request.size, mode, window });
                 return;
             }
             // A pixel app restarts on every attach; see session.rs.
@@ -106,7 +123,7 @@ impl Registry {
         let spec = Spec { id: request.id.clone(), launch };
         match session::start(spec, request.size, self.store.clone(), restored, self.serial, ended.clone()) {
             Ok(handle) => {
-                let _ = handle.tx.send(Command::Attach { ws, size: request.size, mode });
+                let _ = handle.tx.send(Command::Attach { ws, size: request.size, mode, window });
                 self.live.insert(request.id, handle);
             }
             Err(error) => refuse(ws, request.lang.start_failed(&error)),

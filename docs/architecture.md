@@ -98,6 +98,7 @@ The Rust integration tests (`native/tests/integration.rs`) start the real execut
 
 - A shell survives a dropped connection; after a host restart it comes back from the saved screen; closing it deletes the saved files.
 - When a second window opens a session, the first gets close code 4001.
+- When a pane from another window attaches, every pane of the first window gets close code 4001, also in sessions the new window did not open. The shells keep running.
 - The dashboard accepts WebSockets only from its own origin.
 - A second host refuses to start while one is running.
 - Processes a test starts are cleaned up even when the test fails.

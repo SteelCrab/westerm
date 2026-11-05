@@ -98,6 +98,17 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Viewer<S> {
         self.ws.send(Message::text(json)).await.unwrap();
     }
 
+    /// The close code the host sends, skipping output before it.
+    pub async fn close_code(&mut self) -> u16 {
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), self.ws.next()).await.unwrap() {
+                Some(Ok(Message::Close(Some(frame)))) => return u16::from(frame.code),
+                Some(Ok(_)) => continue,
+                other => panic!("expected a close frame, got {other:?}"),
+            }
+        }
+    }
+
     pub async fn detach(mut self) {
         let _ = self.ws.close(None).await;
         // Give the host a moment to see the close before the next attach.

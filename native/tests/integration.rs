@@ -78,8 +78,17 @@ async fn stop_host(state: &Path, mut host: Spawned) {
     }
 }
 
+/// A shell pane in the page `window`, as the dashboard asks for one.
+fn window_query(session: &str, window: &str) -> String {
+    format!("session={session}&kind=shell&cols=80&rows=24&width=640&height=408&lang=ko&window={window}")
+}
+
+async fn attach_query(state: &Path, query: &str) -> (Viewer<Stream>, serde_json::Value) {
+    Viewer::attach_over(connect(state).await, query).await
+}
+
 async fn attach(state: &Path) -> (Viewer<Stream>, serde_json::Value) {
-    Viewer::attach_over(connect(state).await, QUERY).await
+    attach_query(state, QUERY).await
 }
 
 fn session_files(state: &Path) -> Vec<String> {
@@ -142,6 +151,31 @@ async fn a_second_window_takes_over_and_the_first_is_told() {
         }
     };
     assert_eq!(code, 4001);
+    stop_host(state.path(), host).await;
+}
+
+#[tokio::test]
+async fn one_window_at_a_time_owns_every_session() {
+    let state = tempfile::tempdir().unwrap();
+    let host = start_host(state.path());
+    let (mut app_one, _) = attach_query(state.path(), &window_query("sone1", "wapp")).await;
+    let (mut app_two, ready) = attach_query(state.path(), &window_query("stwo1", "wapp")).await;
+    let two_pid = ready["pid"].clone();
+    // More panes in the same window keep the ones before them.
+    app_one.send(MARK_INPUT).await;
+    app_one.wait_for("MARK_42").await;
+
+    // Another window opens one of them and takes both.
+    let (mut web, ready) = attach_query(state.path(), &window_query("sone1", "wweb")).await;
+    assert_eq!(ready["mode"], "reattached");
+    assert_eq!(app_one.close_code().await, 4001);
+    assert_eq!(app_two.close_code().await, 4001, "a session the new window did not open");
+
+    // Back in the first window: the shells kept running, and the other window is told.
+    let (_app, ready) = attach_query(state.path(), &window_query("stwo1", "wapp")).await;
+    assert_eq!(ready["mode"], "reattached");
+    assert_eq!(ready["pid"], two_pid, "the same shell process");
+    assert_eq!(web.close_code().await, 4001, "a session this window did not open");
     stop_host(state.path(), host).await;
 }
 
