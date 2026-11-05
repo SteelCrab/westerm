@@ -49,10 +49,10 @@ pub fn parse_ghostty_font(text: &str, base: TerminalConfig) -> TerminalConfig {
                 }
             }
             "font-size" => {
-                if let Ok(size) = value.parse::<f64>() {
-                    if (6.0..=72.0).contains(&size) {
-                        config.font_size = Some(size);
-                    }
+                if let Ok(size) = value.parse::<f64>()
+                    && (6.0..=72.0).contains(&size)
+                {
+                    config.font_size = Some(size);
                 }
             }
             _ => {}

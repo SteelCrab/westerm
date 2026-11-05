@@ -91,7 +91,7 @@ impl ClientCertVerifier for AuthorizedClients {
         _now: UnixTime,
     ) -> Result<ClientCertVerified, Error> {
         let presented = fingerprint(end_entity);
-        if authorized::read(&self.path).iter().any(|known| *known == presented) {
+        if authorized::read(&self.path).contains(&presented) {
             Ok(ClientCertVerified::assertion())
         } else {
             Err(refused())
@@ -177,11 +177,11 @@ mod tests {
             while let Some(incoming) = endpoint.accept().await {
                 tokio::spawn(async move {
                     let Ok(connection) = incoming.await else { return };
-                    if let Ok((mut send, mut recv)) = connection.accept_bi().await {
-                        if let Ok(data) = recv.read_to_end(64).await {
-                            let _ = send.write_all(&data).await;
-                            let _ = send.finish();
-                        }
+                    if let Ok((mut send, mut recv)) = connection.accept_bi().await
+                        && let Ok(data) = recv.read_to_end(64).await
+                    {
+                        let _ = send.write_all(&data).await;
+                        let _ = send.finish();
                     }
                     connection.closed().await;
                 });

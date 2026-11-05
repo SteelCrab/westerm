@@ -10,6 +10,10 @@
 //!   westerm remote-setup [--replace-host]  (run over SSH by a remote dashboard)
 
 mod cwd;
+// The PTY host's files (HOST_SOURCES in build.rs) keep these lints quiet
+// here: any change to them changes the host build id, which restarts every
+// shell. Fix them with the next change that touches the host anyway.
+#[allow(clippy::large_enum_variant, clippy::collapsible_if)]
 mod host;
 mod i18n;
 mod ipc;
@@ -18,6 +22,7 @@ mod remote;
 mod screen;
 mod server;
 mod spawn;
+#[allow(clippy::redundant_closure)] // A host file, as above.
 mod state_dir;
 mod time;
 mod update;

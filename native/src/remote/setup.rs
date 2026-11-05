@@ -105,10 +105,10 @@ async fn ensure_daemon<'a, R: Record>(
     let child = spawn_detached(&mut command)?;
     for _ in 0..50 {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        if let Some(record) = daemon.read_record::<R>(state).filter(|record| record.pid() == child.id()) {
-            if ready() {
-                return Ok(record);
-            }
+        if let Some(record) = daemon.read_record::<R>(state).filter(|record| record.pid() == child.id())
+            && ready()
+        {
+            return Ok(record);
         }
     }
     Err(io::Error::other(format!("{what} did not start: {} (see {})", last_line(&log_path), log_path.display())))
@@ -241,7 +241,7 @@ fn kills_user_processes(logind_conf: &str) -> bool {
         .map(str::trim)
         .filter(|line| !line.starts_with('#') && !line.starts_with(';'))
         .filter_map(|line| line.strip_prefix("KillUserProcesses="))
-        .last()
+        .next_back()
         .is_some_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "yes" | "true" | "on" | "1"))
 }
 

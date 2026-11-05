@@ -145,7 +145,7 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
   - 예: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
 - 템플릿을 채웁니다: 한 줄짜리 항목 5개 이하의 요약, 그리고 리뷰어가 테스트할 때 실행할 명령입니다. `Closes #123`으로 이슈를 연결하면 병합할 때 이슈가 닫힙니다.
 - 작업 중에는 draft로 엽니다. [PR 전 확인](#pr-전-확인)을 통과하면 ready로 바꿉니다.
-- CI는 macOS, Linux, Windows에서 모두 통과해야 합니다.
+- CI는 macOS, Linux, Windows에서 모두 통과해야 합니다. CI는 타입 검사, 화면 테스트, 화면 빌드를 한 번 돌리고, 각 OS에서 clippy와 `cargo test`를, Linux에서 릴리스 빌드를 돌립니다. 셸 스크립트는 shellcheck로, macOS 앱의 Swift 코드는 타입 검사로 확인합니다.
 - 리뷰 의견에는 새 커밋으로 답합니다. 리뷰 중에는 force-push하지 않습니다. 리뷰어가 바뀐 부분을 볼 수 있어야 합니다.
 - 리뷰가 끝나면 메인테이너가 병합합니다.
 
@@ -155,9 +155,10 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 npm test             # 화면 테스트 + cargo test(단위·통합)
 npm run type-check
 npm run build        # 릴리스 빌드가 성공해야 합니다
+cargo clippy --all-targets --manifest-path native/Cargo.toml -- -D warnings
 ```
 
-세 명령이 모두 통과해야 합니다. 그다음 확인합니다.
+네 명령이 모두 통과해야 합니다. 그다음 확인합니다.
 
 - [ ] PR 하나에 주제 하나. 관계없는 변경은 나눕니다.
 - [ ] 새 동작에는 테스트가 있습니다. 버그 수정에는 수정 전에 실패하는 테스트가 있습니다.
