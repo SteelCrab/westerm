@@ -223,4 +223,19 @@ mod tests {
         assert_eq!(keys, ["PATH", "TERM", "COLORTERM", "TERM_PROGRAM", "TERMINAL_BROWSER_PRESENT"]);
         assert!(env.contains(&("TERM_PROGRAM".into(), "westerm".into())));
     }
+
+    #[test]
+    fn pixel_apps_are_asked_for_patches() {
+        let env = terminal_env([("PATH".to_owned(), "/bin".to_owned())]);
+        assert!(env.contains(&("TERMINAL_BROWSER_PRESENT".into(), "patched".into())));
+    }
+
+    #[test]
+    fn a_presenter_set_before_westerm_stays() {
+        let base = [("TERMINAL_BROWSER_PRESENT", "full"), ("PATH", "/bin")].map(|(k, v)| (k.to_owned(), v.to_owned()));
+        let env = terminal_env(base);
+        let presenters: Vec<&str> =
+            env.iter().filter(|(k, _)| k == "TERMINAL_BROWSER_PRESENT").map(|(_, v)| v.as_str()).collect();
+        assert_eq!(presenters, ["full"]);
+    }
 }
