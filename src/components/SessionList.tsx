@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronRight, Plus, X } from "lucide-react";
-import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME, WORKSPACE_MIME } from "../dnd.ts";
+import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME } from "../dnd.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
 import {
@@ -9,15 +9,13 @@ import {
   tabLabel,
   tabSessions,
   visibleTabs,
-  workspaceLabel,
-  workspaceTabs,
   type Dashboard,
   type Session,
   type Tab,
-  type Workspace,
 } from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
 import { StatusDot } from "./StatusDot.tsx";
+import { WorkspaceMenu } from "./WorkspaceMenu.tsx";
 
 interface SessionListProps {
   state: Dashboard;
@@ -40,9 +38,6 @@ interface SessionListProps {
   onSelectWorkspace: (id: string) => void;
   onCloseWorkspace: (id: string) => void;
   onRenameWorkspace: (id: string, name: string) => void;
-  onMoveWorkspace: (id: string, toIndex: number) => void;
-  /** A tab dropped on a workspace row joins that workspace. */
-  onMoveTabToWorkspace: (tabId: string, workspaceId: string) => void;
   /** Icons only: tab numbers and session icons, names in tooltips. */
   compact: boolean;
 }
@@ -62,9 +57,10 @@ function useDropMark() {
 }
 
 /**
- * The workspaces, then the tree of the workspace in view: each tab is a
- * parent row with its panes indented below it, in grid order. Double-click or
- * F2 renames a workspace, a tab, or a session.
+ * The sidebar layout (Settings ▸ Workspaces and tabs ▸ Sidebar): the
+ * workspace menu, then the tree of the workspace in view. Each tab is a parent
+ * row with its panes indented below it, in grid order. Double-click or F2
+ * renames a tab or a session.
  */
 export function SessionList(props: SessionListProps) {
   const { state } = props;
@@ -84,7 +80,19 @@ export function SessionList(props: SessionListProps) {
 
   return (
     <aside className={`session-panel${props.compact ? " compact" : ""}`} aria-label={t.sidebar.title}>
-      <WorkspaceList {...props} />
+      <div className="sidebar-workspace">
+        <WorkspaceMenu
+          where="sidebar"
+          labelled={!props.compact}
+          state={state}
+          renaming={props.renaming}
+          onRename={props.onRename}
+          onSelect={props.onSelectWorkspace}
+          onNew={props.onNewWorkspace}
+          onClose={props.onCloseWorkspace}
+          onRenameWorkspace={props.onRenameWorkspace}
+        />
+      </div>
       <header className="session-panel-header">
         {!props.compact && (
           <>
@@ -122,139 +130,6 @@ export function SessionList(props: SessionListProps) {
         ))}
       </ul>
     </aside>
-  );
-}
-
-/** The workspaces: a click shows one, a drop moves a tab or pane into one. */
-function WorkspaceList(props: SessionListProps) {
-  const { state } = props;
-  const { t } = useI18n();
-  return (
-    <section className="workspace-list" aria-label={t.workspaces.list}>
-      <header className="session-panel-header">
-        {!props.compact && <span className="workspace-list-title">{t.workspaces.list}</span>}
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={t.workspaces.newWorkspace}
-          title={t.workspaces.newWorkspace}
-          onClick={props.onNewWorkspace}
-        >
-          <Plus size={14} />
-        </button>
-      </header>
-      <ul className="tree">
-        {state.workspaces.map((workspace, index) => (
-          <WorkspaceRow key={workspace.id} {...props} workspace={workspace} index={index} />
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-interface WorkspaceRowProps extends SessionListProps {
-  workspace: Workspace;
-  index: number;
-}
-
-function WorkspaceRow(props: WorkspaceRowProps) {
-  const { state, workspace, index, renaming } = props;
-  const { t } = useI18n();
-  const active = workspace.id === state.activeWorkspaceId;
-  const label = workspaceLabel(state, workspace, t.workspaces.untitled);
-  const sessions = workspaceTabs(state, workspace.id).reduce((count, tab) => count + tab.paneIds.length, 0);
-  const editing = renaming?.kind === "workspace" && renaming.id === workspace.id;
-  const startRename = () => props.onRename({ kind: "workspace", id: workspace.id, where: "sidebar" });
-  const select = () => props.onSelectWorkspace(workspace.id);
-  const drop = useDropMark();
-
-  return (
-    <li aria-current={active ? "true" : undefined}>
-      <div
-        className={`tree-row tree-workspace${active ? " active" : ""}${drop.place ? ` drop-${drop.place}` : ""}`}
-        draggable={!editing}
-        onDragStart={(event) => startDrag(event, WORKSPACE_MIME, workspace.id)}
-        onDragOver={(event) => {
-          // Another workspace: reorder. A tab or a pane: move it in.
-          if (carries(event, WORKSPACE_MIME)) drop.mark(afterMidpoint(event, "y") ? "after" : "before");
-          else if (carries(event, TAB_MIME) || carries(event, PANE_MIME)) drop.mark("into");
-          else return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "move";
-        }}
-        onDragLeave={drop.leave}
-        onDrop={(event) => {
-          drop.setPlace(null);
-          const moving = event.dataTransfer.getData(WORKSPACE_MIME);
-          const tab = event.dataTransfer.getData(TAB_MIME);
-          const pane = event.dataTransfer.getData(PANE_MIME);
-          if (moving) {
-            event.preventDefault();
-            const from = state.workspaces.findIndex((item) => item.id === moving);
-            if (moving !== workspace.id) props.onMoveWorkspace(moving, insertionIndex(from, index, afterMidpoint(event, "y")));
-          } else if (tab) {
-            event.preventDefault();
-            props.onMoveTabToWorkspace(tab, workspace.id);
-          } else if (pane) {
-            // Into the tab the workspace shows.
-            event.preventDefault();
-            props.onMovePane(pane, workspace.activeTabId);
-          }
-          props.onDragPane(null);
-        }}
-      >
-        {props.compact ? (
-          <button
-            type="button"
-            className="tree-select"
-            title={`${index + 1} · ${label}`}
-            aria-label={label}
-            onClick={select}
-          >
-            <span className="workspace-index">{index + 1}</span>
-          </button>
-        ) : (
-          <>
-            <span className="workspace-index">{index + 1}</span>
-            {editing ? (
-              <InlineRename
-                value={workspace.name ?? ""}
-                label={t.rename.workspaceName}
-                className="tree-rename"
-                onCommit={(name) => {
-                  props.onRenameWorkspace(workspace.id, name);
-                  props.onRename(null);
-                }}
-                onCancel={() => props.onRename(null)}
-              />
-            ) : (
-              <button
-                type="button"
-                className="tree-select"
-                title={t.sidebar.renameHint(label)}
-                onClick={select}
-                onDoubleClick={startRename}
-                onKeyDown={(event) => event.key === "F2" && startRename()}
-              >
-                <span className={`tree-label${workspace.name ? " custom" : ""}`}>{label}</span>
-              </button>
-            )}
-            <span className="tree-count" title={t.sidebar.sessionCount(sessions)}>
-              {sessions}
-            </span>
-            <button
-              type="button"
-              className="icon-button subtle"
-              aria-label={t.workspaces.close(label)}
-              title={t.workspaces.closeHint}
-              onClick={() => props.onCloseWorkspace(workspace.id)}
-            >
-              <X size={13} />
-            </button>
-          </>
-        )}
-      </div>
-    </li>
   );
 }
 

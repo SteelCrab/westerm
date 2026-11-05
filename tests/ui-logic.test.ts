@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fuzzyScore } from "../src/components/CommandPalette.tsx";
+import { placeRename } from "../src/components/InlineRename.tsx";
 import { clampSidebar } from "../src/components/SidebarResizer.tsx";
+import { updateShown } from "../src/components/UpdateButton.tsx";
+import { stepIndex, workspaceColor } from "../src/components/WorkspaceMenu.tsx";
 import { insertionIndex } from "../src/dnd.ts";
 import { MESSAGES } from "../src/i18n/messages.ts";
 import { urlCommands } from "../src/paletteCommands.tsx";
@@ -52,6 +55,21 @@ test("sidebar width is bounded", () => {
   assert.equal(clampSidebar(300.6), 301);
 });
 
+test("workspace colors differ for the first six and then repeat", () => {
+  const first = [0, 1, 2, 3, 4, 5].map(workspaceColor);
+  assert.equal(new Set(first).size, 6);
+  assert.equal(workspaceColor(6), workspaceColor(0));
+  assert.match(workspaceColor(0), /^var\(--[a-z-]+\)$/);
+});
+
+test("arrow keys in the workspace menu wrap around", () => {
+  assert.equal(stepIndex(0, 1, 3), 1);
+  assert.equal(stepIndex(2, 1, 3), 0, "down from the last goes to the first");
+  assert.equal(stepIndex(0, -1, 3), 2, "up from the first goes to the last");
+  assert.equal(stepIndex(-1, 1, 3), 0, "nothing focused: down goes to the first");
+  assert.equal(stepIndex(-1, -1, 3), 2, "nothing focused: up goes to the last");
+});
+
 test("the terminal leaves the keyboard to dialogs and rename fields", () => {
   // A palette command that starts a rename also closes the palette, and
   // closing it asks the terminal to take the keyboard back.
@@ -63,4 +81,26 @@ test("the terminal leaves the keyboard to dialogs and rename fields", () => {
   assert.equal(keyboardFree(page(false, "palette-input")), true);
   assert.equal(keyboardFree(page(true, null)), false, "a dialog is open");
   assert.equal(keyboardFree(page(false, "inline-rename")), false, "a rename field has the keyboard");
+});
+
+test("a rename field opens where the layout shows the item", () => {
+  const tab = { kind: "tab", id: "t1", where: "tabbar" } as const;
+  const workspace = { kind: "workspace", id: "w1", where: "tabbar" } as const;
+  assert.deepEqual(placeRename(tab, "top"), tab);
+  assert.deepEqual(placeRename(tab, "sidebar"), { ...tab, where: "sidebar" }, "no tab bar in the sidebar layout");
+  assert.deepEqual(placeRename(workspace, "top"), workspace);
+  assert.deepEqual(placeRename(workspace, "sidebar"), { ...workspace, where: "sidebar" });
+  assert.deepEqual(placeRename({ ...workspace, where: "sidebar" }, "top"), workspace, "no sidebar in the top layout");
+  const session = { kind: "session", id: "s1", where: "sidebar" } as const;
+  assert.deepEqual(placeRename(session, "top"), { ...session, where: "pane" });
+  assert.deepEqual(placeRename(session, "sidebar"), session, "the sidebar layout has both");
+  assert.deepEqual(placeRename({ ...session, where: "pane" }, "sidebar"), { ...session, where: "pane" });
+});
+
+test("the header shows the update button only when there is something to show", () => {
+  const status = (newer: boolean) => ({ newer, latest: newer ? "9.9.9" : null }) as never;
+  assert.equal(updateShown(null, false), false);
+  assert.equal(updateShown(status(false), false), false);
+  assert.equal(updateShown(status(true), false), true);
+  assert.equal(updateShown(status(false), true), true, "opened from the palette");
 });

@@ -146,16 +146,6 @@ test("closing a workspace ends its sessions and shows a neighbor", () => {
   assert.deepEqual(sessionIds(state), []);
 });
 
-test("workspaces can be reordered", () => {
-  let state = dashboardReducer(twoWorkspaces(), { type: "newWorkspace", id: "w3", tabId: "t4" });
-  state = dashboardReducer(state, { type: "moveWorkspace", id: "w3", toIndex: 0 });
-  assert.deepEqual(workspaceIds(state), ["w3", "w1", "w2"]);
-  state = dashboardReducer(state, { type: "moveWorkspace", id: "w3", toIndex: 99 });
-  assert.deepEqual(workspaceIds(state), ["w1", "w2", "w3"]);
-  assert.equal(dashboardReducer(state, { type: "moveWorkspace", id: "w1", toIndex: 0 }), state, "no-op keeps state");
-  assert.equal(activeWorkspace(state).id, "w3", "moving does not change the workspace in view");
-});
-
 test("a tab can move to another workspace", () => {
   let state = twoWorkspaces();
   state = dashboardReducer(state, { type: "moveTabToWorkspace", id: "t3", workspaceId: "w1", fallbackId: "t9" });

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { CircleArrowUp, ExternalLink, LoaderCircle } from "lucide-react";
 import { useI18n } from "../i18n/index.tsx";
+import type { UpdateStatus } from "../../shared/protocol.ts";
 import { appBridge, type UpdateState } from "../useUpdate.ts";
 
 interface UpdateButtonProps {
@@ -8,6 +9,11 @@ interface UpdateButtonProps {
   /** The details panel; also opened from the palette's "Check for updates". */
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+/** Whether the button shows: a newer release exists, or the panel was opened (from the palette). */
+export function updateShown(status: UpdateStatus | null, open: boolean): boolean {
+  return open || Boolean(status?.newer && status.latest);
 }
 
 /** Header button that appears when a newer release exists, with its details panel. */
@@ -34,7 +40,7 @@ export function UpdateButton({ update, open, onOpenChange }: UpdateButtonProps) 
     };
   }, [open, busy, onOpenChange]);
 
-  if (!newer && !open) return null;
+  if (!updateShown(status, open)) return null;
 
   const body = () => {
     if (!status) return <p>{t.update.checkFailed}</p>;

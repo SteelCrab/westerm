@@ -4,26 +4,28 @@
 
 | Area | What it does |
 |---|---|
-| Activity bar | New shell, terminal-browser, terminal-code, SSH, and remote westerm at the top; a badge shows how many are open. The command palette, Settings, and the sidebar switch at the bottom. |
-| Sidebar | The workspaces at the top. Below them, the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: workspace numbers, tab numbers, and the session icons of the tab in view. |
-| Tab bar | `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
+| Activity bar | New shell, terminal-browser, terminal-code, SSH, and remote westerm at the top; a badge shows how many are open. The command palette and Settings at the bottom, and the sidebar switch in the sidebar layout. |
+| Layout | Settings ▸ Workspaces and tabs picks one. **Top** (the default): the workspace menu and the tab bar across the top, and no sidebar. **Sidebar**: the workspace menu and the tabs in the sidebar, and no tab bar. |
+| Tab bar (top layout) | The workspace menu at the left, then the tabs. `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
+| Sidebar (sidebar layout) | The workspace menu, then the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: the workspace icon, tab numbers, and the session icons of the tab in view. |
 | Panes | Drag a pane's header onto another pane's edge to split there, onto its center to swap, or onto a tab or `+` to move it. Drag a divider to resize. |
-| Header | The tabs, and an update button when a new release exists. Language, theme, and fonts are in Settings. |
+| Update button | At the top right when a new release exists. |
 
 ## Renaming
 
-Double-click a workspace, a tab, or a session, or press F2. Clear the name to go back to the automatic one: the title the shell sends, or "Workspace 1", "Workspace 2", and so on.
+Double-click a tab or a session, or press F2. In the workspace menu, use the pencil or F2. Clear the name to go back to the automatic one: the title the shell sends, or "Workspace 1", "Workspace 2", and so on.
 
 ## Workspaces
 
 A workspace is a set of tabs, for example one per project.
 
-- Only the tabs of the workspace in view show in the tab bar and the sidebar.
+- Only the tabs of the workspace in view show.
 - The sessions of the other workspaces keep running. Switching back shows the same tab and pane as before.
-- `+` next to "Workspaces" in the sidebar opens a new workspace with one shell.
-- Click a workspace to show it. Drag it to reorder.
-- Drop a tab (from the tab bar or the sidebar) on a workspace to move the tab there. Drop a pane on a workspace to move it into that workspace's current tab.
-- `×` closes a workspace and ends all its sessions. Closing the last one leaves an empty workspace.
+- The workspace menu is at the left of the tab bar (top layout) or at the top of the sidebar (sidebar layout). Its button shows the workspace in view by its color, and in the sidebar also by its name.
+  - Click a workspace to show it. The arrow keys move in the menu, Enter picks, and Escape closes it.
+  - "New workspace" opens one with one shell.
+  - The pencil renames a workspace, and `×` closes it.
+- Closing a workspace ends all its sessions. Closing the last one leaves an empty workspace.
 - In the command palette: new workspace, rename, close, next and previous workspace, move the tab to another workspace, and go to a workspace. Going to a session in another workspace shows that workspace.
 - Tab keys (Ctrl+Shift+1–9, ⌘1–9 in the macOS app) count only the tabs of the workspace in view.
 - A layout saved before workspaces opens as one workspace with all its tabs.
@@ -70,6 +72,7 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 |---|---|
 | Language | Same as the browser, or English, Korean, Japanese, or Simplified Chinese. |
 | Theme | System (follows the OS, live), Light, or Dark. Terminal colors follow it, and programs that ask for the background color (OSC 11) pick a matching theme. |
+| Workspaces and tabs | Top: the workspace menu and the tab bar, with no sidebar. Sidebar: the workspace menu and the tabs in the sidebar, with no tab bar. |
 | Font size | Overrides the Ghostty `font-size`. "Use the Ghostty size" goes back. |
 | Font | Overrides the Ghostty `font-family`; separate fallbacks with commas. Leave it empty for the Ghostty font. Applies on Enter or when the field loses focus. |
 | Check for updates automatically | Asks GitHub for the newest release when the dashboard opens and every 6 hours. With it off, westerm contacts GitHub only when you press Check now. |

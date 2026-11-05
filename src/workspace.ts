@@ -141,8 +141,6 @@ export type DashboardAction =
    * `fallbackTabId` name the empty workspace that replaces the last one.
    */
   | { type: "closeWorkspace"; id: string; fallbackId: string; fallbackTabId: string }
-  /** Puts the workspace at `toIndex` among the workspaces. */
-  | { type: "moveWorkspace"; id: string; toIndex: number }
   /**
    * Moves the tab to the end of another workspace and shows it there.
    * `fallbackId` names the empty tab left behind when it was the source's only tab.
@@ -600,12 +598,6 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
         workspaces,
         activeWorkspaceId,
       };
-    }
-    case "moveWorkspace": {
-      const moving = state.workspaces.find((workspace) => workspace.id === action.id);
-      if (!moving) return state;
-      const workspaces = moveTo(state.workspaces, moving, action.toIndex);
-      return workspaces === state.workspaces ? state : { ...state, workspaces };
     }
     case "moveTabToWorkspace": {
       const moving = state.tabs.find((tab) => tab.id === action.id);

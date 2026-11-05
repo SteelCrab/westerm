@@ -4,6 +4,18 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Settings ▸ Workspaces and tabs picks the layout. Top: a workspace menu at the left of the tab bar, and no sidebar. Sidebar: the workspace menu at the top of the sidebar, the tabs below it, and no tab bar. Each workspace has a color, and the menu button shows the one in view.
+
+### Changed
+
+- The default layout is Top, so the sidebar is hidden. Pick Sidebar in Settings to get it back.
+
+### Removed
+
+- The sidebar's list of workspaces, with dragging workspaces to reorder them and dropping tabs or panes on a workspace. The menu replaces the list; the palette's "Move tab to workspace" moves a tab.
+
 ### Fixed
 
 - The palette's rename commands (tab, session, workspace) no longer close the name field at once.
