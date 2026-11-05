@@ -1,4 +1,4 @@
-import type { AttachMode, RemoteStage, SessionKind } from "../shared/protocol.ts";
+import type { AttachMode, SessionKind } from "../shared/protocol.ts";
 import type { SavedDashboard } from "../shared/workspace-file.ts";
 import type { Notice } from "./i18n/messages.ts";
 import {
@@ -43,8 +43,6 @@ export interface Session {
   cwdFrom: string | null;
   /** Reconnect attempts since the last successful attach. */
   retries: number;
-  /** Remote panes: the dashboard's last stage (connecting, connected via …); null before one arrives. */
-  remote: RemoteStage | null;
   /** Bumped on restart so the pane remounts with a fresh terminal and PTY. */
   generation: number;
 }
@@ -102,10 +100,12 @@ export type DashboardAction =
       aspect?: number;
     }
   | { type: "ready"; id: string; pid: number; mode: AttachMode }
-  /** A remote pane's connection stage, from the dashboard. */
-  | { type: "remoteStage"; id: string; stage: RemoteStage }
-  /** The connection dropped; the pane reconnects to the same session. */
-  | { type: "disconnected"; id: string }
+  /**
+   * The connection dropped; the pane reconnects to the same session.
+   * `keepTrying`: a remote window's pane. Its shell keeps running on the
+   * server, so the pane never gives up.
+   */
+  | { type: "disconnected"; id: string; keepTrying: boolean }
   /** Replaces the whole workspace with a saved one, e.g. on page load. */
   | { type: "hydrate"; saved: SavedDashboard }
   | { type: "close"; id: string }
@@ -123,6 +123,13 @@ export type DashboardAction =
    * there is one; then every pane connects again.
    */
   | { type: "reclaim"; saved: SavedDashboard | null }
+  /**
+   * A remote window came back after another window changed the server's
+   * layout: that layout replaces this one, and every pane connects again.
+   */
+  | { type: "adopt"; saved: SavedDashboard }
+  /** A remote window's link is back: its disconnected panes connect at once, not after their backoff. */
+  | { type: "retryDisconnected" }
   | { type: "newTab"; id: string }
   | { type: "selectTab"; id: string }
   /** An empty name returns the tab to its automatic name. */
@@ -175,7 +182,6 @@ const TITLE_PREFIX: Record<SessionKind, string> = {
   browser: "Browser",
   editor: "Code",
   ssh: "SSH",
-  remote: "Remote",
 };
 
 export const NAME_MAX = 60;
@@ -311,11 +317,10 @@ function newSession(
     cwdFrom: null,
     retries: 0,
     generation: 0,
-    remote: null,
   };
 }
 
-const TARGET_TITLE: Partial<Record<SessionKind, string>> = { ssh: "ssh", remote: "westerm", browser: "browser" };
+const TARGET_TITLE: Partial<Record<SessionKind, string>> = { ssh: "ssh", browser: "browser" };
 
 /** Layout and names only; processes and screens live in the PTY host. */
 export function toSaved(state: Dashboard): SavedDashboard {
@@ -342,6 +347,27 @@ const ATTACH_NOTICE: Record<AttachMode, Notice | null> = {
   reattached: "reattached",
   revived: "revived",
 };
+
+/**
+ * `next` with every pane connecting again. A new generation mounts a new
+ * terminal, which connects; it counts on from the pane's generation in
+ * `previous`, so a pane kept by id always gets a new terminal.
+ */
+function reconnectAll(previous: Dashboard, next: Dashboard): Dashboard {
+  const generations = new Map(previous.sessions.map((session) => [session.id, session.generation]));
+  return {
+    ...next,
+    sessions: next.sessions.map((session) => ({
+      ...session,
+      status: "connecting",
+      detail: null,
+      notice: null,
+      pid: null,
+      retries: 0,
+      generation: (generations.get(session.id) ?? session.generation) + 1,
+    })),
+  };
+}
 
 function patch(state: Dashboard, id: string, change: Partial<Session>): Dashboard {
   if (!state.sessions.some((session) => session.id === id)) return state;
@@ -418,6 +444,27 @@ function detachPane(tab: Tab, paneId: string): Tab {
   };
 }
 
+/** Removes a session and its pane; its tab stays, even when this was its last pane. */
+function closeSession(state: Dashboard, id: string): Dashboard {
+  const tab = sessionTab(state, id);
+  if (!tab) return state;
+  const next = { ...state, sessions: state.sessions.filter((session) => session.id !== id) };
+  return { ...next, tabs: next.tabs.map((item) => (item.id === tab.id ? detachPane(item, id) : item)) };
+}
+
+/**
+ * Closes the v0.2.0 remote panes a saved layout still lists. A tab they leave
+ * empty goes too; the last tab of a workspace stays, empty, like a new one.
+ */
+function dropLegacyRemotes(state: Dashboard, ids: readonly string[]): Dashboard {
+  return ids.reduce((current, id) => {
+    const before = sessionTab(current, id);
+    const next = closeSession(current, id);
+    const tab = before && next.tabs.find((item) => item.id === before.id);
+    return tab && tab.paneIds.length === 0 ? takeTab(next, tab, tab.id) : next;
+  }, state);
+}
+
 export function dashboardReducer(state: Dashboard, action: DashboardAction): Dashboard {
   switch (action.type) {
     case "open": {
@@ -437,12 +484,8 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
       const placed = withLayout(tab, insertPane(tab.layout, session.id, tab.focusedId, action.aspect ?? DEFAULT_ASPECT));
       return patchTab(next, tab.id, { ...placed, focusedId: session.id, maximizedId: null });
     }
-    case "close": {
-      const tab = sessionTab(state, action.id);
-      if (!tab) return state;
-      const next = { ...state, sessions: state.sessions.filter((session) => session.id !== action.id) };
-      return { ...next, tabs: next.tabs.map((item) => (item.id === tab.id ? detachPane(item, action.id) : item)) };
-    }
+    case "close":
+      return closeSession(state, action.id);
     case "focus": {
       // Focusing a session in another tab, e.g. from the sidebar, switches to it.
       const tab = sessionTab(state, action.id);
@@ -473,14 +516,13 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
       const session = state.sessions.find((item) => item.id === action.id);
       if (!session) return state;
       const retries = session.retries + 1;
-      // A remote shell keeps running on its server, so its pane keeps trying.
-      return retries > MAX_RECONNECTS && session.kind !== "remote"
+      return retries > MAX_RECONNECTS && !action.keepTrying
         ? patch(state, action.id, { status: "error", detail: null, notice: "unreachable", retries })
         : patch(state, action.id, { status: "disconnected", detail: null, notice: "reconnecting", retries });
     }
     case "hydrate": {
       const { saved } = action;
-      return {
+      const loaded: Dashboard = {
         sessions: saved.sessions.map((item) => ({
           ...newSession(item.id, item.kind, item.title, item.url, item.target ?? null),
           name: item.name,
@@ -495,6 +537,8 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
         workspaces: saved.workspaces.map(({ id, name, activeTabId }) => ({ id, name, activeTabId })),
         activeWorkspaceId: saved.activeWorkspaceId,
       };
+      // Nothing is attached yet, so closing a legacy remote pane ends no session.
+      return dropLegacyRemotes(loaded, saved.legacyRemoteIds ?? []);
     }
     case "status":
       return patch(state, action.id, {
@@ -518,28 +562,24 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
         pid: null,
         retries: action.manual ? 0 : session.retries,
         generation: session.generation + 1,
-        remote: null,
       });
     }
-    case "remoteStage":
-      return patch(state, action.id, { remote: action.stage });
     case "reclaim": {
       if (!takenOver(state)) return state;
       const next = action.saved ? dashboardReducer(state, { type: "hydrate", saved: action.saved }) : state;
-      // A new generation mounts a new terminal, which connects again.
-      const generations = new Map(state.sessions.map((session) => [session.id, session.generation]));
+      return reconnectAll(state, next);
+    }
+    case "adopt":
+      return reconnectAll(state, dashboardReducer(state, { type: "hydrate", saved: action.saved }));
+    case "retryDisconnected": {
+      if (takenOver(state) || !state.sessions.some((session) => session.status === "disconnected")) return state;
       return {
-        ...next,
-        sessions: next.sessions.map((session) => ({
-          ...session,
-          status: "connecting",
-          detail: null,
-          notice: null,
-          pid: null,
-          retries: 0,
-          generation: (generations.get(session.id) ?? session.generation) + 1,
-          remote: null,
-        })),
+        ...state,
+        sessions: state.sessions.map((session) =>
+          session.status === "disconnected"
+            ? { ...session, status: "connecting", detail: null, notice: null, pid: null, retries: 0, generation: session.generation + 1 }
+            : session,
+        ),
       };
     }
     case "newTab": {

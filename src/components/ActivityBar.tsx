@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Command, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import type { SessionKind } from "../../shared/protocol.ts";
 import { useI18n } from "../i18n/index.tsx";
-import { KINDS, LAUNCHERS } from "../kinds.tsx";
+import { KINDS, LAUNCHERS, RemoteWindowIcon } from "../kinds.tsx";
 
 interface ActivityBarProps {
   sidebarOpen: boolean;
@@ -11,6 +11,8 @@ interface ActivityBarProps {
   onToggleSidebar: () => void;
   onOpenSettings: () => void;
   onOpenPalette: () => void;
+  /** Picks a server to open in a new window. Null in a remote window: windows do not nest. */
+  onOpenRemoteWindow: (() => void) | null;
   /** Shown in the palette button's tooltip, e.g. ⌘K. */
   paletteShortcut: string;
 }
@@ -51,6 +53,16 @@ export function ActivityBar(props: ActivityBarProps) {
             </button>
           );
         })}
+        {props.onOpenRemoteWindow && (
+          <BarButton
+            label={t.activity.remoteWindow}
+            tooltip={t.activity.remoteWindow}
+            title={`${t.activity.remoteWindow} — ${t.activity.remoteWindowHint}`}
+            onClick={props.onOpenRemoteWindow}
+          >
+            <RemoteWindowIcon size={20} />
+          </BarButton>
+        )}
       </div>
       <div className="activity-group">
         <BarButton label={t.palette.open} tooltip={`${t.palette.open} · ${props.paletteShortcut}`} onClick={props.onOpenPalette}>
@@ -75,14 +87,23 @@ export function ActivityBar(props: ActivityBarProps) {
 interface BarButtonProps {
   label: string;
   tooltip: string;
+  /** Native tooltip, for a longer text than the styled one. */
+  title?: string;
   pressed?: boolean;
   onClick: () => void;
   children: ReactNode;
 }
 
-function BarButton({ label, tooltip, pressed, onClick, children }: BarButtonProps) {
+function BarButton({ label, tooltip, title, pressed, onClick, children }: BarButtonProps) {
   return (
-    <button type="button" className="activity-button" aria-label={label} aria-pressed={pressed} onClick={onClick}>
+    <button
+      type="button"
+      className="activity-button"
+      aria-label={label}
+      title={title}
+      aria-pressed={pressed}
+      onClick={onClick}
+    >
       {children}
       <span className="activity-tooltip" role="presentation">
         {tooltip}

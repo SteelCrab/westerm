@@ -267,17 +267,17 @@ test("panes swap cells within a tab and across tabs", () => {
 test("disconnects retry with a budget; a successful attach resets it", () => {
   let state = open(start(), "a");
   for (let i = 1; i <= MAX_RECONNECTS; i++) {
-    state = dashboardReducer(state, { type: "disconnected", id: "a" });
+    state = dashboardReducer(state, { type: "disconnected", id: "a", keepTrying: false });
     assert.equal(state.sessions[0].status, "disconnected");
     state = dashboardReducer(state, { type: "restart", id: "a" });
   }
   assert.equal(state.sessions[0].notice, null, "restart clears the notice");
-  state = dashboardReducer(state, { type: "disconnected", id: "a" });
+  state = dashboardReducer(state, { type: "disconnected", id: "a", keepTrying: false });
   assert.equal(state.sessions[0].status, "error", "gives up after the budget");
   assert.equal(state.sessions[0].notice, "unreachable");
   state = dashboardReducer(state, { type: "restart", id: "a", manual: true });
   assert.equal(state.sessions[0].retries, 0, "a manual restart starts over");
-  state = dashboardReducer(state, { type: "disconnected", id: "a" });
+  state = dashboardReducer(state, { type: "disconnected", id: "a", keepTrying: false });
   state = dashboardReducer(state, { type: "ready", id: "a", pid: 7, mode: "reattached" });
   assert.equal(state.sessions[0].retries, 0);
   assert.equal(state.sessions[0].detail, "pid 7");

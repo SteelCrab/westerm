@@ -2,12 +2,11 @@
 // Keep in step with native/src/protocol.rs, which validates the same fields.
 
 /**
- * shell: login shell · browser: terminal-browser · editor: terminal-code (tode) · ssh: remote shell ·
- * remote: a shell kept by the server's own westerm, reached over QUIC or an SSH tunnel
+ * shell: login shell · browser: terminal-browser · editor: terminal-code (tode) · ssh: remote shell
  */
-export type SessionKind = "shell" | "browser" | "editor" | "ssh" | "remote";
+export type SessionKind = "shell" | "browser" | "editor" | "ssh";
 
-const SESSION_KINDS: readonly SessionKind[] = ["shell", "browser", "editor", "ssh", "remote"];
+const SESSION_KINDS: readonly SessionKind[] = ["shell", "browser", "editor", "ssh"];
 
 export function isSessionKind(value: unknown): value is SessionKind {
   return SESSION_KINDS.includes(value as SessionKind);
@@ -44,7 +43,7 @@ export type AttachMode = "new" | "reattached" | "revived";
 /** How the dashboard reaches a remote westerm. */
 export type RemoteVia = "quic" | "tunnel";
 
-/** Why a remote pane could not connect; the UI shows each in its language. */
+/** Why a remote westerm could not connect; the UI shows each in its language. */
 export type RemoteFailure =
   | "auth"
   | "hostKey"
@@ -57,7 +56,7 @@ export type RemoteFailure =
   | "transport"
   | "setup";
 
-/** Where a remote pane is while the dashboard prepares the server. */
+/** Where a remote connection is while the dashboard prepares the server. */
 export type RemoteStage =
   | { stage: "checking" }
   | { stage: "installing"; version: string }
@@ -77,14 +76,21 @@ export type ServerMessage =
   | { type: "ready"; pid: number; mode: AttachMode }
   | { type: "exit"; code: number; signal: number }
   | { type: "error"; message: string }
-  /** From the dashboard, while a remote pane connects. */
+  /** First on a remote window's status stream: the local westerm's version line. */
+  | { type: "hello"; version: string }
+  /** On a remote window's status stream: where the link to the server is. */
   | ({ type: "remote" } & RemoteStage);
 
 export const WS_PATH = "/ws/session";
 /** Another window attached to the same session. Do not reconnect automatically. */
 export const CLOSE_TAKEN_OVER = 4001;
-/** A remote westerm failed in a way that reconnecting does not fix. */
-export const CLOSE_REMOTE_FAILED = 4003;
+/**
+ * WebSocket ?target=: a remote window's status stream ("hello", then each stage).
+ * The dashboard keeps the link to the server up while a window watches it.
+ */
+export const REMOTE_LINK_PATH = "/api/remote/link";
+/** POST {target}: try again after a permanent failure. 409 when nothing waits. */
+export const REMOTE_RETRY_PATH = "/api/remote/retry";
 /** POST {target, replace}: the answer to a remote host replacement question. */
 export const REMOTE_DECISION_PATH = "/api/remote/decision";
 /** POST {target, session}: end a remote session whose pane closed while disconnected. */
