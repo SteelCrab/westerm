@@ -4,6 +4,8 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-05
+
 ### Added
 
 - Phone-wide windows (640px or less): the activity bar moves to the bottom, the sidebar opens as a drawer, and panes stack top to bottom. The split layout is kept for wider windows.
@@ -85,6 +87,7 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/SteelCrab/westerm/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/SteelCrab/westerm/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SteelCrab/westerm/releases/tag/v0.1.0
