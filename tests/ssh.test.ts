@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { normalizeSshTarget } from "../shared/protocol.ts";
-import { parseSavedWorkspace } from "../shared/workspace-file.ts";
+import { parseSavedDashboard } from "../shared/workspace-file.ts";
 
 test("ssh destinations reject options and shell syntax", () => {
   for (const ok of ["prod", "deploy@10.0.0.5", "me@build-box.local", "dev_1", "u@[::1]"]) {
@@ -14,7 +14,7 @@ test("ssh destinations reject options and shell syntax", () => {
 
 test("saved ssh sessions need a valid destination", () => {
   const layout = (session: Record<string, unknown>) =>
-    parseSavedWorkspace({
+    parseSavedDashboard({
       version: 1,
       activeTabId: "t1",
       tabs: [{ id: "t1", name: null, paneIds: ["sa"], focusedId: "sa", maximizedId: null }],

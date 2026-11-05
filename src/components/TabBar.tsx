@@ -3,11 +3,11 @@ import { Plus, X } from "lucide-react";
 import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME } from "../dnd.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
-import { tabLabel, tabLead, tabSessions, type Workspace } from "../workspace.ts";
+import { activeTab, tabLabel, tabLead, tabSessions, visibleTabs, type Dashboard } from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
 
 interface TabBarProps {
-  state: Workspace;
+  state: Dashboard;
   renaming: RenameTarget | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
@@ -31,6 +31,9 @@ type DropMark = { tabId: string; place: "before" | "after" | "into" } | null;
 export function TabBar(props: TabBarProps) {
   const { state, renaming, onSelect, onClose, onNew, onRename, onRenameTab } = props;
   const { t } = useI18n();
+  // Only the workspace in view; tab numbers count within it.
+  const tabs = visibleTabs(state);
+  const activeId = activeTab(state).id;
   const [mark, setMark] = useState<DropMark>(null);
   const [newTabTarget, setNewTabTarget] = useState(false);
 
@@ -50,7 +53,7 @@ export function TabBar(props: TabBarProps) {
     const pane = event.dataTransfer.getData(PANE_MIME);
     if (tab) {
       event.preventDefault();
-      const from = state.tabs.findIndex((item) => item.id === tab);
+      const from = tabs.findIndex((item) => item.id === tab);
       if (tab !== tabId) props.onMoveTab(tab, insertionIndex(from, index, afterMidpoint(event, "x")));
     } else if (pane) {
       event.preventDefault();
@@ -67,10 +70,10 @@ export function TabBar(props: TabBarProps) {
       }}
     >
       <div className="tab-list" role="tablist" aria-label={t.tabs.list}>
-        {state.tabs.map((tab, index) => {
+        {tabs.map((tab, index) => {
           const lead = tabLead(state, tab);
           const count = tabSessions(state, tab.id).length;
-          const active = tab.id === state.activeTabId;
+          const active = tab.id === activeId;
           const label = tabLabel(state, tab, t.tabs.untitled);
           const editing = renaming?.kind === "tab" && renaming.id === tab.id && renaming.where === "tabbar";
           const startRename = () => onRename({ kind: "tab", id: tab.id, where: "tabbar" });

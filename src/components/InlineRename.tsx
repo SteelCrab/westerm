@@ -4,7 +4,8 @@ import { useI18n } from "../i18n/index.tsx";
 /** Where a rename was started; the input appears in that spot. */
 export type RenameTarget =
   | { kind: "tab"; id: string; where: "tabbar" | "sidebar" }
-  | { kind: "session"; id: string; where: "pane" | "sidebar" };
+  | { kind: "session"; id: string; where: "pane" | "sidebar" }
+  | { kind: "workspace"; id: string; where: "sidebar" };
 
 interface InlineRenameProps {
   /** Current label, preselected. */

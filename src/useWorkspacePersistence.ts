@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { WORKSPACE_PATH, parseSavedWorkspace, type SavedWorkspace } from "../shared/workspace-file.ts";
-import { toSaved, type Workspace, type WorkspaceAction } from "./workspace.ts";
+import { WORKSPACE_PATH, parseSavedDashboard, type SavedDashboard } from "../shared/workspace-file.ts";
+import { toSaved, type Dashboard, type DashboardAction } from "./workspace.ts";
 
 const SAVE_DELAY_MS = 400;
 
-function save(state: Workspace, keepalive = false): void {
+function save(state: Dashboard, keepalive = false): void {
   void fetch(WORKSPACE_PATH, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -16,11 +16,11 @@ function save(state: Workspace, keepalive = false): void {
 }
 
 /** The saved layout, or null when there is none or it cannot be read. */
-export function loadSaved(): Promise<SavedWorkspace | null> {
+export function loadSaved(): Promise<SavedDashboard | null> {
   return fetch(WORKSPACE_PATH, { cache: "no-store" })
     .then((response) => (response.ok ? response.json() : null))
     .catch(() => null)
-    .then((value: unknown) => parseSavedWorkspace(value));
+    .then((value: unknown) => parseSavedDashboard(value));
 }
 
 /**
@@ -30,8 +30,8 @@ export function loadSaved(): Promise<SavedWorkspace | null> {
  * sessions, and its layout is the one to keep.
  */
 export function useWorkspacePersistence(
-  state: Workspace,
-  dispatch: (action: WorkspaceAction) => void,
+  state: Dashboard,
+  dispatch: (action: DashboardAction) => void,
   fresh: () => void,
   paused: boolean,
 ): boolean {

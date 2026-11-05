@@ -6,6 +6,7 @@ import {
   CircleArrowUp,
   Globe,
   Languages,
+  Layers,
   Maximize2,
   Minus,
   PanelLeft,
@@ -27,12 +28,18 @@ import { shortcutLabel, type SwitchCommand } from "./shortcuts.ts";
 import { appBridge } from "./useUpdate.ts";
 import {
   activeTab,
+  activeWorkspace,
   sessionLabel,
   sessionTab,
   stepPane,
   tabLabel,
+  visibleTabs,
+  workspaceLabel,
+  workspaceTabs,
+  type Dashboard,
+  type DashboardAction,
+  type Tab,
   type Workspace,
-  type WorkspaceAction,
 } from "./workspace.ts";
 
 export const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -47,13 +54,18 @@ export function isPaletteShortcut(event: KeyboardEvent): boolean {
 }
 
 export interface PaletteContext {
-  state: Workspace;
-  dispatch: (action: WorkspaceAction) => void;
+  state: Dashboard;
+  dispatch: (action: DashboardAction) => void;
   open: (kind: SessionKind, url?: string | null, target?: string | null) => void;
   newTab: () => void;
   newTabId: () => string;
   movePaneToNewTab: (paneId: string) => void;
   rename: (target: RenameTarget) => void;
+  newWorkspace: () => void;
+  /** Opens the sidebar and edits the current workspace's name there. */
+  renameWorkspace: () => void;
+  closeWorkspace: (id: string) => void;
+  moveTabToWorkspace: (tabId: string, workspaceId: string) => void;
   openSshPicker: () => void;
   toggleSidebar: () => void;
   changeFontSize: (delta: number) => void;
@@ -82,11 +94,18 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
   const inApp = appBridge() !== null;
   const keys = (command: SwitchCommand) => shortcutLabel(command, inApp, IS_MAC);
   const g = t.palette.groups;
-  const label = (tab: Workspace["tabs"][number]) => tabLabel(state, tab, t.tabs.untitled);
+  const label = (tab: Tab) => tabLabel(state, tab, t.tabs.untitled);
+  const workspaceName = (workspace: Workspace) => workspaceLabel(state, workspace, t.workspaces.untitled);
+  // Tab commands work on the workspace in view.
+  const tabs = visibleTabs(state);
   const tab = activeTab(state);
   const focused = state.sessions.find((session) => session.id === tab.focusedId) ?? null;
-  const tabIndex = state.tabs.findIndex((item) => item.id === tab.id);
-  const step = (offset: number) => state.tabs[(tabIndex + offset + state.tabs.length) % state.tabs.length];
+  const tabIndex = tabs.findIndex((item) => item.id === tab.id);
+  const step = (offset: number) => tabs[(tabIndex + offset + tabs.length) % tabs.length];
+  const workspace = activeWorkspace(state);
+  const workspaceIndex = state.workspaces.findIndex((item) => item.id === workspace.id);
+  const stepWorkspace = (offset: number) =>
+    state.workspaces[(workspaceIndex + offset + state.workspaces.length) % state.workspaces.length];
   const commands: PaletteCommand[] = [];
 
   for (const kind of LAUNCHERS) {
@@ -115,7 +134,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     keywords: "rename tab name",
     run: () => ctx.rename({ kind: "tab", id: tab.id, where: "tabbar" }),
   });
-  if (state.tabs.length > 1) {
+  if (tabs.length > 1) {
     commands.push(
       {
         id: "next-tab",
@@ -137,7 +156,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       },
     );
   }
-  if (state.tabs.length > 1) {
+  if (tabs.length > 1) {
     if (tabIndex > 0)
       commands.push({
         id: "move-tab-left",
@@ -147,7 +166,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
         keywords: "move tab left reorder",
         run: () => dispatch({ type: "moveTab", id: tab.id, toIndex: tabIndex - 1 }),
       });
-    if (tabIndex < state.tabs.length - 1)
+    if (tabIndex < tabs.length - 1)
       commands.push({
         id: "move-tab-right",
         title: t.palette.moveTabRight,
@@ -164,6 +183,63 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     icon: <X size={14} />,
     keywords: "close tab",
     run: () => dispatch({ type: "closeTab", id: tab.id, fallbackId: ctx.newTabId() }),
+  });
+
+  commands.push(
+    {
+      id: "new-workspace",
+      title: t.palette.newWorkspace,
+      group: g.workspace,
+      icon: <Layers size={14} />,
+      keywords: "new workspace project",
+      run: ctx.newWorkspace,
+    },
+    {
+      id: "rename-workspace",
+      title: t.palette.renameWorkspace,
+      group: g.workspace,
+      icon: <Pencil size={14} />,
+      keywords: "rename workspace project name",
+      run: ctx.renameWorkspace,
+    },
+  );
+  if (state.workspaces.length > 1) {
+    commands.push(
+      {
+        id: "next-workspace",
+        title: t.palette.nextWorkspace,
+        group: g.workspace,
+        icon: <ArrowLeftRight size={14} />,
+        keywords: "next workspace project switch",
+        run: () => dispatch({ type: "selectWorkspace", id: stepWorkspace(1).id }),
+      },
+      {
+        id: "previous-workspace",
+        title: t.palette.previousWorkspace,
+        group: g.workspace,
+        icon: <ArrowLeftRight size={14} />,
+        keywords: "previous prev workspace project switch",
+        run: () => dispatch({ type: "selectWorkspace", id: stepWorkspace(-1).id }),
+      },
+      ...state.workspaces
+        .filter((item) => item.id !== workspace.id)
+        .map((item) => ({
+          id: `move-tab-workspace-${item.id}`,
+          title: t.palette.moveTabToWorkspace(workspaceName(item)),
+          group: g.workspace,
+          icon: <ArrowRightToLine size={14} />,
+          keywords: "move tab to workspace project",
+          run: () => ctx.moveTabToWorkspace(tab.id, item.id),
+        })),
+    );
+  }
+  commands.push({
+    id: "close-workspace",
+    title: t.palette.closeWorkspace,
+    group: g.workspace,
+    icon: <X size={14} />,
+    keywords: "close workspace project",
+    run: () => ctx.closeWorkspace(workspace.id),
   });
 
   if (tab.paneIds.length > 1) {
@@ -220,7 +296,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
         keywords: "move pane new tab",
         run: () => ctx.movePaneToNewTab(focused.id),
       },
-      ...state.tabs
+      ...tabs
         .filter((item) => item.id !== tab.id)
         .map((item) => ({
           id: `move-pane-${item.id}`,
@@ -312,7 +388,18 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
     })),
   );
 
-  state.tabs.forEach((item, index) => {
+  state.workspaces.forEach((item, index) => {
+    if (item.id === workspace.id) return;
+    commands.push({
+      id: `go-workspace-${item.id}`,
+      title: workspaceName(item),
+      group: g.goWorkspace,
+      icon: <span className="workspace-index">{index + 1}</span>,
+      keywords: "go switch workspace project",
+      run: () => dispatch({ type: "selectWorkspace", id: item.id }),
+    });
+  });
+  tabs.forEach((item, index) => {
     commands.push({
       id: `go-tab-${item.id}`,
       title: label(item),
@@ -320,7 +407,7 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       hint:
         index < 8
           ? keys({ type: "tab", number: index + 1 })
-          : index === state.tabs.length - 1
+          : index === tabs.length - 1
             ? keys({ type: "tab", number: 9 })
             : t.palette.tabHint(index + 1),
       group: g.goTab,
@@ -329,12 +416,17 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       run: () => dispatch({ type: "selectTab", id: item.id }),
     });
   });
+  // Sessions of every workspace: going to one shows its workspace.
   for (const session of state.sessions) {
-    const owner = state.tabs.findIndex((item) => item.id === sessionTab(state, session.id)?.id);
+    const owner = sessionTab(state, session.id);
+    if (!owner) continue;
+    const siblings = workspaceTabs(state, owner.workspaceId);
+    const tabHint = t.palette.tabHint(siblings.indexOf(owner) + 1);
+    const home = state.workspaces.find((item) => item.id === owner.workspaceId);
     commands.push({
       id: `go-session-${session.id}`,
       title: sessionLabel(session),
-      hint: t.palette.tabHint(owner + 1),
+      hint: home && home.id !== workspace.id ? `${workspaceName(home)} · ${tabHint}` : tabHint,
       group: g.goSession,
       icon: <KindIcon kind={session.kind} size={14} />,
       keywords: `go switch focus session ${session.kind} ${t.kinds[session.kind].name}`,

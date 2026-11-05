@@ -1,5 +1,5 @@
 import type { AttachMode, SessionKind } from "../shared/protocol.ts";
-import type { SavedWorkspace } from "../shared/workspace-file.ts";
+import type { SavedDashboard } from "../shared/workspace-file.ts";
 import type { Notice } from "./i18n/messages.ts";
 import {
   dockPane,
@@ -50,6 +50,8 @@ export interface Session {
 /** A tab owns a split layout of panes. Focus and maximize are remembered per tab. */
 export interface Tab {
   id: string;
+  /** The workspace that shows this tab. */
+  workspaceId: string;
   /** Name set by the user; null follows the focused pane's title. */
   name: string | null;
   /** Split tree of panes; null for an empty tab. */
@@ -61,17 +63,32 @@ export interface Tab {
 }
 
 /**
- * `sessions` stays in creation order so pane DOM nodes never move; placement
- * lives in each tab's `layout`.
+ * A set of tabs shown together. Only the workspace in view shows its tabs;
+ * the sessions of the others keep running.
  */
 export interface Workspace {
-  sessions: Session[];
-  /** Never empty. */
-  tabs: Tab[];
+  id: string;
+  /** Name set by the user; null shows the workspace's number. */
+  name: string | null;
+  /** The tab this workspace shows; always one of its own. */
   activeTabId: string;
 }
 
-export type WorkspaceAction =
+/**
+ * `sessions` stays in creation order so pane DOM nodes never move; placement
+ * lives in each tab's `layout`. `tabs` holds the tabs of every workspace, in
+ * order within each workspace.
+ */
+export interface Dashboard {
+  sessions: Session[];
+  /** Every workspace has at least one. */
+  tabs: Tab[];
+  /** Never empty. */
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+}
+
+export type DashboardAction =
   | {
       type: "open";
       id: string;
@@ -86,7 +103,7 @@ export type WorkspaceAction =
   /** The connection dropped; the pane reconnects to the same session. */
   | { type: "disconnected"; id: string }
   /** Replaces the whole workspace with a saved one, e.g. on page load. */
-  | { type: "hydrate"; saved: SavedWorkspace }
+  | { type: "hydrate"; saved: SavedDashboard }
   | { type: "close"; id: string }
   | { type: "focus"; id: string }
   | { type: "toggleMaximize"; id: string }
@@ -101,15 +118,32 @@ export type WorkspaceAction =
    * may have changed the layout, so the saved one replaces this one when
    * there is one; then every pane connects again.
    */
-  | { type: "reclaim"; saved: SavedWorkspace | null }
+  | { type: "reclaim"; saved: SavedDashboard | null }
   | { type: "newTab"; id: string }
   | { type: "selectTab"; id: string }
   /** An empty name returns the tab to its automatic name. */
   | { type: "renameTab"; id: string; name: string }
-  /** Closes the tab and its sessions. `fallbackId` names the empty tab that replaces the last one. */
+  /** Closes the tab and its sessions. `fallbackId` names the empty tab that replaces a workspace's last one. */
   | { type: "closeTab"; id: string; fallbackId: string }
-  /** Puts the tab at `toIndex` among the tabs. */
+  /** Puts the tab at `toIndex` among its workspace's tabs. */
   | { type: "moveTab"; id: string; toIndex: number }
+  /** A workspace with one empty tab, shown at once. */
+  | { type: "newWorkspace"; id: string; tabId: string }
+  | { type: "selectWorkspace"; id: string }
+  /** An empty name returns the workspace to its number. */
+  | { type: "renameWorkspace"; id: string; name: string }
+  /**
+   * Closes the workspace, its tabs, and their sessions. `fallbackId` and
+   * `fallbackTabId` name the empty workspace that replaces the last one.
+   */
+  | { type: "closeWorkspace"; id: string; fallbackId: string; fallbackTabId: string }
+  /** Puts the workspace at `toIndex` among the workspaces. */
+  | { type: "moveWorkspace"; id: string; toIndex: number }
+  /**
+   * Moves the tab to the end of another workspace and shows it there.
+   * `fallbackId` names the empty tab left behind when it was the source's only tab.
+   */
+  | { type: "moveTabToWorkspace"; id: string; workspaceId: string; fallbackId: string }
   /** Moves the pane into another tab, beside that tab's focused pane. */
   | { type: "movePane"; id: string; toTabId: string; aspect?: number }
   /** Puts the pane on one side of another pane, splitting it; also across tabs. */
@@ -119,12 +153,17 @@ export type WorkspaceAction =
   /** Divider drag result for the split at `path`. */
   | { type: "setSplitSizes"; tabId: string; path: number[]; sizes: number[] };
 
-function emptyTab(id: string): Tab {
-  return { id, name: null, layout: null, paneIds: [], focusedId: null, maximizedId: null };
+function emptyTab(id: string, workspaceId: string): Tab {
+  return { id, workspaceId, name: null, layout: null, paneIds: [], focusedId: null, maximizedId: null };
 }
 
-export function createWorkspace(tabId: string): Workspace {
-  return { sessions: [], tabs: [emptyTab(tabId)], activeTabId: tabId };
+export function createDashboard(workspaceId: string, tabId: string): Dashboard {
+  return {
+    sessions: [],
+    tabs: [emptyTab(tabId, workspaceId)],
+    workspaces: [{ id: workspaceId, name: null, activeTabId: tabId }],
+    activeWorkspaceId: workspaceId,
+  };
 }
 
 const TITLE_PREFIX: Record<SessionKind, string> = {
@@ -150,12 +189,32 @@ function defaultTitle(sessions: Session[], kind: SessionKind): string {
   return `${TITLE_PREFIX[kind]} ${count}`;
 }
 
-export function activeTab(state: Workspace): Tab {
-  return state.tabs.find((tab) => tab.id === state.activeTabId) ?? state.tabs[0];
+export function activeWorkspace(state: Dashboard): Workspace {
+  return state.workspaces.find((workspace) => workspace.id === state.activeWorkspaceId) ?? state.workspaces[0];
+}
+
+/** A workspace's tabs in order. */
+export function workspaceTabs(state: Dashboard, workspaceId: string): Tab[] {
+  return state.tabs.filter((tab) => tab.workspaceId === workspaceId);
+}
+
+/** The tabs of the workspace in view: what the tab bar shows. */
+export function visibleTabs(state: Dashboard): Tab[] {
+  return workspaceTabs(state, activeWorkspace(state).id);
+}
+
+export function activeTab(state: Dashboard): Tab {
+  const workspace = activeWorkspace(state);
+  return state.tabs.find((tab) => tab.id === workspace.activeTabId) ?? visibleTabs(state)[0] ?? state.tabs[0];
+}
+
+/** The user's name for a workspace, else `untitled` with its number (1-based). */
+export function workspaceLabel(state: Dashboard, workspace: Workspace, untitled: (number: number) => string): string {
+  return workspace.name ?? untitled(state.workspaces.findIndex((item) => item.id === workspace.id) + 1);
 }
 
 /** A tab's sessions in grid order. */
-export function tabSessions(state: Workspace, tabId: string): Session[] {
+export function tabSessions(state: Dashboard, tabId: string): Session[] {
   const tab = state.tabs.find((item) => item.id === tabId);
   if (!tab) return [];
   const byId = new Map(state.sessions.map((session) => [session.id, session]));
@@ -166,16 +225,16 @@ export function tabSessions(state: Workspace, tabId: string): Session[] {
  * Another window took every session (close code CLOSE_TAKEN_OVER). The host
  * tells each pane, so one pane told stands for the whole window.
  */
-export function takenOver(state: Workspace): boolean {
+export function takenOver(state: Dashboard): boolean {
   return state.sessions.some((session) => session.notice === "takenOver");
 }
 
-export function sessionTab(state: Workspace, sessionId: string): Tab | null {
+export function sessionTab(state: Dashboard, sessionId: string): Tab | null {
   return state.tabs.find((tab) => tab.paneIds.includes(sessionId)) ?? null;
 }
 
 /** The session a tab shows as its name: its focused pane, else its first pane. */
-export function tabLead(state: Workspace, tab: Tab): Session | null {
+export function tabLead(state: Dashboard, tab: Tab): Session | null {
   const sessions = tabSessions(state, tab.id);
   return sessions.find((session) => session.id === tab.focusedId) ?? sessions[0] ?? null;
 }
@@ -184,26 +243,28 @@ export function tabLead(state: Workspace, tab: Tab): Session | null {
  * What the tab bar and sidebar show: the user's name, else the lead pane's
  * title, else `untitled` (the UI's word for an empty tab).
  */
-export function tabLabel(state: Workspace, tab: Tab, untitled: string): string {
+export function tabLabel(state: Dashboard, tab: Tab, untitled: string): string {
   const lead = tabLead(state, tab);
   return tab.name ?? (lead ? sessionLabel(lead) : untitled);
 }
 
-/** Tab `number` (1–9) as browsers count: 9 is always the last tab. */
-export function tabByNumber(state: Workspace, number: number): Tab | null {
-  if (number === 9) return state.tabs[state.tabs.length - 1] ?? null;
-  return state.tabs[number - 1] ?? null;
+/** Tab `number` (1–9) of the workspace in view, as browsers count: 9 is always the last tab. */
+export function tabByNumber(state: Dashboard, number: number): Tab | null {
+  const tabs = visibleTabs(state);
+  if (number === 9) return tabs[tabs.length - 1] ?? null;
+  return tabs[number - 1] ?? null;
 }
 
-/** The tab `delta` steps from the active one, wrapping around. */
-export function stepTab(state: Workspace, delta: number): Tab {
-  const index = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
-  const count = state.tabs.length;
-  return state.tabs[(((index + delta) % count) + count) % count];
+/** The tab `delta` steps from the active one in the workspace in view, wrapping around. */
+export function stepTab(state: Dashboard, delta: number): Tab {
+  const tabs = visibleTabs(state);
+  const index = tabs.findIndex((tab) => tab.id === activeTab(state).id);
+  const count = tabs.length;
+  return tabs[(((index + delta) % count) + count) % count];
 }
 
 /** The pane `delta` steps from the focused one in the active tab, in reading order, wrapping around. */
-export function stepPane(state: Workspace, delta: number): string | null {
+export function stepPane(state: Dashboard, delta: number): string | null {
   const ids = activeTab(state).paneIds;
   if (ids.length === 0) return null;
   const index = Math.max(0, ids.indexOf(activeTab(state).focusedId ?? ""));
@@ -211,14 +272,14 @@ export function stepPane(state: Workspace, delta: number): string | null {
 }
 
 /** The pane beside the focused one in `direction`, in the active tab. */
-export function paneToward(state: Workspace, direction: Direction): string | null {
+export function paneToward(state: Dashboard, direction: Direction): string | null {
   const tab = activeTab(state);
   if (!tab.focusedId) return tab.paneIds[0] ?? null;
   return neighbor(tab.layout, tab.focusedId, direction);
 }
 
 /** The focused shell in the active tab, whose directory a new editor opens. */
-export function focusedShellId(state: Workspace): string | null {
+export function focusedShellId(state: Dashboard): string | null {
   const focusedId = activeTab(state).focusedId;
   const focused = state.sessions.find((session) => session.id === focusedId);
   return focused?.kind === "shell" && focused.status === "running" ? focused.id : null;
@@ -249,12 +310,13 @@ function newSession(
 }
 
 /** Layout and names only; processes and screens live in the PTY host. */
-export function toSaved(state: Workspace): SavedWorkspace {
+export function toSaved(state: Dashboard): SavedDashboard {
   return {
     version: 1,
-    activeTabId: state.activeTabId,
-    tabs: state.tabs.map(({ id, name, layout, paneIds, focusedId, maximizedId }) => ({
+    activeTabId: activeTab(state).id,
+    tabs: state.tabs.map(({ id, workspaceId, name, layout, paneIds, focusedId, maximizedId }) => ({
       id,
+      workspaceId,
       name,
       layout,
       paneIds,
@@ -262,6 +324,8 @@ export function toSaved(state: Workspace): SavedWorkspace {
       maximizedId,
     })),
     sessions: state.sessions.map(({ id, kind, title, name, url, target }) => ({ id, kind, title, name, url, target })),
+    workspaces: state.workspaces.map(({ id, name, activeTabId }) => ({ id, name, activeTabId })),
+    activeWorkspaceId: state.activeWorkspaceId,
   };
 }
 
@@ -271,7 +335,7 @@ const ATTACH_NOTICE: Record<AttachMode, Notice | null> = {
   revived: "revived",
 };
 
-function patch(state: Workspace, id: string, change: Partial<Session>): Workspace {
+function patch(state: Dashboard, id: string, change: Partial<Session>): Dashboard {
   if (!state.sessions.some((session) => session.id === id)) return state;
   return {
     ...state,
@@ -281,12 +345,50 @@ function patch(state: Workspace, id: string, change: Partial<Session>): Workspac
   };
 }
 
-function patchTab(state: Workspace, tabId: string, change: Partial<Tab>): Workspace {
+function patchTab(state: Dashboard, tabId: string, change: Partial<Tab>): Dashboard {
   return { ...state, tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...change } : tab)) };
+}
+
+function patchWorkspace(state: Dashboard, workspaceId: string, change: Partial<Workspace>): Dashboard {
+  return {
+    ...state,
+    workspaces: state.workspaces.map((workspace) => (workspace.id === workspaceId ? { ...workspace, ...change } : workspace)),
+  };
+}
+
+/** Brings the tab into view: its workspace is shown, showing this tab. */
+function showTab(state: Dashboard, tabId: string): Dashboard {
+  const tab = state.tabs.find((item) => item.id === tabId);
+  if (!tab) return state;
+  return { ...patchWorkspace(state, tab.workspaceId, { activeTabId: tab.id }), activeWorkspaceId: tab.workspaceId };
+}
+
+/**
+ * Takes the tab out of its workspace. A workspace left without tabs gets the
+ * empty tab `fallbackId`. One that showed the tab shows a neighbor, like a
+ * browser: the tab to the right, else the one to the left.
+ */
+function takeTab(state: Dashboard, tab: Tab, fallbackId: string): Dashboard {
+  const siblings = workspaceTabs(state, tab.workspaceId);
+  const rest = siblings.filter((item) => item !== tab);
+  const replacement = rest.length === 0 ? emptyTab(fallbackId, tab.workspaceId) : null;
+  const next = { ...state, tabs: state.tabs.flatMap((item) => (item !== tab ? [item] : replacement ? [replacement] : [])) };
+  const showed = state.workspaces.some((workspace) => workspace.id === tab.workspaceId && workspace.activeTabId === tab.id);
+  if (!showed) return next;
+  const shown = replacement ?? rest[Math.min(siblings.indexOf(tab), rest.length - 1)];
+  return patchWorkspace(next, tab.workspaceId, { activeTabId: shown.id });
 }
 
 function clampIndex(index: number, length: number): number {
   return Math.max(0, Math.min(length, Math.trunc(index)));
+}
+
+/** The list with `item` at `toIndex` among the others, or the same list when nothing moves. */
+function moveTo<T>(list: T[], item: T, toIndex: number): T[] {
+  const rest = list.filter((other) => other !== item);
+  const at = clampIndex(toIndex, rest.length);
+  const moved = [...rest.slice(0, at), item, ...rest.slice(at)];
+  return moved.every((other, index) => other === list[index]) ? list : moved;
 }
 
 const DEFAULT_ASPECT = 16 / 10;
@@ -308,7 +410,7 @@ function detachPane(tab: Tab, paneId: string): Tab {
   };
 }
 
-export function workspaceReducer(state: Workspace, action: WorkspaceAction): Workspace {
+export function dashboardReducer(state: Dashboard, action: DashboardAction): Dashboard {
   switch (action.type) {
     case "open": {
       const tab = activeTab(state);
@@ -338,7 +440,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
       const tab = sessionTab(state, action.id);
       if (!tab) return state;
       // Focusing another pane while one is maximized shows that pane instead.
-      return patchTab({ ...state, activeTabId: tab.id }, tab.id, {
+      return patchTab(showTab(state, tab.id), tab.id, {
         focusedId: action.id,
         maximizedId: tab.maximizedId ? action.id : null,
       });
@@ -346,7 +448,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
     case "toggleMaximize": {
       const tab = sessionTab(state, action.id);
       if (!tab) return state;
-      return patchTab({ ...state, activeTabId: tab.id }, tab.id, {
+      return patchTab(showTab(state, tab.id), tab.id, {
         focusedId: action.id,
         maximizedId: tab.maximizedId === action.id ? null : action.id,
       });
@@ -376,12 +478,13 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
         })),
         // Layouts saved before split trees were a plain grid order.
         tabs: saved.tabs.map((tab) => ({
-          ...withLayout(emptyTab(tab.id), tab.layout ?? fromGrid(tab.paneIds)),
+          ...withLayout(emptyTab(tab.id, tab.workspaceId), tab.layout ?? fromGrid(tab.paneIds)),
           name: tab.name,
           focusedId: tab.focusedId,
           maximizedId: tab.maximizedId,
         })),
-        activeTabId: saved.activeTabId,
+        workspaces: saved.workspaces.map(({ id, name, activeTabId }) => ({ id, name, activeTabId })),
+        activeWorkspaceId: saved.activeWorkspaceId,
       };
     }
     case "status":
@@ -410,7 +513,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
     }
     case "reclaim": {
       if (!takenOver(state)) return state;
-      const next = action.saved ? workspaceReducer(state, { type: "hydrate", saved: action.saved }) : state;
+      const next = action.saved ? dashboardReducer(state, { type: "hydrate", saved: action.saved }) : state;
       // A new generation mounts a new terminal, which connects again.
       const generations = new Map(state.sessions.map((session) => [session.id, session.generation]));
       return {
@@ -426,33 +529,77 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
         })),
       };
     }
-    case "newTab":
+    case "newTab": {
       if (state.tabs.some((tab) => tab.id === action.id)) return state;
-      return { ...state, tabs: [...state.tabs, emptyTab(action.id)], activeTabId: action.id };
+      const tab = emptyTab(action.id, activeWorkspace(state).id);
+      return showTab({ ...state, tabs: [...state.tabs, tab] }, tab.id);
+    }
     case "selectTab":
-      return state.tabs.some((tab) => tab.id === action.id) ? { ...state, activeTabId: action.id } : state;
+      return showTab(state, action.id);
     case "renameTab":
       if (!state.tabs.some((tab) => tab.id === action.id)) return state;
       return patchTab(state, action.id, { name: cleanName(action.name) });
     case "closeTab": {
-      const index = state.tabs.findIndex((tab) => tab.id === action.id);
-      if (index < 0) return state;
-      const closing = new Set(state.tabs[index].paneIds);
+      const tab = state.tabs.find((item) => item.id === action.id);
+      if (!tab) return state;
+      const closing = new Set(tab.paneIds);
       const sessions = state.sessions.filter((session) => !closing.has(session.id));
-      const tabs = state.tabs.filter((tab) => tab.id !== action.id);
-      if (tabs.length === 0) return { sessions, tabs: [emptyTab(action.fallbackId)], activeTabId: action.fallbackId };
-      // Like a browser: the tab to the right takes over, else the one to the left.
-      const activeTabId =
-        state.activeTabId === action.id ? tabs[Math.min(index, tabs.length - 1)].id : state.activeTabId;
-      return { sessions, tabs, activeTabId };
+      return takeTab({ ...state, sessions }, tab, action.fallbackId);
     }
     case "moveTab": {
       const moving = state.tabs.find((tab) => tab.id === action.id);
       if (!moving) return state;
-      const rest = state.tabs.filter((tab) => tab.id !== action.id);
-      const at = clampIndex(action.toIndex, rest.length);
-      const tabs = [...rest.slice(0, at), moving, ...rest.slice(at)];
-      return tabs.every((tab, index) => tab === state.tabs[index]) ? state : { ...state, tabs };
+      const siblings = workspaceTabs(state, moving.workspaceId);
+      const order = moveTo(siblings, moving, action.toIndex);
+      if (order === siblings) return state;
+      // The workspace's tabs take the new order in their own slots; other workspaces' tabs stay put.
+      let slot = 0;
+      return { ...state, tabs: state.tabs.map((tab) => (tab.workspaceId === moving.workspaceId ? order[slot++] : tab)) };
+    }
+    case "newWorkspace": {
+      if (state.workspaces.some((workspace) => workspace.id === action.id)) return state;
+      if (state.tabs.some((tab) => tab.id === action.tabId)) return state;
+      return {
+        ...state,
+        tabs: [...state.tabs, emptyTab(action.tabId, action.id)],
+        workspaces: [...state.workspaces, { id: action.id, name: null, activeTabId: action.tabId }],
+        activeWorkspaceId: action.id,
+      };
+    }
+    case "selectWorkspace":
+      if (!state.workspaces.some((workspace) => workspace.id === action.id)) return state;
+      return { ...state, activeWorkspaceId: action.id };
+    case "renameWorkspace":
+      if (!state.workspaces.some((workspace) => workspace.id === action.id)) return state;
+      return patchWorkspace(state, action.id, { name: cleanName(action.name) });
+    case "closeWorkspace": {
+      const index = state.workspaces.findIndex((workspace) => workspace.id === action.id);
+      if (index < 0) return state;
+      const workspaces = state.workspaces.filter((workspace) => workspace.id !== action.id);
+      if (workspaces.length === 0) return createDashboard(action.fallbackId, action.fallbackTabId);
+      const closing = new Set(workspaceTabs(state, action.id).flatMap((tab) => tab.paneIds));
+      // Like tabs: the workspace below takes over, else the one above.
+      const activeWorkspaceId =
+        state.activeWorkspaceId === action.id ? workspaces[Math.min(index, workspaces.length - 1)].id : state.activeWorkspaceId;
+      return {
+        sessions: state.sessions.filter((session) => !closing.has(session.id)),
+        tabs: state.tabs.filter((tab) => tab.workspaceId !== action.id),
+        workspaces,
+        activeWorkspaceId,
+      };
+    }
+    case "moveWorkspace": {
+      const moving = state.workspaces.find((workspace) => workspace.id === action.id);
+      if (!moving) return state;
+      const workspaces = moveTo(state.workspaces, moving, action.toIndex);
+      return workspaces === state.workspaces ? state : { ...state, workspaces };
+    }
+    case "moveTabToWorkspace": {
+      const moving = state.tabs.find((tab) => tab.id === action.id);
+      if (!moving || moving.workspaceId === action.workspaceId) return state;
+      if (!state.workspaces.some((workspace) => workspace.id === action.workspaceId)) return state;
+      const taken = takeTab(state, moving, action.fallbackId);
+      return showTab({ ...taken, tabs: [...taken.tabs, { ...moving, workspaceId: action.workspaceId }] }, moving.id);
     }
     case "movePane": {
       const from = sessionTab(state, action.id);
@@ -464,7 +611,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
         // A pane dropped into a tab should be visible there.
         return { ...placed, focusedId: action.id, maximizedId: null };
       });
-      return { ...state, tabs, activeTabId: action.toTabId };
+      return showTab({ ...state, tabs }, action.toTabId);
     }
     case "dockPane": {
       const from = sessionTab(state, action.id);
@@ -476,7 +623,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
         const docked = withLayout(detached, dockPane(detached.layout, action.id, action.targetId, action.side));
         return { ...docked, focusedId: action.id, maximizedId: null };
       });
-      return { ...state, tabs, activeTabId: to.id };
+      return showTab({ ...state, tabs }, to.id);
     }
     case "setSplitSizes": {
       const tab = state.tabs.find((item) => item.id === action.tabId);
@@ -499,7 +646,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
           maximizedId: tab.maximizedId ? swap(tab.maximizedId) : null,
         };
       });
-      return { ...state, tabs, activeTabId: b.id };
+      return showTab({ ...state, tabs }, b.id);
     }
   }
 }
