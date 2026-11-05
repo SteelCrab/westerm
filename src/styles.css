@@ -2281,3 +2281,70 @@ body.resizing-columns .pane,
 body.resizing-rows .pane {
   pointer-events: none;
 }
+
+/* ---- Phone-wide windows (src/useNarrow.ts PHONE_QUERY) ---------------- */
+/* The activity bar goes to the bottom, the sidebar opens as a drawer over
+   the panes, and panes stack top to bottom (PaneLayer). */
+@media (max-width: 640px) {
+  .app,
+  .app.sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .workspace {
+    grid-row: 1;
+  }
+
+  .activity-bar {
+    grid-row: 2;
+    flex-direction: row;
+    gap: 4px;
+    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    border-right: 0;
+    overflow-x: auto;
+  }
+
+  .activity-group {
+    flex-direction: row;
+    gap: 2px;
+  }
+
+  .activity-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* No hover on touch screens; the buttons keep their labels for screen readers. */
+  .activity-tooltip {
+    display: none;
+  }
+
+  .sidebar-slot {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    width: min(320px, 86vw);
+    box-shadow: 0 0 40px var(--shadow);
+  }
+
+  .sidebar-resizer {
+    display: none;
+  }
+
+  .drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    background: var(--backdrop);
+  }
+
+  /* The pane header keeps the name and the status dot. */
+  .pane-kind,
+  .pane-detail {
+    display: none;
+  }
+}
