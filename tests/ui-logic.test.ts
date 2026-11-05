@@ -12,6 +12,7 @@ import { insertionIndex } from "../src/dnd.ts";
 import { MESSAGES } from "../src/i18n/messages.ts";
 import { urlCommands } from "../src/paletteCommands.tsx";
 import { keyboardFree } from "../src/terminal/keyboard.ts";
+import { PHONE_QUERY } from "../src/useNarrow.ts";
 
 const en = MESSAGES.en;
 
@@ -139,4 +140,10 @@ test("the header shows the update button only when there is something to show", 
 test("settings are split into pages, without updates in a remote window", () => {
   assert.deepEqual(settingsPages(true), ["general", "appearance", "terminal", "updates"]);
   assert.deepEqual(settingsPages(false), ["general", "appearance", "terminal"]);
+});
+
+test("the phone layout switches at the same width in the code and in the stylesheet", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(PHONE_QUERY, /^\(max-width: \d+px\)$/);
+  assert.ok(css.includes(`@media ${PHONE_QUERY} {`), "the stylesheet has the phone rules");
 });

@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { rects, type Rect } from "../../shared/layout.ts";
+import { rects, stackRects, type Rect } from "../../shared/layout.ts";
 import type { SessionKind } from "../../shared/protocol.ts";
 import type { TerminalThemeColors } from "@wterm/core";
 import { useI18n } from "../i18n/index.tsx";
@@ -22,6 +22,8 @@ interface PaneLayerProps {
   onLaunch: (kind: SessionKind) => void;
   /** Disconnected panes may connect again (see `mayReattach`). */
   mayReattach: boolean;
+  /** Phone-wide: panes stack top to bottom, without split dividers. */
+  narrow: boolean;
   dispatch: (action: DashboardAction) => void;
 }
 
@@ -40,7 +42,9 @@ export function PaneLayer(props: PaneLayerProps) {
   const { t } = useI18n();
   const current = activeTab(state);
   const layerRef = useRef<HTMLDivElement>(null);
-  const tabRects = new Map(state.tabs.map((tab) => [tab.id, rects(tab.layout)]));
+  const tabRects = new Map(
+    state.tabs.map((tab) => [tab.id, props.narrow ? stackRects(tab.paneIds) : rects(tab.layout)]),
+  );
   const away = takenOver(state);
 
   const inner = useCallback(() => {
@@ -84,7 +88,7 @@ export function PaneLayer(props: PaneLayerProps) {
           />
         );
       })}
-      {current.layout && current.paneIds.length > 1 && current.maximizedId === null && (
+      {!props.narrow && current.layout && current.paneIds.length > 1 && current.maximizedId === null && (
         <div className="split-dividers">
           <SplitDividers
             layout={current.layout}

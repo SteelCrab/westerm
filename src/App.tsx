@@ -28,6 +28,7 @@ import { useRemoteLink } from "./useRemoteLink.ts";
 import { useSshHosts } from "./useSshHosts.ts";
 import { terminalColors } from "./colorThemes.ts";
 import { useColorScheme, useWindowColors } from "./theme.ts";
+import { useNarrow } from "./useNarrow.ts";
 import { useSidebarWidth } from "./useSidebarWidth.ts";
 import { useTerminalFont } from "./useTerminalFont.ts";
 import { useUpdate } from "./useUpdate.ts";
@@ -72,6 +73,29 @@ const LOCAL_LINK = { ready: true, reconnects: 0 };
 export function App() {
   const [state, rawDispatch] = useReducer(dashboardReducer, null, createFresh);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // On a phone the sidebar is a drawer over the panes. It starts closed and
+  // keeps its own state, so the wide window's choice stays as it was.
+  const narrow = useNarrow();
+  const narrowRef = useRef(narrow);
+  narrowRef.current = narrow;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const sidebarVisible = narrow ? drawerOpen : sidebarOpen;
+  /** Opens, closes, or flips the sidebar: the drawer on a phone, else the column. */
+  const setSidebar = useCallback((open: boolean | ((value: boolean) => boolean)) => {
+    (narrowRef.current ? setDrawerOpen : setSidebarOpen)(open);
+  }, []);
+  /** A pick in the drawer shows its pane, so the drawer gets out of the way. */
+  const closeDrawer = useCallback(() => {
+    if (narrowRef.current) setDrawerOpen(false);
+  }, []);
+  useEffect(() => {
+    if (!narrow || !drawerOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [narrow, drawerOpen]);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const [renaming, setRenaming] = useState<RenameTarget | null>(null);
   // "commands": the command palette. "ssh": the same palette listing ssh hosts.
@@ -177,10 +201,10 @@ export function App() {
         return;
       }
       const placed = placeRename(target, layout);
-      if (placed.where === "sidebar") setSidebarOpen(true);
+      if (placed.where === "sidebar") setSidebar(true);
       setRenaming(placed);
     },
-    [layout],
+    [layout, setSidebar],
   );
 
   const renameWorkspace = useCallback(
@@ -311,7 +335,7 @@ export function App() {
         closeWorkspace,
         moveTabToWorkspace,
         openSshPicker: () => setPalette("ssh"),
-        toggleSidebar: layout === "top" ? null : () => setSidebarOpen((value) => !value),
+        toggleSidebar: layout === "top" ? null : () => setSidebar((value) => !value),
         changeFontSize: changeSize,
         resetFontSize: resetSize,
         t,
@@ -364,7 +388,7 @@ export function App() {
   // Top: the workspace menu and the tab bar, no sidebar. Sidebar: both in the
   // sidebar, no tab bar; the header stays only for the update button.
   const onTop = layout === "top";
-  const sidebarShown = !onTop && sidebarOpen;
+  const sidebarShown = !onTop && sidebarVisible;
   // A remote window always shows its server in the header.
   const headerShown = onTop || REMOTE_TARGET !== null || updateShown(update.status, updateOpen);
 
@@ -377,10 +401,10 @@ export function App() {
       }
     >
       <ActivityBar
-        sidebarOpen={sidebarOpen}
+        sidebarOpen={sidebarVisible}
         counts={counts}
         onLaunch={open}
-        onToggleSidebar={onTop ? null : () => setSidebarOpen((value) => !value)}
+        onToggleSidebar={onTop ? null : () => setSidebar((value) => !value)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenPalette={() => setPalette("commands")}
         onOpenRemoteWindow={openWindow && (() => setPalette("window"))}
@@ -391,10 +415,16 @@ export function App() {
           <SessionList
             state={state}
             renaming={renaming}
-            onSelectTab={(id) => dispatch({ type: "selectTab", id })}
+            onSelectTab={(id) => {
+              dispatch({ type: "selectTab", id });
+              closeDrawer();
+            }}
             onCloseTab={(id) => dispatch({ type: "closeTab", id, fallbackId: newId("t") })}
             onNewTab={newTab}
-            onFocus={(id) => dispatch({ type: "focus", id })}
+            onFocus={(id) => {
+              dispatch({ type: "focus", id });
+              closeDrawer();
+            }}
             onClose={(id) => dispatch({ type: "close", id })}
             onRename={rename}
             onRenameTab={(id, name) => dispatch({ type: "renameTab", id, name })}
@@ -404,16 +434,20 @@ export function App() {
             onSwapPanes={(id, withId) => dispatch({ type: "swapPanes", id, withId })}
             onDragPane={setDragging}
             onNewWorkspace={newWorkspace}
-            onSelectWorkspace={(id) => dispatch({ type: "selectWorkspace", id })}
+            onSelectWorkspace={(id) => {
+              dispatch({ type: "selectWorkspace", id });
+              closeDrawer();
+            }}
             onCloseWorkspace={closeWorkspace}
             onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
             onSetWorkspaceIcon={setWorkspaceIcon}
             onSetWorkspaceColor={setWorkspaceColor}
-            compact={isCompact(sidebarWidth)}
+            compact={!narrow && isCompact(sidebarWidth)}
           />
           <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
         </div>
       )}
+      {sidebarShown && narrow && <div className="drawer-backdrop" aria-hidden="true" onClick={() => setDrawerOpen(false)} />}
       <main className="workspace">
         {headerShown && (
           <header className="workspace-header">
@@ -484,6 +518,7 @@ export function App() {
             onRename={rename}
             onLaunch={open}
             mayReattach={reattach}
+            narrow={narrow}
             dispatch={dispatch}
           />
         ) : (

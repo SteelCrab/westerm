@@ -160,6 +160,15 @@ export function rects(root: LayoutNode | null): Map<string, Rect> {
   return out;
 }
 
+/**
+ * Panes one above the other in reading order, each the same height: how a
+ * phone-wide window shows a tab, whatever its split tree. The tree itself
+ * stays, so a wider window shows the splits again.
+ */
+export function stackRects(ids: readonly string[]): Map<string, Rect> {
+  return new Map(ids.map((id, index) => [id, { x: 0, y: index / ids.length, w: 1, h: 1 / ids.length }]));
+}
+
 export function handles(root: LayoutNode | null): Handle[] {
   const out: Handle[] = [];
   const walk = (node: LayoutNode, rect: Rect, path: number[]) => {

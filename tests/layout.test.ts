@@ -16,6 +16,7 @@ import {
   setSizesAt,
   swapPanes,
   type LayoutNode,
+  stackRects,
 } from "../shared/layout.ts";
 
 const isId = (value: unknown): value is string => typeof value === "string" && /^[a-z]\w*$/.test(value);
@@ -114,4 +115,13 @@ test("arrow keys find the pane on that side", () => {
   assert.equal(neighbor(layout, "a", "left"), null, "nothing beyond the edge");
   assert.equal(neighbor(layout, "b", "right"), null);
   assert.equal(neighbor(null, "a", "right"), null);
+});
+
+test("on a phone the panes stack top to bottom in reading order, each the same height", () => {
+  const stacked = stackRects(["a", "b", "c"]);
+  assert.deepEqual([...stacked.keys()], ["a", "b", "c"]);
+  assert.deepEqual(stacked.get("a"), { x: 0, y: 0, w: 1, h: 1 / 3 });
+  assert.deepEqual(stacked.get("c"), { x: 0, y: 2 / 3, w: 1, h: 1 / 3 });
+  assert.deepEqual(stackRects(["only"]).get("only"), { x: 0, y: 0, w: 1, h: 1 });
+  assert.equal(stackRects([]).size, 0);
 });
