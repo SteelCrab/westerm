@@ -1,9 +1,11 @@
-import type { AttachMode, SessionKind } from "../shared/protocol.ts";
+import type { AttachMode, PaneKind } from "../shared/protocol.ts";
 import {
   DEFAULT_WORKSPACE_ICON,
   positionColor,
   WORKSPACE_COLORS,
+  type DocsMode,
   type SavedDashboard,
+  type SavedDocs,
   type WorkspaceColor,
   type WorkspaceIcon,
 } from "../shared/workspace-file.ts";
@@ -28,9 +30,20 @@ export type SessionStatus = "connecting" | "running" | "disconnected" | "exited"
 /** Reconnect attempts before a pane asks the user to retry. */
 export const MAX_RECONNECTS = 8;
 
+/** What a docs pane shows. See `SavedDocs` in shared/workspace-file.ts. */
+export interface DocsPane {
+  /** Absolute folder; null until the pane has asked for its first one. */
+  root: string | null;
+  /** The shell whose folder the root follows, or null. */
+  followFrom: string | null;
+  /** The open file, relative to the root with `/`, or null. */
+  file: string | null;
+  mode: DocsMode;
+}
+
 export interface Session {
   id: string;
-  kind: SessionKind;
+  kind: PaneKind;
   /** Latest title the program reported (OSC 0/2), or the default name. */
   title: string;
   /** Name set by the user; null follows `title`. */
@@ -54,6 +67,8 @@ export interface Session {
   retries: number;
   /** Bumped on restart so the pane remounts with a fresh terminal and PTY. */
   generation: number;
+  /** A docs pane's state; null for every other kind. */
+  docs: DocsPane | null;
 }
 
 /** A tab owns a split layout of panes. Focus and maximize are remembered per tab. */
@@ -103,12 +118,14 @@ export type DashboardAction =
   | {
       type: "open";
       id: string;
-      kind: SessionKind;
+      kind: PaneKind;
       url?: string | null;
       cwdFrom?: string | null;
       target?: string | null;
       /** Layer width / height, to split the focused pane along its longer side. */
       aspect?: number;
+      /** A docs pane's first state. */
+      docs?: DocsPane;
     }
   | { type: "ready"; id: string; pid: number; mode: AttachMode }
   /**
@@ -173,7 +190,8 @@ export type DashboardAction =
   /** Swaps two panes' places, also across tabs. */
   | { type: "swapPanes"; id: string; withId: string }
   /** Divider drag result for the split at `path`. */
-  | { type: "setSplitSizes"; tabId: string; path: number[]; sizes: number[] };
+  | { type: "setSplitSizes"; tabId: string; path: number[]; sizes: number[] }
+  | { type: "docsUpdate"; id: string; change: Partial<DocsPane> };
 
 function emptyTab(id: string, workspaceId: string): Tab {
   return { id, workspaceId, name: null, layout: null, paneIds: [], focusedId: null, maximizedId: null };
@@ -190,11 +208,12 @@ export function createDashboard(workspaceId: string, tabId: string): Dashboard {
   };
 }
 
-const TITLE_PREFIX: Record<SessionKind, string> = {
+const TITLE_PREFIX: Record<PaneKind, string> = {
   shell: "Shell",
   browser: "Browser",
   editor: "Code",
   ssh: "SSH",
+  docs: "Docs",
 };
 
 export const NAME_MAX = 60;
@@ -208,7 +227,7 @@ export function sessionLabel(session: Session): string {
   return session.name ?? session.title;
 }
 
-function defaultTitle(sessions: Session[], kind: SessionKind): string {
+function defaultTitle(sessions: Session[], kind: PaneKind): string {
   const count = sessions.filter((session) => session.kind === kind).length + 1;
   return `${TITLE_PREFIX[kind]} ${count}`;
 }
@@ -309,12 +328,16 @@ export function focusedShellId(state: Dashboard): string | null {
   return focused?.kind === "shell" && focused.status === "running" ? focused.id : null;
 }
 
+const NO_DOCS: DocsPane = { root: null, followFrom: null, file: null, mode: "view" };
+
+/** A docs pane has no process to connect to: it runs from the start. */
 function newSession(
   id: string,
-  kind: SessionKind,
+  kind: PaneKind,
   title: string,
   url: string | null,
   target: string | null = null,
+  docs: DocsPane | null = null,
 ): Session {
   return {
     id,
@@ -323,7 +346,7 @@ function newSession(
     name: null,
     url,
     target,
-    status: "connecting",
+    status: kind === "docs" ? "running" : "connecting",
     detail: null,
     exitCode: null,
     notice: null,
@@ -331,13 +354,21 @@ function newSession(
     cwdFrom: null,
     retries: 0,
     generation: 0,
+    docs: kind === "docs" ? (docs ?? NO_DOCS) : null,
   };
 }
 
-const TARGET_TITLE: Partial<Record<SessionKind, string>> = { ssh: "ssh", browser: "browser" };
+const TARGET_TITLE: Partial<Record<PaneKind, string>> = { ssh: "ssh", browser: "browser" };
 
-/** Layout and names only; processes and screens live in the PTY host. */
+/**
+ * Layout and names only; processes and screens live in the PTY host. Docs
+ * panes go in `docs` and `docIds`, which versions from before them ignore.
+ */
 export function toSaved(state: Dashboard): SavedDashboard {
+  const docsIds = new Set(state.sessions.filter((session) => session.kind === "docs").map((session) => session.id));
+  const docs: SavedDocs[] = state.sessions.flatMap(({ id, kind, title, name, docs }) =>
+    kind === "docs" && docs ? [{ id, title, name, ...docs }] : [],
+  );
   return {
     version: 1,
     activeTabId: activeTab(state).id,
@@ -346,11 +377,15 @@ export function toSaved(state: Dashboard): SavedDashboard {
       workspaceId,
       name,
       layout,
-      paneIds,
+      paneIds: paneIds.filter((paneId) => !docsIds.has(paneId)),
+      docIds: paneIds.filter((paneId) => docsIds.has(paneId)),
       focusedId,
       maximizedId,
     })),
-    sessions: state.sessions.map(({ id, kind, title, name, url, target }) => ({ id, kind, title, name, url, target })),
+    sessions: state.sessions.flatMap(({ id, kind, title, name, url, target }) =>
+      kind === "docs" ? [] : [{ id, kind, title, name, url, target }],
+    ),
+    docs,
     workspaces: state.workspaces.map(({ id, name, activeTabId, icon, color }) => ({ id, name, activeTabId, icon, color })),
     activeWorkspaceId: state.activeWorkspaceId,
   };
@@ -373,7 +408,7 @@ function reconnectAll(previous: Dashboard, next: Dashboard): Dashboard {
     ...next,
     sessions: next.sessions.map((session) => ({
       ...session,
-      status: "connecting",
+      status: session.kind === "docs" ? "running" : "connecting",
       detail: null,
       exitCode: null,
       notice: null,
@@ -497,6 +532,7 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
           action.target ? `${TARGET_TITLE[action.kind] ?? action.kind} ${action.target}` : defaultTitle(state.sessions, action.kind),
           action.url ?? null,
           action.target ?? null,
+          action.docs ?? null,
         ),
         cwdFrom: action.cwdFrom ?? null,
       };
@@ -544,13 +580,19 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
     case "hydrate": {
       const { saved } = action;
       const loaded: Dashboard = {
-        sessions: saved.sessions.map((item) => ({
-          ...newSession(item.id, item.kind, item.title, item.url, item.target ?? null),
-          name: item.name,
-        })),
+        sessions: [
+          ...saved.sessions.map((item) => ({
+            ...newSession(item.id, item.kind, item.title, item.url, item.target ?? null),
+            name: item.name,
+          })),
+          ...(saved.docs ?? []).map(({ id, title, name, ...docs }) => ({
+            ...newSession(id, "docs", title, null, null, docs),
+            name,
+          })),
+        ],
         // Layouts saved before split trees were a plain grid order.
         tabs: saved.tabs.map((tab) => ({
-          ...withLayout(emptyTab(tab.id, tab.workspaceId), tab.layout ?? fromGrid(tab.paneIds)),
+          ...withLayout(emptyTab(tab.id, tab.workspaceId), tab.layout ?? fromGrid([...tab.paneIds, ...(tab.docIds ?? [])])),
           name: tab.name,
           focusedId: tab.focusedId,
           maximizedId: tab.maximizedId,
@@ -577,6 +619,7 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
     case "restart": {
       const session = state.sessions.find((item) => item.id === action.id);
       if (!session) return state;
+      if (session.kind === "docs") return state;
       return patch(state, action.id, {
         status: "connecting",
         detail: null,
@@ -713,6 +756,11 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
         return { ...docked, focusedId: action.id, maximizedId: null };
       });
       return showTab({ ...state, tabs }, to.id);
+    }
+    case "docsUpdate": {
+      const session = state.sessions.find((item) => item.id === action.id);
+      if (!session?.docs) return state;
+      return patch(state, action.id, { docs: { ...session.docs, ...action.change } });
     }
     case "setSplitSizes": {
       const tab = state.tabs.find((item) => item.id === action.tabId);

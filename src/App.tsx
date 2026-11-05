@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
-import type { SessionKind } from "../shared/protocol.ts";
+import type { PaneKind } from "../shared/protocol.ts";
 import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.tsx";
@@ -153,19 +153,22 @@ export function App() {
     rawDispatch(action);
   }, []);
 
-  // A new editor opens the focused shell's directory. SSH asks for a host
-  // first.
+  // A new editor opens the focused shell's directory, and a new docs pane
+  // lists it and follows that shell. SSH asks for a host first.
   const open = useCallback(
-    (kind: SessionKind, url: string | null = null, target: string | null = null) => {
+    (kind: PaneKind, url: string | null = null, target: string | null = null) => {
       if (kind === "ssh" && !target) {
         setPalette("ssh");
         return;
       }
-      const cwdFrom = kind === "editor" ? focusedShellId(stateRef.current) : null;
-      dispatch({ type: "open", id: newId("s"), kind, url, cwdFrom, target, aspect: layerAspect() });
+      const shellId = focusedShellId(stateRef.current);
+      const cwdFrom = kind === "editor" ? shellId : null;
+      const docs = kind === "docs" ? { root: null, followFrom: shellId, file: null, mode: "view" as const } : undefined;
+      dispatch({ type: "open", id: newId("s"), kind, url, cwdFrom, target, aspect: layerAspect(), docs });
     },
     [dispatch],
   );
+  const openUrl = useCallback((url: string) => open("browser", url), [open]);
 
 
   // A new tab starts with a shell, like a terminal app's new tab.
@@ -382,7 +385,7 @@ export function App() {
     [open, openWindow, t, windowsOnly],
   );
 
-  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0 } satisfies Record<SessionKind, number>;
+  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0 } satisfies Record<PaneKind, number>;
   for (const session of state.sessions) counts[session.kind] += 1;
 
   // Top: the workspace menu and the tab bar, no sidebar. Sidebar: both in the
@@ -517,6 +520,7 @@ export function App() {
             onDragPane={setDragging}
             onRename={rename}
             onLaunch={open}
+            onOpenUrl={openUrl}
             mayReattach={reattach}
             narrow={narrow}
             dispatch={dispatch}

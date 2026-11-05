@@ -17,7 +17,7 @@ import {
   SquarePlus,
   X,
 } from "lucide-react";
-import type { SessionKind } from "../shared/protocol.ts";
+import type { PaneKind } from "../shared/protocol.ts";
 import type { RenameTarget } from "./components/InlineRename.tsx";
 import { WorkspaceGlyph, workspaceColor } from "./components/WorkspaceMenu.tsx";
 import type { PaletteCommand } from "./components/CommandPalette.tsx";
@@ -63,7 +63,7 @@ export function isPaletteShortcut(event: KeyboardEvent): boolean {
 export interface PaletteContext {
   state: Dashboard;
   dispatch: (action: DashboardAction) => void;
-  open: (kind: SessionKind, url?: string | null, target?: string | null) => void;
+  open: (kind: PaneKind, url?: string | null, target?: string | null) => void;
   newTab: () => void;
   newTabId: () => string;
   movePaneToNewTab: (paneId: string) => void;

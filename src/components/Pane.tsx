@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, GripVertical, Maximize2, Minimize2, RotateCcw, X } from "lucide-react";
 import { carries, dropZone, PANE_MIME, startDrag, type DropZone } from "../dnd.ts";
+import { DocsView } from "../docs/DocsView.tsx";
 import { useI18n } from "../i18n/index.tsx";
 import { installHint, type InstallHint } from "../installHints.ts";
 import { KindIcon } from "../kinds.tsx";
@@ -34,6 +35,12 @@ interface PaneProps {
   mayReattach: boolean;
   onDragPane: (id: string | null) => void;
   dispatch: (action: DashboardAction) => void;
+  /** Docs panes: the followed shell's pid while it runs, whether it exists, and a shell to follow. */
+  followPid: number | null;
+  followAlive: boolean;
+  followCandidate: string | null;
+  /** Docs panes open web links in a terminal-browser pane. */
+  onOpenUrl: (url: string) => void;
 }
 
 function exitDetail(event: Extract<ConnectionEvent, { type: "exit" }>): string {
@@ -129,7 +136,8 @@ export function Pane(props: PaneProps) {
   }, [session.status, session.retries, away, mayReattach, id, dispatch]);
 
   const ended = session.status === "exited" || session.status === "error";
-  const hint = session.status === "exited" ? installHint(session.kind, session.exitCode, REMOTE_TARGET !== null) : null;
+  const hint =
+    session.status === "exited" && session.kind !== "docs" ? installHint(session.kind, session.exitCode, REMOTE_TARGET !== null) : null;
   // "pid 7 · reconnected", "exit 1", or a server message, in the UI language.
   const detail = [session.detail, session.notice && t.notice[session.notice]].filter(Boolean).join(" · ") || null;
   const classes = [
@@ -235,6 +243,19 @@ export function Pane(props: PaneProps) {
         </button>
       </header>
       <div className="pane-body">
+        {session.kind === "docs" ? (
+          <DocsView
+            session={session}
+            focused={focused && !covered}
+            visible={!covered}
+            focusNonce={focusNonce}
+            followPid={props.followPid}
+            followAlive={props.followAlive}
+            followCandidate={props.followCandidate}
+            dispatch={dispatch}
+            onOpenUrl={props.onOpenUrl}
+          />
+        ) : (
         <TerminalView
           key={session.generation}
           kind={session.kind}
@@ -252,6 +273,7 @@ export function Pane(props: PaneProps) {
           onTitle={(title) => dispatch({ type: "title", id, title })}
           onFocus={() => !focused && dispatch({ type: "focus", id })}
         />
+        )}
         {ended && (
           // A program that failed to start printed its own message: keep it readable.
           <div className={hint?.type === "failed" ? "pane-overlay beside-text" : "pane-overlay"} role="status">

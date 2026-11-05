@@ -1,5 +1,5 @@
-import { CodeXml, Globe, Server, ServerCog, SquareTerminal, type LucideIcon } from "lucide-react";
-import type { SessionKind } from "../shared/protocol.ts";
+import { BookOpen, CodeXml, Globe, Server, ServerCog, SquareTerminal, type LucideIcon } from "lucide-react";
+import type { PaneKind } from "../shared/protocol.ts";
 
 /** Labels and hints are UI text: see `kinds` in src/i18n/messages.ts. */
 interface KindMeta {
@@ -10,7 +10,7 @@ interface KindMeta {
 
 const MiB = 1024 * 1024;
 
-export const KINDS: Record<SessionKind, KindMeta> = {
+export const KINDS: Record<PaneKind, KindMeta> = {
   shell: {
     icon: SquareTerminal,
     imageLimit: 32 * MiB,
@@ -27,12 +27,17 @@ export const KINDS: Record<SessionKind, KindMeta> = {
     icon: Server,
     imageLimit: 32 * MiB,
   },
+  /** No terminal: the pane shows Markdown files. */
+  docs: {
+    icon: BookOpen,
+    imageLimit: 0,
+  },
 };
 
 /** Launcher order in the activity bar. */
-export const LAUNCHERS: SessionKind[] = ["shell", "browser", "editor", "ssh"];
+export const LAUNCHERS: PaneKind[] = ["shell", "browser", "editor", "ssh", "docs"];
 
-export function KindIcon({ kind, size }: { kind: SessionKind; size: number }) {
+export function KindIcon({ kind, size }: { kind: PaneKind; size: number }) {
   const Icon = KINDS[kind].icon;
   return <Icon size={size} strokeWidth={1.75} className={`kind-icon kind-${kind}`} aria-hidden="true" />;
 }
