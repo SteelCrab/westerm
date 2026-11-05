@@ -41,15 +41,23 @@ mod unix {
     }
 
     /// Listens as the host, which holds the host lock, so a socket file left
-    /// here is stale. The socket is made under a temporary name and renamed
-    /// into place: bind() creates the file before listen() makes it accept,
-    /// and a client that connects in between would be refused.
+    /// here is stale.
     pub fn bind(dir: &Path) -> io::Result<Listener> {
-        let temp = dir.join(format!("host.sock.{}", std::process::id()));
+        bind_socket(&socket(dir))
+    }
+
+    /// Listens on the socket file `path` (0600). The socket is made under a
+    /// temporary name and renamed into place: bind() creates the file before
+    /// listen() makes it accept, and a client that connects in between would
+    /// be refused. A file already at `path` is replaced.
+    pub fn bind_socket(path: &Path) -> io::Result<UnixListener> {
+        let mut temp = path.as_os_str().to_owned();
+        temp.push(format!(".{}", std::process::id()));
+        let temp = PathBuf::from(temp);
         let _ = fs::remove_file(&temp);
         let listener = UnixListener::bind(&temp)?;
         fs::set_permissions(&temp, fs::Permissions::from_mode(0o600))?;
-        fs::rename(&temp, socket(dir))?;
+        fs::rename(&temp, path)?;
         Ok(listener)
     }
 
