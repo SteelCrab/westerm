@@ -29,6 +29,8 @@ interface PaneProps {
   dragging: string | null;
   /** Another window has the sessions: do not reconnect until this one is used. */
   away: boolean;
+  /** False while a remote window's link is down or its server's layout is not read yet. */
+  mayReattach: boolean;
   onDragPane: (id: string | null) => void;
   dispatch: (action: DashboardAction) => void;
 }
@@ -40,7 +42,7 @@ function exitDetail(event: Extract<ConnectionEvent, { type: "exit" }>): string {
 
 export function Pane(props: PaneProps) {
   const { session, font, focused, maximized, covered, gridStyle, focusNonce, renaming, onRename, dispatch } = props;
-  const { dragging, onDragPane, scheme, away } = props;
+  const { dragging, onDragPane, scheme, away, mayReattach } = props;
   const { id } = session;
   const { t } = useI18n();
   // Where a dragged pane would land: a side (split there) or the center (swap).
@@ -72,12 +74,13 @@ export function Pane(props: PaneProps) {
   // Reconnect to the same session with backoff: 0.5 s, 1 s, 2 s … up to 8 s.
   // The PTY host keeps the shell running meanwhile. A reconnect from a window
   // that is not in use would take every session from the one that is.
+  // A remote window's pane also waits for its link and the server's layout.
   useEffect(() => {
-    if (session.status !== "disconnected" || away) return;
+    if (session.status !== "disconnected" || away || !mayReattach) return;
     const delay = Math.min(8000, 500 * 2 ** (session.retries - 1));
     const timer = setTimeout(() => dispatch({ type: "restart", id }), delay);
     return () => clearTimeout(timer);
-  }, [session.status, session.retries, away, id, dispatch]);
+  }, [session.status, session.retries, away, mayReattach, id, dispatch]);
 
   const ended = session.status === "exited" || session.status === "error";
   // "pid 7 · reconnected", "exit 1", or a server message, in the UI language.

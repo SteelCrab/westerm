@@ -83,12 +83,26 @@ export function reconnectAction(result: LoadResult, synced: string, dirty: boole
   return result.saved ? "adopt" : "save";
 }
 
+/**
+ * Whether a disconnected pane may connect again. A remote window's pane waits
+ * for the link and for the server's layout after the latest reconnect
+ * (`checked`: the reconnect count whose layout was read). Another computer
+ * may have closed its session meanwhile; attaching first would start a new
+ * shell for it on the server, which the read layout then leaves behind. A
+ * local window never waits.
+ */
+export function mayReattach(remote: boolean, connected: boolean, reconnects: number, checked: number): boolean {
+  return !remote || (connected && checked === reconnects);
+}
+
 /** What the hook gives the window. */
 export interface Persistence {
   /** False until the first load settles, so panes do not attach before their saved ids are known. */
   loaded: boolean;
   /** This window took `saved` from the server (null: none was there), as `reclaim` does. */
   adopted: (saved: SavedDashboard | null) => void;
+  /** The value of `link.reconnects` whose server layout was read (see `mayReattach`). */
+  checked: number;
 }
 
 /**
@@ -99,6 +113,7 @@ export interface Persistence {
  * until the link is `ready`. After each rise of `reconnects`, the window
  * reads the server's layout again before it saves anything (see
  * `reconnectAction`): while it was away, another computer may have changed it.
+ * Unless it takes that layout, it then connects its disconnected panes.
  */
 export function useWorkspacePersistence(
   state: Dashboard,
@@ -120,7 +135,9 @@ export function useWorkspacePersistence(
   const dirty = useRef(false);
   // The value of `reconnects` whose server layout was read. A remote window
   // saves nothing until it has read the layout after the latest reconnect.
+  // The state copy tells the panes when they may reattach.
   const checked = useRef(0);
+  const [checkedState, setChecked] = useState(0);
 
   const persist = useCallback((keepalive = false) => {
     const { ready, reconnects } = linkNow.current;
@@ -153,6 +170,7 @@ export function useWorkspacePersistence(
       }
       synced.current = layoutKey(result.ok ? result.saved : null);
       checked.current = linkNow.current.reconnects;
+      setChecked(checked.current);
       if (next === "hydrate" && result.ok && result.saved) dispatch({ type: "hydrate", saved: result.saved });
       else fresh();
       setLoaded(true);
@@ -182,12 +200,15 @@ export function useWorkspacePersistence(
           return;
         }
         checked.current = reconnects;
+        setChecked(reconnects);
         if (next === "adopt" && result.ok && result.saved) {
+          // Every pane of the taken layout connects again.
           adopted(result.saved);
           dispatch({ type: "adopt", saved: result.saved });
-        } else if (next === "save") {
-          persist();
+          return;
         }
+        if (next === "save") persist();
+        dispatch({ type: "retryDisconnected" });
       });
     };
     check();
@@ -217,5 +238,5 @@ export function useWorkspacePersistence(
     };
   }, [loaded, paused, persist]);
 
-  return { loaded, adopted };
+  return { loaded, adopted, checked: checkedState };
 }

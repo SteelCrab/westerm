@@ -111,7 +111,7 @@ A window for a Linux server: its tabs, workspaces, and shells live on the server
 - Closing the window or losing the network does not end anything. Open the server again to see the same tabs and shells, also from another computer. See [Remote sessions](sessions.md#remote-sessions).
 - A window that comes back (after sleep or a lost network) reads the server's layout first. If another computer changed the tabs meanwhile, the window takes the server's layout, and its own changes from while it was away are lost.
 - Known limit: a window that comes back also takes the sessions from the window in use, which then shows "In use in another window". Click that window to take them back.
-- When the link drops, a "Reconnecting…" banner shows and the panes keep trying. If the failure cannot fix itself (for example the SSH key is refused), the window shows the reason and a **Try again** button.
+- When the link drops, a "Reconnecting…" banner shows. The panes reconnect once the link is back and the server's layout is read. If the failure cannot fix itself (for example the SSH key is refused), the window shows the reason and a **Try again** button.
 - Theme, language, and font size are shared with the local window. Fonts follow the Ghostty config of this computer.
 - A remote window cannot open another remote window.
 - The plain SSH pane stays as it is, for servers where you do not want to install anything.
