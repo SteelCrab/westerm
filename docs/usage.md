@@ -5,19 +5,33 @@
 | Area | What it does |
 |---|---|
 | Activity bar | New shell, terminal-browser, terminal-code, SSH, and remote westerm at the top; a badge shows how many are open. The command palette, Settings, and the sidebar switch at the bottom. |
-| Sidebar | Tabs with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: tab numbers, plus the session icons of the tab in view. |
+| Sidebar | The workspaces at the top. Below them, the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: workspace numbers, tab numbers, and the session icons of the tab in view. |
 | Tab bar | `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Panes | Drag a pane's header onto another pane's edge to split there, onto its center to swap, or onto a tab or `+` to move it. Drag a divider to resize. |
 | Header | The tabs, and an update button when a new release exists. Language, theme, and fonts are in Settings. |
 
 ## Renaming
 
-Double-click a tab or a session, or press F2. Clear the name to go back to the automatic one (the title the shell sends).
+Double-click a workspace, a tab, or a session, or press F2. Clear the name to go back to the automatic one: the title the shell sends, or "Workspace 1", "Workspace 2", and so on.
+
+## Workspaces
+
+A workspace is a set of tabs, for example one per project.
+
+- Only the tabs of the workspace in view show in the tab bar and the sidebar.
+- The sessions of the other workspaces keep running. Switching back shows the same tab and pane as before.
+- `+` next to "Workspaces" in the sidebar opens a new workspace with one shell.
+- Click a workspace to show it. Drag it to reorder.
+- Drop a tab (from the tab bar or the sidebar) on a workspace to move the tab there. Drop a pane on a workspace to move it into that workspace's current tab.
+- `×` closes a workspace and ends all its sessions. Closing the last one leaves an empty workspace.
+- In the command palette: new workspace, rename, close, next and previous workspace, move the tab to another workspace, and go to a workspace. Going to a session in another workspace shows that workspace.
+- Tab keys (Ctrl+Shift+1–9, ⌘1–9 in the macOS app) count only the tabs of the workspace in view.
+- A layout saved before workspaces opens as one workspace with all its tabs.
 
 ## Command palette
 
 - Open it with ⌘K on macOS, or Ctrl+Shift+K on Linux and Windows.
-- It launches sessions, switches tabs and sessions, renames, maximizes, moves panes, changes the font size and language, opens settings, and checks for updates.
+- It launches sessions, switches workspaces, tabs, and sessions, renames, maximizes, moves panes and tabs, changes the font size and language, opens settings, and checks for updates.
 - Type a URL to open it in terminal-browser.
 - English words find commands in any language, for example `rename`, `font`, or `language`.
 

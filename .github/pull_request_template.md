@@ -1,6 +1,7 @@
 <!--
-Title: like a commit subject. Imperative mood, about 72 characters or less.
-Example: "Add Japanese restore notice", not "added notice" or "Update".
+Title: <type>(<scope>): <subject>, about 72 characters or less in all.
+Types: feat, fix, docs, refactor, test, chore. Scope: the part the change touches.
+Example: "feat(i18n): add a Japanese restore notice", not "Add Japanese restore notice" or "Update".
 Rules: CONTRIBUTING.md ▸ Pull requests.
 -->
 

@@ -19,6 +19,8 @@ export interface SavedSession {
 
 export interface SavedTab {
   id: string;
+  /** The workspace that shows this tab. */
+  workspaceId: string;
   /** User-set name, or null. */
   name: string | null;
   /** The tab's panes in reading order. */
@@ -30,16 +32,35 @@ export interface SavedTab {
 }
 
 export interface SavedWorkspace {
+  id: string;
+  /** User-set name, or null. */
+  name: string | null;
+  /** The tab the workspace shows; one of its own. */
+  activeTabId: string;
+}
+
+/**
+ * Workspaces were added without a version bump: files from before them have
+ * no `workspaces` and open as one workspace, and older versions read the
+ * tabs and `activeTabId` and ignore the rest.
+ */
+export interface SavedDashboard {
   version: 1;
+  /** The tab in view. */
   activeTabId: string;
   tabs: SavedTab[];
   sessions: SavedSession[];
+  workspaces: SavedWorkspace[];
+  activeWorkspaceId: string;
 }
 
 export const WORKSPACE_PATH = "/api/workspace";
 export const WORKSPACE_MAX_BYTES = 256 * 1024;
-const MAX_TABS = 64;
-const MAX_SESSIONS = 64;
+// Totals across workspaces. A file over a limit does not load at all.
+const MAX_TABS = 128;
+const MAX_SESSIONS = 128;
+/** The one workspace of files from before workspaces, or with broken workspace data. */
+const DEFAULT_WORKSPACE_ID = "w0";
 const MAX_TEXT = 512;
 
 function text(value: unknown, max = MAX_TEXT): string | null {
@@ -47,11 +68,12 @@ function text(value: unknown, max = MAX_TEXT): string | null {
 }
 
 /**
- * Validates untrusted JSON into a consistent workspace, or null. Every pane id
+ * Validates untrusted JSON into a consistent dashboard, or null. Every pane id
  * must name a session, every session must sit in exactly one tab, and focus
- * and maximize must point inside their tab.
+ * and maximize must point inside their tab. Workspace data that does not add
+ * up only costs the grouping: the tabs then open as one workspace.
  */
-export function parseSavedWorkspace(value: unknown): SavedWorkspace | null {
+export function parseSavedDashboard(value: unknown): SavedDashboard | null {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
   if (raw.version !== 1 || !Array.isArray(raw.tabs) || !Array.isArray(raw.sessions)) return null;
@@ -75,7 +97,9 @@ export function parseSavedWorkspace(value: unknown): SavedWorkspace | null {
     sessions.push({ id: session.id, kind: session.kind, title, name, url, target });
   }
 
-  const tabs: SavedTab[] = [];
+  const tabs: Omit<SavedTab, "workspaceId">[] = [];
+  /** Each tab's `workspaceId` as written, still unchecked. */
+  const owners: unknown[] = [];
   const tabIds = new Set<string>();
   const placed = new Set<string>();
   for (const item of raw.tabs as unknown[]) {
@@ -106,8 +130,56 @@ export function parseSavedWorkspace(value: unknown): SavedWorkspace | null {
       focusedId: inTab(tab.focusedId),
       maximizedId: inTab(tab.maximizedId),
     });
+    owners.push(tab.workspaceId);
   }
   if (placed.size !== sessionIds.size) return null;
   if (!isId(raw.activeTabId) || !tabIds.has(raw.activeTabId)) return null;
-  return { version: 1, activeTabId: raw.activeTabId, tabs, sessions };
+  const activeTabId = raw.activeTabId;
+
+  // Broken workspace data costs the grouping, not the tabs.
+  const grouped = parseWorkspaces(raw.workspaces, raw.activeWorkspaceId, tabs, owners);
+  if (grouped) return { version: 1, activeTabId, sessions, ...grouped };
+  return {
+    version: 1,
+    activeTabId,
+    tabs: tabs.map((tab) => ({ ...tab, workspaceId: DEFAULT_WORKSPACE_ID })),
+    sessions,
+    workspaces: [{ id: DEFAULT_WORKSPACE_ID, name: null, activeTabId }],
+    activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+  };
+}
+
+/**
+ * The file's workspaces with each tab's owner when they are consistent, else
+ * null: unique ids, every tab in one of them, and each showing a tab of its
+ * own (so none is empty).
+ */
+function parseWorkspaces(
+  value: unknown,
+  activeId: unknown,
+  tabs: ReadonlyArray<Omit<SavedTab, "workspaceId">>,
+  owners: readonly unknown[],
+): Pick<SavedDashboard, "tabs" | "workspaces" | "activeWorkspaceId"> | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_TABS) return null;
+  const workspaces: SavedWorkspace[] = [];
+  for (const item of value as unknown[]) {
+    if (typeof item !== "object" || item === null) return null;
+    const workspace = item as Record<string, unknown>;
+    const name = workspace.name == null ? null : text(workspace.name);
+    if (!isId(workspace.id) || !isId(workspace.activeTabId)) return null;
+    if (workspaces.some((other) => other.id === workspace.id)) return null;
+    if (workspace.name != null && name === null) return null;
+    workspaces.push({ id: workspace.id, name, activeTabId: workspace.activeTabId });
+  }
+  const known = (id: unknown): id is string => workspaces.some((workspace) => workspace.id === id);
+  const owned: SavedTab[] = [];
+  for (const [index, tab] of tabs.entries()) {
+    const owner = owners[index];
+    if (!known(owner)) return null;
+    owned.push({ ...tab, workspaceId: owner });
+  }
+  const showsOwnTab = (workspace: SavedWorkspace) =>
+    owned.some((tab) => tab.id === workspace.activeTabId && tab.workspaceId === workspace.id);
+  if (!workspaces.every(showsOwnTab) || !known(activeId)) return null;
+  return { tabs: owned, workspaces, activeWorkspaceId: activeId };
 }

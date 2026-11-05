@@ -33,8 +33,8 @@
 
 ## Layout and saved files
 
-- The layout (tabs, pane order, names, proportions) is saved in the state folder's `workspace.json`.
-- Closing a pane or a tab ends its process and deletes its saved screen.
+- The layout (workspaces, tabs, pane order, names, proportions) is saved in the state folder's `workspace.json`.
+- Closing a pane, a tab, or a workspace ends its processes and deletes their saved screens.
 - Saved files unused for 30 days are deleted.
 
 ## Reconnecting
@@ -46,7 +46,7 @@
 The macOS app and browser tabs use the same sessions. One window at a time has them all.
 
 - When a window opens a session, every other window lets go of every session, and shows "In use in another window".
-- Switching to that window or clicking it takes the sessions back. It first loads the layout the other window saved, so tabs and panes added or closed there show here too.
+- Switching to that window or clicking it takes the sessions back. It first loads the layout the other window saved, so workspaces, tabs, and panes added or closed there show here too.
 - Shells and SSH sessions keep running while they move between windows. terminal-browser and terminal-code start again in the window that takes them, and restore their own tabs and folders.
 - A window that does not have the sessions does not reconnect and does not save its layout.
 

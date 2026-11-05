@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isPermanentFailure, isSessionKind } from "../shared/protocol.ts";
-import { parseSavedWorkspace } from "../shared/workspace-file.ts";
+import { parseSavedDashboard } from "../shared/workspace-file.ts";
 import { MESSAGES } from "../src/i18n/messages.ts";
 import { sshCommands } from "../src/paletteCommands.tsx";
 import { shouldPostRemoteClose } from "../src/remoteApi.ts";
-import { createWorkspace, MAX_RECONNECTS, workspaceReducer } from "../src/workspace.ts";
+import { createDashboard, dashboardReducer, MAX_RECONNECTS } from "../src/workspace.ts";
 
 const layout = (session: Record<string, unknown>) =>
-  parseSavedWorkspace({
+  parseSavedDashboard({
     version: 1,
     activeTabId: "t1",
     tabs: [{ id: "t1", name: null, paneIds: ["sa"], focusedId: "sa", maximizedId: null }],
@@ -21,7 +21,7 @@ test("saved remote sessions need a valid destination", () => {
   assert.equal(layout({ kind: "remote", target: "-oProxyCommand=x" }), null);
 });
 
-const openRemote = () => workspaceReducer(createWorkspace("t1"), { type: "open", id: "sr1", kind: "remote", target: "prod" });
+const openRemote = () => dashboardReducer(createDashboard("w1", "t1"), { type: "open", id: "sr1", kind: "remote", target: "prod" });
 
 test("remote panes get a westerm title", () => {
   const state = openRemote();
@@ -31,24 +31,24 @@ test("remote panes get a westerm title", () => {
 
 test("remote panes keep reconnecting; shells still give up", () => {
   let remote = openRemote();
-  for (let i = 0; i < 20; i++) remote = workspaceReducer(remote, { type: "disconnected", id: "sr1" });
+  for (let i = 0; i < 20; i++) remote = dashboardReducer(remote, { type: "disconnected", id: "sr1" });
   assert.equal(remote.sessions[0].status, "disconnected");
   assert.equal(remote.sessions[0].notice, "reconnecting");
-  let shell = workspaceReducer(createWorkspace("t1"), { type: "open", id: "ss1", kind: "shell" });
-  for (let i = 0; i <= MAX_RECONNECTS; i++) shell = workspaceReducer(shell, { type: "disconnected", id: "ss1" });
+  let shell = dashboardReducer(createDashboard("w1", "t1"), { type: "open", id: "ss1", kind: "shell" });
+  for (let i = 0; i <= MAX_RECONNECTS; i++) shell = dashboardReducer(shell, { type: "disconnected", id: "ss1" });
   assert.equal(shell.sessions[0].status, "error");
 });
 
 test("remote stages are kept and cleared on restart", () => {
-  let state = workspaceReducer(openRemote(), {
+  let state = dashboardReducer(openRemote(), {
     type: "remoteStage",
     id: "sr1",
     stage: { stage: "connected", via: "quic", killOnLogout: false },
   });
   assert.deepEqual(state.sessions[0].remote, { stage: "connected", via: "quic", killOnLogout: false });
-  state = workspaceReducer(state, { type: "ready", id: "sr1", pid: 7, mode: "new" });
+  state = dashboardReducer(state, { type: "ready", id: "sr1", pid: 7, mode: "new" });
   assert.equal(state.sessions[0].remote?.stage, "connected", "ready keeps how the pane is connected");
-  state = workspaceReducer(state, { type: "restart", id: "sr1", manual: true });
+  state = dashboardReducer(state, { type: "restart", id: "sr1", manual: true });
   assert.equal(state.sessions[0].remote, null);
 });
 

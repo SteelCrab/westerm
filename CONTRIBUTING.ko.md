@@ -131,7 +131,11 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 
 - 작은 수정이 아니면 먼저 이슈를 열고 방향을 합의합니다.
 - `main`에서 브랜치를 만듭니다. PR 하나에는 주제 하나만 담습니다.
-- 제목은 커밋 제목처럼 씁니다([커밋](#커밋) 참고): 명령형 영어, 약 72자 이하.
+- 제목은 `<type>(<scope>): <subject>` 형식으로, 전체 약 72자 이하로 씁니다.
+  - `type`: `feat`(새 기능), `fix`(버그 수정), `docs`, `refactor`, `test`, `chore`(빌드, CI, 릴리스).
+  - `scope`: 바뀌는 부분. 예: `remote`, `host`, `ui`, `i18n`, `macos`.
+  - `subject`: 명령형 영어, 소문자로 시작, 끝에 마침표 없음.
+  - 예: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
 - 템플릿을 채웁니다. `Closes #123`으로 이슈를 연결하면 병합할 때 이슈가 닫힙니다.
 - 작업 중에는 draft로 엽니다. [PR 전 확인](#pr-전-확인)을 통과하면 ready로 바꿉니다.
 - CI는 macOS, Linux, Windows에서 모두 통과해야 합니다.
@@ -224,6 +228,7 @@ westerm은 macOS, Linux, Windows에서 동작합니다. CI가 모든 PR을 세 �
 
 - 제목은 명령형 영어, 약 72자 이하: `added ...`가 아니라 `Add Japanese restore notice`.
 - 이유가 분명하지 않으면 본문에 왜 바꾸는지 씁니다.
+- PR 제목은 형식이 다릅니다: [PR](#pr)을 보세요.
 
 ## 릴리스
 

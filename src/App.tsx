@@ -22,15 +22,18 @@ import { appBridge } from "./useUpdate.ts";
 import { markEnding } from "./terminal/ending.ts";
 import { loadSaved, useWorkspacePersistence } from "./useWorkspacePersistence.ts";
 import {
-  createWorkspace,
+  activeTab,
+  activeWorkspace,
+  createDashboard,
   focusedShellId,
   paneToward,
   stepPane,
   stepTab,
   tabByNumber,
   takenOver,
-  workspaceReducer,
-  type WorkspaceAction,
+  dashboardReducer,
+  workspaceTabs,
+  type DashboardAction,
 } from "./workspace.ts";
 
 /** Shape of the pane area, to split new panes along their longer side. */
@@ -41,10 +44,11 @@ function layerAspect(): number {
 }
 
 let nextId = 0;
-const newId = (prefix: "s" | "t") => `${prefix}${Date.now().toString(36)}${(nextId++).toString(36)}`;
+const newId = (prefix: "s" | "t" | "w") => `${prefix}${Date.now().toString(36)}${(nextId++).toString(36)}`;
+const createFresh = () => createDashboard(newId("w"), newId("t"));
 
 export function App() {
-  const [state, rawDispatch] = useReducer(workspaceReducer, newId("t"), createWorkspace);
+  const [state, rawDispatch] = useReducer(dashboardReducer, null, createFresh);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const [renaming, setRenaming] = useState<RenameTarget | null>(null);
@@ -77,11 +81,14 @@ export function App() {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // Closing a pane or tab ends its processes; anything else only detaches.
-  const dispatch = useCallback((action: WorkspaceAction) => {
+  // Closing a pane, tab, or workspace ends its processes; anything else only detaches.
+  const dispatch = useCallback((action: DashboardAction) => {
     if (action.type === "close") markEnding([action.id]);
     if (action.type === "closeTab") {
       markEnding(stateRef.current.tabs.find((tab) => tab.id === action.id)?.paneIds ?? []);
+    }
+    if (action.type === "closeWorkspace") {
+      markEnding(workspaceTabs(stateRef.current, action.id).flatMap((tab) => tab.paneIds));
     }
     rawDispatch(action);
   }, []);
@@ -106,6 +113,28 @@ export function App() {
     dispatch({ type: "newTab", id: newId("t") });
     dispatch({ type: "open", id: newId("s"), kind: "shell", aspect: layerAspect() });
   }, [dispatch]);
+
+  // A new workspace starts like a new tab: one shell.
+  const newWorkspace = useCallback(() => {
+    dispatch({ type: "newWorkspace", id: newId("w"), tabId: newId("t") });
+    dispatch({ type: "open", id: newId("s"), kind: "shell", aspect: layerAspect() });
+  }, [dispatch]);
+
+  const closeWorkspace = useCallback(
+    (id: string) => dispatch({ type: "closeWorkspace", id, fallbackId: newId("w"), fallbackTabId: newId("t") }),
+    [dispatch],
+  );
+
+  const moveTabToWorkspace = useCallback(
+    (id: string, workspaceId: string) => dispatch({ type: "moveTabToWorkspace", id, workspaceId, fallbackId: newId("t") }),
+    [dispatch],
+  );
+
+  // The workspace's name is edited in the sidebar, so it must be open.
+  const renameWorkspace = useCallback(() => {
+    setSidebarOpen(true);
+    setRenaming({ kind: "workspace", id: activeWorkspace(stateRef.current).id, where: "sidebar" });
+  }, []);
 
   const movePaneToNewTab = useCallback(
     (paneId: string) => {
@@ -148,7 +177,7 @@ export function App() {
       const current = stateRef.current;
       if (command.type === "tab" || command.type === "tabStep") {
         const tab = command.type === "tab" ? tabByNumber(current, command.number) : stepTab(current, command.delta);
-        if (tab && tab.id !== current.activeTabId) dispatch({ type: "selectTab", id: tab.id });
+        if (tab && tab.id !== activeTab(current).id) dispatch({ type: "selectTab", id: tab.id });
       } else {
         const id = command.type === "paneStep" ? stepPane(current, command.delta) : paneToward(current, command.direction);
         if (id) dispatch({ type: "focus", id });
@@ -204,6 +233,10 @@ export function App() {
         newTabId: () => newId("t"),
         movePaneToNewTab,
         rename,
+        newWorkspace,
+        renameWorkspace,
+        closeWorkspace,
+        moveTabToWorkspace,
         openSshPicker: () => setPalette("ssh"),
         toggleSidebar: () => setSidebarOpen((value) => !value),
         changeFontSize: changeSize,
@@ -216,7 +249,25 @@ export function App() {
         showUpdate: () => setUpdateOpen(true),
         openSettings: () => setSettingsOpen(true),
       }),
-    [state, dispatch, open, newTab, movePaneToNewTab, rename, changeSize, resetSize, t, locale, setLocale, checkUpdates, update.status],
+    [
+      state,
+      dispatch,
+      open,
+      newTab,
+      movePaneToNewTab,
+      rename,
+      newWorkspace,
+      renameWorkspace,
+      closeWorkspace,
+      moveTabToWorkspace,
+      changeSize,
+      resetSize,
+      t,
+      locale,
+      setLocale,
+      checkUpdates,
+      update.status,
+    ],
   );
   const dynamicCommands = useCallback((query: string) => urlCommands(query, open, t), [open, t]);
   const sshPaletteCommands = useMemo(() => sshCommands(sshHosts ?? [], null, open, t), [sshHosts, open, t]);
@@ -256,6 +307,12 @@ export function App() {
             onMovePane={(id, toTabId) => dispatch({ type: "movePane", id, toTabId, aspect: layerAspect() })}
             onSwapPanes={(id, withId) => dispatch({ type: "swapPanes", id, withId })}
             onDragPane={setDragging}
+            onNewWorkspace={newWorkspace}
+            onSelectWorkspace={(id) => dispatch({ type: "selectWorkspace", id })}
+            onCloseWorkspace={closeWorkspace}
+            onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
+            onMoveWorkspace={(id, toIndex) => dispatch({ type: "moveWorkspace", id, toIndex })}
+            onMoveTabToWorkspace={moveTabToWorkspace}
             compact={isCompact(sidebarWidth)}
           />
           <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
