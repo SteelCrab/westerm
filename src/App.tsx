@@ -26,7 +26,8 @@ import {
 import { openRemoteWindow, REMOTE_TARGET } from "./remoteWindow.ts";
 import { useRemoteLink } from "./useRemoteLink.ts";
 import { useSshHosts } from "./useSshHosts.ts";
-import { useColorScheme } from "./theme.ts";
+import { terminalColors } from "./colorThemes.ts";
+import { useColorScheme, useWindowColors } from "./theme.ts";
 import { useSidebarWidth } from "./useSidebarWidth.ts";
 import { useTerminalFont } from "./useTerminalFont.ts";
 import { useUpdate } from "./useUpdate.ts";
@@ -88,6 +89,8 @@ export function App() {
   // A remote window does not update westerm: the server follows this one.
   const update = useUpdate(settings.autoUpdate && REMOTE_TARGET === null);
   const scheme = useColorScheme(settings.theme);
+  const colors = terminalColors(settings.colorTheme, scheme);
+  useWindowColors(settings.colorTheme, scheme);
 
   // A remote window's link to its server. A new local westerm (an update)
   // brings new page files, so the window loads again.
@@ -472,7 +475,7 @@ export function App() {
           <PaneLayer
             state={state}
             font={font}
-            scheme={scheme}
+            colors={colors}
             focusNonce={focusNonce}
             renaming={renaming}
             dragging={dragging}
@@ -490,6 +493,7 @@ export function App() {
       {settingsOpen && (
         <SettingsDialog
           settings={settings}
+          scheme={scheme}
           onChange={changeSettings}
           font={font}
           ghosttyFont={ghosttyFont}

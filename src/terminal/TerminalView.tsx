@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal, type TerminalHandle } from "@wterm/react";
+import type { TerminalThemeColors } from "@wterm/core";
 import type { WTerm } from "@wterm/dom";
 import { GhosttyCore } from "@wterm/ghostty";
 import ghosttyWasmUrl from "@wterm/ghostty/ghostty-vt.wasm?url";
 import type { PtySize, SessionKind } from "../../shared/protocol.ts";
 import { KINDS } from "../kinds.tsx";
-import { TERMINAL_COLORS, type ColorScheme } from "../theme.ts";
 import { installAltScreenImages } from "./alt-screen-images.ts";
 import { installCommandKeys } from "./command-keys.ts";
 import { PtyConnection, type ConnectionEvent } from "./connection.ts";
@@ -23,7 +23,8 @@ export interface TerminalViewProps {
   target: string | null;
   label: string;
   font: TerminalFont;
-  scheme: ColorScheme;
+  /** The color theme's set for the scheme in use (src/colorThemes.ts). */
+  colors: TerminalThemeColors;
   focused: boolean;
   /** A new value refocuses the terminal, e.g. after a rename field closes. */
   focusNonce: number;
@@ -75,7 +76,7 @@ function useGhosttyCore(kind: SessionKind): { core: GhosttyCore | null; error: s
 }
 
 export function TerminalView(props: TerminalViewProps) {
-  const { sessionId, kind, url, cwdFrom, target, label, font, scheme, focused, focusNonce, visible } = props;
+  const { sessionId, kind, url, cwdFrom, target, label, font, colors, focused, focusNonce, visible } = props;
   const { core, error } = useGhosttyCore(kind);
   const { t, locale } = useI18n();
   // Read at connect time only: switching language must not reconnect.
@@ -101,18 +102,18 @@ export function TerminalView(props: TerminalViewProps) {
     if (focused && keyboardFree()) terminalRef.current?.focus();
   }, [focused, focusNonce]);
 
-  // Live light/dark switch: repaints history and keeps app color overrides.
-  const schemeRef = useRef(scheme);
-  schemeRef.current = scheme;
+  // Live theme and light/dark switch: repaints history and keeps app color overrides.
+  const colorsRef = useRef(colors);
+  colorsRef.current = colors;
   useEffect(() => {
-    wtermRef.current?.setThemeColors(TERMINAL_COLORS[scheme]);
-  }, [scheme]);
+    wtermRef.current?.setThemeColors(colors);
+  }, [colors]);
 
   const handleReady = useCallback(
     (wt: WTerm) => {
       wtermRef.current = wt;
       // Colors before the process starts, so its first OSC 11 query matches.
-      wt.setThemeColors(TERMINAL_COLORS[schemeRef.current]);
+      wt.setThemeColors(colorsRef.current);
       if (!installAltScreenImages(wt)) {
         console.warn("[westerm] alternate-screen image patch unavailable; full-screen Kitty apps may scroll");
       }

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { isColorTheme, type ColorThemeId } from "./colorThemes.ts";
 import type { ThemeChoice } from "./theme.ts";
 
 /**
@@ -16,9 +17,17 @@ export interface Settings {
   /** Look for a new release when the dashboard opens and every few hours. */
   autoUpdate: boolean;
   layout: Layout;
+  /** Terminal colors; each theme has a dark and a light set that follow `theme`. */
+  colorTheme: ColorThemeId;
 }
 
-export const DEFAULT_SETTINGS: Settings = { theme: "system", fontFamily: "", autoUpdate: true, layout: "top" };
+export const DEFAULT_SETTINGS: Settings = {
+  theme: "system",
+  fontFamily: "",
+  autoUpdate: true,
+  layout: "top",
+  colorTheme: "default",
+};
 
 const KEY = "westerm.settings";
 export const FONT_FAMILY_MAX = 200;
@@ -37,6 +46,7 @@ export function parseSettings(raw: string | null): Settings {
     fontFamily: typeof saved.fontFamily === "string" ? saved.fontFamily.slice(0, FONT_FAMILY_MAX) : DEFAULT_SETTINGS.fontFamily,
     autoUpdate: typeof saved.autoUpdate === "boolean" ? saved.autoUpdate : DEFAULT_SETTINGS.autoUpdate,
     layout: saved.layout === "sidebar" ? "sidebar" : DEFAULT_SETTINGS.layout,
+    colorTheme: isColorTheme(saved.colorTheme) ? saved.colorTheme : DEFAULT_SETTINGS.colorTheme,
   };
 }
 

@@ -6,10 +6,10 @@ test("saved settings are checked field by field", () => {
   assert.deepEqual(parseSettings(null), DEFAULT_SETTINGS);
   assert.deepEqual(parseSettings("not json"), DEFAULT_SETTINGS);
   assert.deepEqual(
-    parseSettings('{"theme":"dark","fontFamily":"D2Coding","autoUpdate":false,"layout":"sidebar"}'),
-    { theme: "dark", fontFamily: "D2Coding", autoUpdate: false, layout: "sidebar" },
+    parseSettings('{"theme":"dark","fontFamily":"D2Coding","autoUpdate":false,"layout":"sidebar","colorTheme":"gruvbox"}'),
+    { theme: "dark", fontFamily: "D2Coding", autoUpdate: false, layout: "sidebar", colorTheme: "gruvbox" },
   );
-  const odd = parseSettings('{"theme":"purple","fontFamily":42,"autoUpdate":"yes","layout":"left"}');
+  const odd = parseSettings('{"theme":"purple","fontFamily":42,"autoUpdate":"yes","layout":"left","colorTheme":"neon"}');
   assert.deepEqual(odd, DEFAULT_SETTINGS, "unknown values fall back one by one");
   assert.equal(parseSettings(JSON.stringify({ fontFamily: "x".repeat(500) })).fontFamily.length, 200);
 });
@@ -18,6 +18,11 @@ test("workspaces and tabs are at the top unless settings pick the sidebar", () =
   assert.equal(DEFAULT_SETTINGS.layout, "top");
   assert.equal(parseSettings('{"theme":"dark"}').layout, "top", "settings saved before the choice");
   assert.equal(parseSettings('{"layout":"top"}').layout, "top");
+});
+
+test("terminals use the default colors unless settings pick a theme", () => {
+  assert.equal(DEFAULT_SETTINGS.colorTheme, "default");
+  assert.equal(parseSettings('{"theme":"dark"}').colorTheme, "default", "settings saved before themes");
 });
 
 test("font names are split on commas and unquoted", () => {
