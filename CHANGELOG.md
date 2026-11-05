@@ -6,6 +6,7 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ### Added
 
+- Phone-wide windows (640px or less): the activity bar moves to the bottom, the sidebar opens as a drawer, and panes stack top to bottom. The split layout is kept for wider windows.
 - Settings ▸ Appearance ▸ Color theme: Default, One, GitHub, Solarized, Gruvbox, Catppuccin, Tokyo Night, Rosé Pine, Everforest, or Kanagawa. It colors the window and the terminals, and each theme has a light and a dark set that follow Settings ▸ Appearance ▸ Mode.
 - Settings ▸ General ▸ Workspaces and tabs picks the layout. Top: a workspace menu at the left of the tab bar, and no sidebar. Sidebar: the workspace menu at the top of the sidebar, the tabs below it, and no tab bar. Each workspace has a color and an icon, picked in the menu and saved with the layout; the menu button shows the ones of the workspace in view. A new workspace takes a color that no other workspace has, and the tabs show the color of the workspace in view.
 - Remote windows: open a Linux server's westerm in its own window, from the activity bar or the command palette (a host from `~/.ssh/config`, or `user@host`). The window shows the server's tabs, workspaces, and shells, saved on the server. Closing the window or losing the network ends nothing, and another computer sees the same tabs. The header shows `QUIC` or `SSH tunnel`; a "Reconnecting…" banner and a "Try again" button cover link loss and permanent failures. In the macOS app, each server gets an app window that remembers its size and position.

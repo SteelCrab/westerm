@@ -51,6 +51,15 @@ Each tab arranges its panes as a **split tree**, the way tiling window managers 
 - **Resizing**: dragging a divider changes only the two panes on either side of it. Arrow keys nudge it; a double-click or Enter makes that split even again.
 - Layouts and proportions are saved per tab.
 
+## Small screens
+
+In a window 640px wide or less, such as a phone:
+
+- The activity bar is at the bottom, so the terminals get the full width.
+- In the sidebar layout, the sidebar opens as a drawer over the panes, from the button at the right end of the bottom bar. It starts closed. A pick in it, a tap outside it, or Escape closes it.
+- The panes of a tab stack top to bottom, each the same height. The split layout is kept: a wider window shows it again.
+- Pane headers show the name and the status dot only.
+
 ## Switching terminals from the keyboard
 
 The same keys work in the browser and in the macOS app. Browsers keep ⌘1–9 and similar keys for their own tabs, so the browser keys use Ctrl+Shift. The macOS app also takes the terminal-app keys used by iTerm and Ghostty.
