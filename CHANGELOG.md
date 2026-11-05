@@ -4,6 +4,8 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-05
+
 ### Added
 
 - A disk image for the macOS app, `westerm-macos-app.dmg`. Open it and drag westerm onto the Applications folder to install. `westerm-macos-app.zip` stays for the app's updater.
@@ -53,5 +55,6 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/SteelCrab/westerm/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SteelCrab/westerm/releases/tag/v0.1.0
