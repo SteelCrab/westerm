@@ -10,7 +10,7 @@ import { RemoteBanner, RemoteConnect, stageText } from "./components/RemoteConne
 import { SessionList } from "./components/SessionList.tsx";
 import { isCompact, SidebarResizer } from "./components/SidebarResizer.tsx";
 import { TabBar } from "./components/TabBar.tsx";
-import { WorkspaceMenu } from "./components/WorkspaceMenu.tsx";
+import { tabColors, WorkspaceMenu } from "./components/WorkspaceMenu.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { UpdateButton, updateShown } from "./components/UpdateButton.tsx";
 import { useI18n } from "./i18n/index.tsx";
@@ -368,7 +368,10 @@ export function App() {
   return (
     <div
       className={`app${sidebarShown ? "" : " sidebar-collapsed"}`}
-      style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+      // The tabs on screen show the color of the workspace in view.
+      style={
+        { "--sidebar-width": `${sidebarWidth}px`, ...tabColors(activeWorkspace(state).color) } as React.CSSProperties
+      }
     >
       <ActivityBar
         sidebarOpen={sidebarOpen}
