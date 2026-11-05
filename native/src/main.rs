@@ -17,7 +17,12 @@ mod cwd;
 mod host;
 mod i18n;
 mod ipc;
+// Windows leaves out the server side of remote westerm (the gate and
+// remote-setup run on Unix only), so the code only it uses is unused there.
+// Unix builds still report unused code.
+#[cfg_attr(not(unix), allow(dead_code))]
 mod protocol;
+#[cfg_attr(not(unix), allow(dead_code))]
 mod remote;
 mod screen;
 mod server;
@@ -25,6 +30,7 @@ mod spawn;
 #[allow(clippy::redundant_closure)] // A host file, as above.
 mod state_dir;
 mod time;
+#[cfg_attr(not(unix), allow(dead_code))]
 mod update;
 
 const USAGE: &str = "usage: westerm [serve] [--port N] [--allow-origin URL]...\n       westerm stop\n       westerm update [--check]\n       westerm host\n       westerm gate\n       westerm remote-dashboard\n       westerm remote-setup [--replace-host]\n       westerm --version";
