@@ -143,7 +143,7 @@ Remove private data first: host names, paths, and screen contents.
   - `scope`: the part the change touches, such as `remote`, `host`, `ui`, `i18n`, or `macos`.
   - `subject`: imperative mood, starting in lowercase, with no period at the end.
   - Examples: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
-- Fill in the template. Link the issue with `Closes #123`, so the issue closes on merge.
+- Fill in the template: a summary of at most 5 bullets, one line each, and the commands a reviewer runs to test. Link the issue with `Closes #123`, so the issue closes on merge.
 - Open a draft while you still work on it. Mark it ready when the checks in [Before you open a pull request](#before-you-open-a-pull-request) pass.
 - CI must pass on macOS, Linux, and Windows.
 - Answer review comments with new commits. Do not force-push during a review, so reviewers can see what changed.
@@ -164,6 +164,7 @@ All three must pass. Then check:
 - [ ] UI text is in `src/i18n/messages.ts`, in all four languages.
 - [ ] For a UI change, the pull request has a screenshot. Try light and dark themes.
 - [ ] Docs match the change: `docs/` for behavior, the READMEs for run or develop steps.
+- [ ] `CHANGELOG.md` has a line under `[Unreleased]` for a change that users notice.
 
 ## Rules
 

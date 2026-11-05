@@ -143,7 +143,7 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
   - `scope`: 바뀌는 부분. 예: `remote`, `host`, `ui`, `i18n`, `macos`.
   - `subject`: 명령형 영어, 소문자로 시작, 끝에 마침표 없음.
   - 예: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
-- 템플릿을 채웁니다. `Closes #123`으로 이슈를 연결하면 병합할 때 이슈가 닫힙니다.
+- 템플릿을 채웁니다: 한 줄짜리 항목 5개 이하의 요약, 그리고 리뷰어가 테스트할 때 실행할 명령입니다. `Closes #123`으로 이슈를 연결하면 병합할 때 이슈가 닫힙니다.
 - 작업 중에는 draft로 엽니다. [PR 전 확인](#pr-전-확인)을 통과하면 ready로 바꿉니다.
 - CI는 macOS, Linux, Windows에서 모두 통과해야 합니다.
 - 리뷰 의견에는 새 커밋으로 답합니다. 리뷰 중에는 force-push하지 않습니다. 리뷰어가 바뀐 부분을 볼 수 있어야 합니다.
@@ -164,6 +164,7 @@ npm run build        # 릴리스 빌드가 성공해야 합니다
 - [ ] 화면 문구는 `src/i18n/messages.ts`에 4개 언어로 모두 있습니다.
 - [ ] 화면을 바꿨으면 PR에 스크린샷을 넣습니다. 밝은 테마와 어두운 테마를 모두 확인합니다.
 - [ ] 문서가 변경과 맞습니다. 동작은 `docs/`, 실행·개발 방법은 README입니다.
+- [ ] 사용자가 알아챌 변경이면 `CHANGELOG.md`의 `[Unreleased]` 아래에 한 줄이 있습니다.
 
 ## 규칙
 
