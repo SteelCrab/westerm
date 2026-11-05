@@ -133,11 +133,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      # Not assets/: the checkout has that folder (the README images), and
-      # everything in this folder becomes a release asset.
       - uses: actions/download-artifact@v4
         with:
-          path: release-files
           merge-multiple: true
       - name: Release notes from CHANGELOG.md
         run: sh scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > notes.md
@@ -145,7 +142,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release create "$GITHUB_REF_NAME" release-files/*
+          gh release create "$GITHUB_REF_NAME" westerm-*
           --repo "$GITHUB_REPOSITORY"
           --title "westerm $GITHUB_REF_NAME"
           --notes-file notes.md
