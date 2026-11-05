@@ -3,7 +3,8 @@
 //! Listens on 127.0.0.1 only.
 
 mod config;
-mod host_client;
+pub(crate) mod host_client;
+mod remote;
 mod updates;
 
 use std::collections::HashMap;
@@ -15,17 +16,25 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::http::{header, HeaderMap, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
+use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use rust_embed::RustEmbed;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::Message as HostMessage;
+use tokio_tungstenite::WebSocketStream;
 
 use crate::host::MAX_MESSAGE;
-use crate::protocol::AttachRequest;
+use crate::protocol::{
+    is_id, normalize_ssh_target, AttachRequest, ClientMessage, RemoteStage, ServerMessage, SessionKind, CLOSE_REMOTE_FAILED,
+};
 use crate::state_dir::{home_dir, state_dir};
 use host_client::HostClient;
+use remote::RemoteManager;
 
 #[derive(RustEmbed)]
 #[folder = "../dist/"]
@@ -42,6 +51,8 @@ struct AppState {
     origins: Vec<String>,
     state_dir: PathBuf,
     updates: updates::UpdateCheck,
+    /// Connections to remote westerm hosts, one per server.
+    remote: RemoteManager,
 }
 
 type Shared = Arc<AppState>;
@@ -57,6 +68,11 @@ pub async fn stop_host() -> std::io::Result<()> {
         println!("westerm: the PTY host saved its sessions and stopped");
     } else {
         println!("westerm: no PTY host is running");
+    }
+    // On a server, a remote dashboard's gate goes with its host.
+    #[cfg(unix)]
+    if crate::remote::gate::stop_running(&state_dir()?).await? {
+        println!("westerm: the remote gate stopped");
     }
     Ok(())
 }
@@ -76,6 +92,7 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         origins,
         state_dir: state_dir()?,
         updates: updates::UpdateCheck::default(),
+        remote: RemoteManager::new(state_dir()?),
     });
     // Start the PTY host now so the first pane does not wait for it.
     if let Err(error) = state.host.ensure().await {
@@ -87,6 +104,9 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         .route("/api/update", get(updates::get_update).post(updates::post_update))
         .route("/api/workspace", get(get_workspace).put(put_workspace))
         .route("/api/ssh-hosts", get(ssh_hosts))
+        .route("/api/remote/decision", post(remote_decision))
+        .route("/api/remote/close", post(remote_close))
+        .route("/api/remote/update-host", post(remote_update_host))
         .route("/ws/session", get(session))
         .fallback(asset)
         .with_state(state);
@@ -158,6 +178,70 @@ async fn put_workspace(State(state): State<Shared>, headers: HeaderMap, body: By
     }
 }
 
+/// A JSON body from the dashboard's own page; None for anything else.
+fn json_body<T: DeserializeOwned>(state: &AppState, headers: &HeaderMap, body: &Bytes) -> Option<T> {
+    let json = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/json"));
+    if !json || !origin_allowed(state, headers) {
+        return None;
+    }
+    serde_json::from_slice(body).ok()
+}
+
+#[derive(Deserialize)]
+struct DecisionBody {
+    target: String,
+    replace: bool,
+}
+
+#[derive(Deserialize)]
+struct CloseBody {
+    target: String,
+    session: String,
+}
+
+#[derive(Deserialize)]
+struct TargetBody {
+    target: String,
+}
+
+/// The answer to "replace the server's older host?". 409 when nothing asks.
+async fn remote_decision(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> StatusCode {
+    let Some(DecisionBody { target, replace }) = json_body(&state, &headers, &body) else {
+        return StatusCode::BAD_REQUEST;
+    };
+    let Some(target) = normalize_ssh_target(&target) else { return StatusCode::BAD_REQUEST };
+    if state.remote.decide(&target, replace) { StatusCode::NO_CONTENT } else { StatusCode::CONFLICT }
+}
+
+/// A remote pane closed while its socket could not say so.
+async fn remote_close(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> StatusCode {
+    let Some(CloseBody { target, session }) = json_body(&state, &headers, &body) else {
+        return StatusCode::BAD_REQUEST;
+    };
+    let Some(target) = normalize_ssh_target(&target).filter(|_| is_id(&session)) else {
+        return StatusCode::BAD_REQUEST;
+    };
+    state.remote.forget_session(&target, &session).await;
+    StatusCode::NO_CONTENT
+}
+
+/// Replaces a server's older host now (after the user kept it once).
+async fn remote_update_host(State(state): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
+    let Some(TargetBody { target }) = json_body(&state, &headers, &body) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let Some(target) = normalize_ssh_target(&target) else { return StatusCode::BAD_REQUEST.into_response() };
+    match state.remote.update_host(&target).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(failure) => {
+            (StatusCode::BAD_GATEWAY, Json(serde_json::json!({ "reason": failure.reason, "detail": failure.detail }))).into_response()
+        }
+    }
+}
+
 async fn session(
     State(state): State<Shared>,
     headers: HeaderMap,
@@ -167,6 +251,9 @@ async fn session(
     let Some(request) = AttachRequest::from_query(&query).filter(|_| origin_allowed(&state, &headers)) else {
         return StatusCode::FORBIDDEN.into_response();
     };
+    if request.kind == SessionKind::Remote {
+        return ws.max_message_size(MAX_MESSAGE).on_upgrade(move |browser| remote_relay(browser, request, state));
+    }
     let dir = match state.host.ensure().await {
         Ok(dir) => dir,
         Err(error) => {
@@ -200,13 +287,133 @@ async fn relay(browser: WebSocket, dir: PathBuf, query: String, state: Shared) {
         let _ = browser.send(Message::Close(Some(CloseFrame { code: 1011, reason: "pty host unavailable".into() }))).await;
         return;
     };
+    let (to_browser, from_browser) = browser.split();
+    pipe(to_browser, from_browser, host).await;
+}
 
+/// How long a remote host may take to accept a session on a fresh stream.
+/// A silent one (a dead gate, a lost network) gets the link replaced.
+const REMOTE_HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn stage_message(stage: &RemoteStage) -> Message {
+    Message::Text(ServerMessage::Remote(stage.clone()).to_json().into())
+}
+
+fn close_message(code: u16, reason: &str) -> Message {
+    Message::Close(Some(CloseFrame { code, reason: reason.into() }))
+}
+
+/// A remote pane: shows the stages while the dashboard reaches the server,
+/// then pipes the pane to a shell on the server's own host. A close from
+/// the pane before that ends the session there later (pending close).
+async fn remote_relay(browser: WebSocket, request: AttachRequest, state: Shared) {
+    let Some(target) = request.target.clone() else { return };
     let (mut to_browser, mut from_browser) = browser.split();
+    let mut stages = state.remote.stages(&target);
+    let mut shown: Option<RemoteStage> = None;
+    // The pane sends its fitted size first; the remote host gets the last one.
+    let mut size: Option<String> = None;
+    let opening = state.remote.open_stream(&target);
+    tokio::pin!(opening);
+    let opened = loop {
+        tokio::select! {
+            result = &mut opening => break result,
+            Ok(()) = stages.changed() => {
+                let stage = stages.borrow_and_update().clone();
+                if let Some(stage) = stage.filter(|stage| shown.as_ref() != Some(stage)) {
+                    if to_browser.send(stage_message(&stage)).await.is_err() {
+                        return;
+                    }
+                    shown = Some(stage);
+                }
+            }
+            message = from_browser.next() => match message {
+                Some(Ok(Message::Text(text))) => match ClientMessage::parse(&text) {
+                    Some(ClientMessage::Close) => {
+                        state.remote.forget_session(&target, &request.id).await;
+                        let _ = to_browser.send(close_message(1000, "closed")).await;
+                        return;
+                    }
+                    Some(ClientMessage::Resize { .. }) => size = Some(text.to_string()),
+                    _ => {}
+                },
+                Some(Ok(Message::Close(_)) | Err(_)) | None => return,
+                Some(Ok(_)) => {}
+            },
+        }
+    };
+    let latest = stages.borrow().clone();
+    if let Some(stage) = latest.filter(|stage| shown.as_ref() != Some(stage)) {
+        let _ = to_browser.send(stage_message(&stage)).await;
+    }
+
+    let opened = match opened {
+        Ok(opened) => opened,
+        Err(failure) => {
+            let stage = RemoteStage::Failed { reason: failure.reason, detail: failure.detail };
+            let _ = to_browser.send(stage_message(&stage)).await;
+            let code = if failure.reason.is_permanent() { CLOSE_REMOTE_FAILED } else { 1011 };
+            let _ = to_browser.send(close_message(code, "remote westerm failed")).await;
+            return;
+        }
+    };
+    let url = format!("ws://host/session?{}", request.for_remote_host().to_query());
+    let config = WebSocketConfig::default().max_message_size(None).max_frame_size(None);
+    let handshake =
+        tokio::time::timeout(REMOTE_HANDSHAKE_TIMEOUT, tokio_tungstenite::client_async_with_config(url, opened.stream, Some(config)));
+    let Ok(Ok((mut host, _))) = handshake.await else {
+        let (state, target) = (state.clone(), target.clone());
+        tokio::spawn(async move { state.remote.invalidate(&target, opened.link).await });
+        let _ = to_browser.send(close_message(1011, "remote host unavailable")).await;
+        return;
+    };
+    if let Some(size) = size {
+        if host.send(HostMessage::text(size)).await.is_err() {
+            return;
+        }
+    }
+    let end = pipe(to_browser, from_browser, host).await;
+    // The pane closed its session but the server never answered: the link
+    // may have gone silent with the close in it. End the session at the
+    // next connection, and do not reuse this link.
+    if end.session_closed && !end.host_answered {
+        state.remote.remember_close(&target, &request.id);
+        let (state, target) = (state.clone(), target.clone());
+        tokio::spawn(async move { state.remote.invalidate(&target, opened.link).await });
+    }
+}
+
+/// How long the host may take to answer a pane's close before a remote
+/// pane treats the close as lost.
+const CLOSE_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// How a pipe ended. `session_closed`: the pane sent "close" (the user
+/// closed it) before leaving. `host_answered`: the host then answered
+/// within CLOSE_ANSWER_TIMEOUT, so the close arrived.
+struct PipeEnd {
+    session_closed: bool,
+    host_answered: bool,
+}
+
+/// Pipes a browser pane to its host session, frame for frame. A closed
+/// browser only detaches: the host keeps text sessions running.
+async fn pipe<S>(
+    mut to_browser: SplitSink<WebSocket, Message>,
+    mut from_browser: SplitStream<WebSocket>,
+    host: WebSocketStream<S>,
+) -> PipeEnd
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let (mut to_host, mut from_host) = host.split();
     let upstream = async {
+        let mut session_closed = false;
         while let Some(Ok(message)) = from_browser.next().await {
             let forwarded = match message {
-                Message::Text(text) => HostMessage::text(text.as_str()),
+                Message::Text(text) => {
+                    session_closed |= matches!(ClientMessage::parse(&text), Some(ClientMessage::Close));
+                    HostMessage::text(text.as_str())
+                }
                 Message::Binary(bytes) => HostMessage::Binary(bytes),
                 Message::Close(_) => break,
                 _ => continue,
@@ -216,6 +423,7 @@ async fn relay(browser: WebSocket, dir: PathBuf, query: String, state: Shared) {
             }
         }
         let _ = to_host.close().await;
+        session_closed
     };
     let downstream = async {
         while let Some(Ok(message)) = from_host.next().await {
@@ -235,10 +443,14 @@ async fn relay(browser: WebSocket, dir: PathBuf, query: String, state: Shared) {
             }
         }
     };
-    tokio::select! {
-        () = upstream => {}
-        () = downstream => {}
-    }
+    tokio::pin!(upstream, downstream);
+    let session_closed = tokio::select! {
+        closed = &mut upstream => closed,
+        () = &mut downstream => return PipeEnd { session_closed: false, host_answered: true },
+    };
+    // The host answers a close by ending the session and its socket.
+    let host_answered = !session_closed || tokio::time::timeout(CLOSE_ANSWER_TIMEOUT, &mut downstream).await.is_ok();
+    PipeEnd { session_closed, host_answered }
 }
 
 /// The web UI, with index.html for unknown paths (a single-page app).

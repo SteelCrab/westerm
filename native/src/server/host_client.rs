@@ -58,13 +58,32 @@ async fn request(dir: &Path, method: &str, path: &str) -> Option<(u16, String)> 
     tokio::time::timeout(Duration::from_millis(1500), exchange).await.ok().flatten()
 }
 
-async fn running_build(dir: &Path) -> Option<String> {
+/// What a running host reports at /health.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+pub(crate) struct Health {
+    pub build: String,
+    /// 0 for hosts from before the protocol number existed.
+    #[serde(default)]
+    pub protocol: u32,
+    #[serde(default)]
+    pub sessions: usize,
+}
+
+pub(crate) fn parse_health(body: &str) -> Option<Health> {
+    serde_json::from_str(body).ok()
+}
+
+/// The host of the state directory `dir`, when one answers.
+pub(crate) async fn health(dir: &Path) -> Option<Health> {
     let (status, body) = request(dir, "GET", "/health").await?;
     if status != 200 {
         return None;
     }
-    let value: serde_json::Value = serde_json::from_str(&body).ok()?;
-    value.get("build")?.as_str().map(str::to_owned)
+    parse_health(&body)
+}
+
+async fn running_build(dir: &Path) -> Option<String> {
+    health(dir).await.map(|health| health.build)
 }
 
 impl HostClient {
@@ -145,7 +164,7 @@ pub async fn stop_running() -> std::io::Result<bool> {
 }
 
 /// Asks the host to save and stop, and waits up to 5 s for its endpoint to go.
-async fn stop_and_wait(dir: &Path) {
+pub(crate) async fn stop_and_wait(dir: &Path) {
     let _ = request(dir, "POST", "/shutdown").await;
     for _ in 0..50 {
         if ipc::is_gone(dir) {
@@ -165,7 +184,13 @@ async fn start() -> Result<PathBuf, String> {
         }
         None => {}
     }
+    start_host(&dir).await?;
+    Ok(dir)
+}
 
+/// Starts this executable's host for the state directory `dir` (this
+/// process's own, see state_dir()) and waits until it answers.
+pub(crate) async fn start_host(dir: &Path) -> Result<(), String> {
     let log = private_file()
         .create(true)
         .append(true)
@@ -181,9 +206,9 @@ async fn start() -> Result<PathBuf, String> {
     let child = spawn_detached(&mut command).map_err(|e| format!("could not start the PTY host: {e}"))?;
     for _ in 0..100 {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        if running_build(&dir).await.as_deref() == Some(HOST_BUILD) {
+        if running_build(dir).await.as_deref() == Some(HOST_BUILD) {
             println!("> pty host {HOST_BUILD} started (pid {})", child.id());
-            return Ok(dir);
+            return Ok(());
         }
     }
     Err(format!("the PTY host did not start; see {}", dir.join("host.log").display()))
@@ -192,7 +217,7 @@ async fn start() -> Result<PathBuf, String> {
 /// Starts the host apart from the dashboard: closing the terminal that runs
 /// the dashboard must not end the host and its shells.
 #[cfg(unix)]
-fn spawn_detached(command: &mut std::process::Command) -> std::io::Result<std::process::Child> {
+pub(crate) fn spawn_detached(command: &mut std::process::Command) -> std::io::Result<std::process::Child> {
     use std::os::unix::process::CommandExt;
     // SAFETY: setsid is async-signal-safe and touches no memory of the parent.
     unsafe {
@@ -208,7 +233,7 @@ fn spawn_detached(command: &mut std::process::Command) -> std::io::Result<std::p
 /// leaves the parent's job when the job allows that, so a terminal that ends
 /// its job on close does not take the host along.
 #[cfg(windows)]
-fn spawn_detached(command: &mut std::process::Command) -> std::io::Result<std::process::Child> {
+pub(crate) fn spawn_detached(command: &mut std::process::Command) -> std::io::Result<std::process::Child> {
     use std::os::windows::process::CommandExt;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
@@ -226,7 +251,15 @@ fn spawn_detached(command: &mut std::process::Command) -> std::io::Result<std::p
 
 #[cfg(test)]
 mod tests {
-    use super::parse_response;
+    use super::{parse_health, parse_response};
+
+    #[test]
+    fn reads_health_with_and_without_protocol() {
+        let h = parse_health(r#"{"build":"rs-1","pid":3,"sessions":2,"protocol":1}"#).unwrap();
+        assert_eq!((h.build.as_str(), h.protocol, h.sessions), ("rs-1", 1, 2));
+        assert_eq!(parse_health(r#"{"build":"rs-0","pid":3,"sessions":0}"#).unwrap().protocol, 0);
+        assert!(parse_health("x").is_none());
+    }
 
     #[test]
     fn reads_plain_and_chunked_responses() {

@@ -60,6 +60,24 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 - `npm run dev` always forwards to :4317. Stop your everyday dashboard first (Ctrl+C). Your shells stay alive in the host.
 - Stop a test host with `westerm stop`, run with the same `WESTERM_STATE_DIR`. Then delete the folder.
 
+### Try remote westerm with a development build
+
+A source build has no release with its code, so remote westerm installs a Linux build you make. Build both from the same source: westerm compares their version lines.
+
+```bash
+brew install zig && cargo install cargo-zigbuild   # once (zig links the Linux build)
+npx vite build
+cargo build --release --manifest-path native/Cargo.toml
+cargo zigbuild --release --target x86_64-unknown-linux-musl --manifest-path native/Cargo.toml
+mkdir -p /tmp/wrb
+cp native/target/x86_64-unknown-linux-musl/release/westerm /tmp/wrb/westerm-x86_64-unknown-linux-musl
+WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/target/release/westerm --port 4318
+```
+
+- For an Arm server, use `aarch64-unknown-linux-musl`.
+- `WESTERM_REMOTE_TRANSPORT=tunnel` tries the SSH tunnel path.
+- `native/tests/remote.rs` runs the whole path against a fake `ssh`, without a server.
+
 ## Project layout
 
 | Path | Contents |
@@ -73,6 +91,8 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 | `native/src/protocol.rs` | Message format and validation |
 | `native/src/i18n.rs` | Text the host writes into terminals, in all languages |
 | `native/src/ipc.rs` | Dashboard ↔ host channel: Unix socket, or a named pipe on Windows |
+| `native/src/remote/` | Remote westerm on the server: `westerm gate`, `westerm remote-setup`, certificates, QUIC settings |
+| `native/src/server/remote/` | Remote westerm in the dashboard: ssh setup, install, QUIC and tunnel links |
 | `tests/` | UI tests (`node:test`) |
 | `native/tests/` | Rust integration tests against the real executable |
 | `macos/` | macOS app: Swift window (`app/main.swift`), icon, `build-app.sh` |
@@ -111,7 +131,11 @@ Remove private data first: host names, paths, and screen contents.
 
 - Open an issue first for anything larger than a small fix, and agree on the direction.
 - Branch from `main`. Keep one topic per pull request.
-- Write the title like a commit subject (see [Commits](#commits)): imperative mood, about 72 characters or less.
+- Write the title as `<type>(<scope>): <subject>`, about 72 characters or less in all.
+  - `type`: `feat` (new behavior), `fix` (a bug fix), `docs`, `refactor`, `test`, or `chore` (build, CI, releases).
+  - `scope`: the part the change touches, such as `remote`, `host`, `ui`, `i18n`, or `macos`.
+  - `subject`: imperative mood, starting in lowercase, with no period at the end.
+  - Examples: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
 - Fill in the template. Link the issue with `Closes #123`, so the issue closes on merge.
 - Open a draft while you still work on it. Mark it ready when the checks in [Before you open a pull request](#before-you-open-a-pull-request) pass.
 - CI must pass on macOS, Linux, and Windows.
@@ -204,6 +228,7 @@ There is no formatter configuration yet. Match the code around your change.
 
 - Subject in the imperative mood, about 72 characters or less: `Add Japanese restore notice`, not `added ...`.
 - The body explains why the change is needed, when it is not obvious.
+- Pull request titles have their own format: see [Pull requests](#pull-requests).
 
 ## Releasing
 

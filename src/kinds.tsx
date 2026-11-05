@@ -1,4 +1,4 @@
-import { CodeXml, Globe, Server, SquareTerminal, type LucideIcon } from "lucide-react";
+import { CodeXml, Globe, Server, ServerCog, SquareTerminal, type LucideIcon } from "lucide-react";
 import type { SessionKind } from "../shared/protocol.ts";
 
 /** Labels and hints are UI text: see `kinds` in src/i18n/messages.ts. */
@@ -27,10 +27,14 @@ export const KINDS: Record<SessionKind, KindMeta> = {
     icon: Server,
     imageLimit: 32 * MiB,
   },
+  remote: {
+    icon: ServerCog,
+    imageLimit: 32 * MiB,
+  },
 };
 
 /** Launcher order in the activity bar. */
-export const LAUNCHERS: SessionKind[] = ["shell", "browser", "editor", "ssh"];
+export const LAUNCHERS: SessionKind[] = ["shell", "browser", "editor", "ssh", "remote"];
 
 export function KindIcon({ kind, size }: { kind: SessionKind; size: number }) {
   const Icon = KINDS[kind].icon;

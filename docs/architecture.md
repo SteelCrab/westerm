@@ -15,6 +15,19 @@ PTY host           westerm host       host.sock / host.pipe in the state folder
 shell, ssh, terminal-browser, tode
 ```
 
+Remote westerm panes take another path from the dashboard server:
+
+```
+Dashboard server
+   │  setup:  ssh <host> 'westerm remote-setup'  (install, start, exchange certificates)
+   │  panes:  QUIC, UDP 4317 (or an ssh -L tunnel when UDP is blocked)
+   ▼
+Remote gate        westerm gate       on the Linux server; one stream per pane
+   │  the same HTTP + WebSocket as above, over the server's host.sock
+   ▼
+PTY host on the server ─ shells
+```
+
 | Path | Contents |
 |---|---|
 | `native/src/server/` | Dashboard server (axum): serves the UI and APIs, relays each browser WebSocket to the host, installs updates (`updates.rs`) |
@@ -24,6 +37,8 @@ shell, ssh, terminal-browser, tode
 | `native/src/spawn.rs` | What a session runs: a login shell on macOS and Linux; PowerShell and argument lists on Windows |
 | `native/src/update.rs` | `westerm update`: finds, downloads, checks, and installs releases |
 | `native/src/i18n.rs` | Text the host writes into terminals (restore notice, errors) in four languages |
+| `native/src/remote/` | Remote westerm parts both ends share: certificates, the authorized client list, QUIC settings; and the server side: `westerm gate` (`gate.rs`) and `westerm remote-setup` (`setup.rs`) |
+| `native/src/server/remote/` | The dashboard's side of remote westerm: ssh commands, the Linux build to install, saved connections, QUIC and tunnel links, and the per-server connection manager |
 | `macos/` | The macOS app: a WKWebView window (Swift), its updater, icon, and build script. It uses a westerm on port 4317 or starts its own. |
 | `src/` | UI: React + wterm (Ghostty WASM) |
 | `src/i18n/` | UI text in four languages, and language detection |
@@ -43,7 +58,14 @@ shell, ssh, terminal-browser, tode
   - the dashboard checking that the pipe's server process id matches `host.pipe`.
 - Updates check each download against the SHA-256 sum published with it, and run the new executable once to confirm its version before it replaces the old one.
 - The layout file is checked by the server only for size (256 KiB) and basic shape; the UI validates the rest when it loads it.
-- **Known gap**: any program on the same computer can reach port 4317 and send the dashboard's own Origin; the Origin check stops web pages, not local programs. Access tokens are planned. Until then, do not run westerm on a computer shared with other users.
+- **Remote westerm** opens a UDP port on the server: the gate. It is the only port westerm opens to a network.
+  - TLS 1.3 with a certificate on both ends. Each side pins the other's SHA-256 fingerprint, exchanged over SSH; there is no certificate authority.
+  - The gate accepts only clients listed in `remote/authorized_clients` in the server's state folder. Only `westerm remote-setup`, which runs over SSH, adds lines, so only someone who can log in to the server can connect.
+  - QUIC Retry checks a client's address before the gate does any work for it.
+  - On each stream the gate passes only a WebSocket upgrade to `/session`, and forwards anything after it only once the host has accepted it. `/shutdown` and the host's other routes stay local.
+  - Remote commands are fixed strings that mean the same in sh, bash, zsh, and fish. The destination is validated and comes after `--`; data (a fingerprint, the executable) goes on stdin.
+  - The executable sent to a server is the release archive of this version, checked against its published SHA-256 sum. A source build sends a file the developer names (`WESTERM_REMOTE_BINARY_DIR`).
+- **Known gap**: any program on the same computer can reach port 4317 and send the dashboard's own Origin; the Origin check stops web pages, not local programs. Such a program can also open shells on the remote westerm servers this dashboard uses. Access tokens are planned. Until then, do not run westerm on a computer shared with other users.
 
 ## wterm and terminal-browser patches
 
@@ -80,3 +102,8 @@ The Rust integration tests (`native/tests/integration.rs`) start the real execut
 - The dashboard accepts WebSockets only from its own origin.
 - A second host refuses to start while one is running.
 - Processes a test starts are cleaned up even when the test fails.
+
+`native/tests/remote.rs` (macOS and Linux) covers remote westerm with the real executable:
+
+- `remote-setup` starts a host and a gate; a QUIC client reaches a shell through the gate and reattaches to it. Unknown clients, `/shutdown`, and a request smuggled behind a refused upgrade do not get through.
+- Through a dashboard, with a fake `ssh` that runs the remote commands on this machine: westerm is installed once even when two panes open at once, a pane closed while connecting ends its shell on the "server", and a killed gate comes back with the same shell.

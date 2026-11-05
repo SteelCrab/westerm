@@ -60,6 +60,24 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 - `npm run dev`는 항상 :4317로 전달합니다. 평소 쓰는 대시보드를 먼저 끕니다(Ctrl+C). 셸은 호스트 안에 그대로 남습니다.
 - 시험용 호스트는 같은 `WESTERM_STATE_DIR`로 `westerm stop`을 실행해 끄고, 폴더를 지웁니다.
 
+### 개발 빌드로 원격 westerm 시험하기
+
+소스 빌드의 코드는 릴리스에 없습니다. 그래서 원격 westerm은 직접 만든 Linux 빌드를 설치합니다. 두 빌드는 같은 소스에서 만듭니다. westerm이 양쪽의 버전 줄을 비교하기 때문입니다.
+
+```bash
+brew install zig && cargo install cargo-zigbuild   # 한 번만 (zig가 Linux 빌드를 링크합니다)
+npx vite build
+cargo build --release --manifest-path native/Cargo.toml
+cargo zigbuild --release --target x86_64-unknown-linux-musl --manifest-path native/Cargo.toml
+mkdir -p /tmp/wrb
+cp native/target/x86_64-unknown-linux-musl/release/westerm /tmp/wrb/westerm-x86_64-unknown-linux-musl
+WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/target/release/westerm --port 4318
+```
+
+- Arm 서버에는 `aarch64-unknown-linux-musl`을 씁니다.
+- `WESTERM_REMOTE_TRANSPORT=tunnel`로 SSH 터널 경로를 시험합니다.
+- `native/tests/remote.rs`는 가짜 `ssh`로 전체 경로를 시험합니다. 서버가 필요 없습니다.
+
 ## 프로젝트 구조
 
 | 경로 | 내용 |
@@ -73,6 +91,8 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 | `native/src/protocol.rs` | 메시지 형식과 검증 |
 | `native/src/i18n.rs` | 호스트가 터미널에 쓰는 문구의 모든 언어 |
 | `native/src/ipc.rs` | 대시보드 ↔ 호스트 통로: Unix 소켓, Windows는 named pipe |
+| `native/src/remote/` | 서버 쪽 원격 westerm: `westerm gate`, `westerm remote-setup`, 인증서, QUIC 설정 |
+| `native/src/server/remote/` | 대시보드 쪽 원격 westerm: SSH 준비, 설치, QUIC과 터널 연결 |
 | `tests/` | 화면 테스트(`node:test`) |
 | `native/tests/` | 실제 실행 파일로 돌리는 Rust 통합 테스트 |
 | `macos/` | macOS 앱: Swift 창(`app/main.swift`), 아이콘, `build-app.sh` |
@@ -111,7 +131,11 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 
 - 작은 수정이 아니면 먼저 이슈를 열고 방향을 합의합니다.
 - `main`에서 브랜치를 만듭니다. PR 하나에는 주제 하나만 담습니다.
-- 제목은 커밋 제목처럼 씁니다([커밋](#커밋) 참고): 명령형 영어, 약 72자 이하.
+- 제목은 `<type>(<scope>): <subject>` 형식으로, 전체 약 72자 이하로 씁니다.
+  - `type`: `feat`(새 기능), `fix`(버그 수정), `docs`, `refactor`, `test`, `chore`(빌드, CI, 릴리스).
+  - `scope`: 바뀌는 부분. 예: `remote`, `host`, `ui`, `i18n`, `macos`.
+  - `subject`: 명령형 영어, 소문자로 시작, 끝에 마침표 없음.
+  - 예: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
 - 템플릿을 채웁니다. `Closes #123`으로 이슈를 연결하면 병합할 때 이슈가 닫힙니다.
 - 작업 중에는 draft로 엽니다. [PR 전 확인](#pr-전-확인)을 통과하면 ready로 바꿉니다.
 - CI는 macOS, Linux, Windows에서 모두 통과해야 합니다.
@@ -204,6 +228,7 @@ westerm은 macOS, Linux, Windows에서 동작합니다. CI가 모든 PR을 세 �
 
 - 제목은 명령형 영어, 약 72자 이하: `added ...`가 아니라 `Add Japanese restore notice`.
 - 이유가 분명하지 않으면 본문에 왜 바꾸는지 씁니다.
+- PR 제목은 형식이 다릅니다: [PR](#pr)을 보세요.
 
 ## 릴리스
 

@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { GripVertical, Maximize2, Minimize2, RotateCcw, X } from "lucide-react";
+import { REMOTE_DECISION_PATH, type RemoteStage } from "../../shared/protocol.ts";
 import { carries, dropZone, PANE_MIME, startDrag, type DropZone } from "../dnd.ts";
 import { useI18n } from "../i18n/index.tsx";
+import type { Messages } from "../i18n/messages.ts";
 import { KindIcon } from "../kinds.tsx";
+import { postRemote } from "../remoteApi.ts";
 import type { ConnectionEvent } from "../terminal/connection.ts";
 import type { TerminalFont } from "../terminal/fonts.ts";
 import type { ColorScheme } from "../theme.ts";
@@ -37,6 +40,27 @@ function exitDetail(event: Extract<ConnectionEvent, { type: "exit" }>): string {
   return `exit ${event.code}`;
 }
 
+/** What a remote pane's status line says about its connection. */
+function remoteDetail(stage: RemoteStage | null, t: Messages): string | null {
+  switch (stage?.stage) {
+    case undefined:
+    case "confirm":
+      return null;
+    case "checking":
+      return t.remote.checking;
+    case "installing":
+      return t.remote.installing(stage.version);
+    case "starting":
+      return t.remote.starting;
+    case "connecting":
+      return t.remote.connecting;
+    case "connected":
+      return [t.remote.via[stage.via], stage.killOnLogout && t.remote.killOnLogout].filter(Boolean).join(" · ");
+    case "failed":
+      return t.remote.failed[stage.reason];
+  }
+}
+
 export function Pane(props: PaneProps) {
   const { session, font, focused, maximized, covered, gridStyle, focusNonce, renaming, onRename, dispatch } = props;
   const { dragging, onDragPane, scheme, away } = props;
@@ -58,6 +82,14 @@ export function Pane(props: PaneProps) {
       case "error":
         dispatch({ type: "status", id, status: "error", detail: event.message });
         break;
+      case "remote":
+        dispatch({ type: "remoteStage", id, stage: event.stage });
+        break;
+      case "remoteFailed": {
+        const reason = t.remote.failed[event.reason];
+        dispatch({ type: "status", id, status: "error", detail: event.detail ? `${reason} (${event.detail})` : reason });
+        break;
+      }
       case "closed":
         if (event.takenOver) {
           dispatch({ type: "status", id, status: "error", notice: "takenOver" });
@@ -80,7 +112,10 @@ export function Pane(props: PaneProps) {
 
   const ended = session.status === "exited" || session.status === "error";
   // "pid 7 · reconnected", "exit 1", or a server message, in the UI language.
-  const detail = [session.detail, session.notice && t.notice[session.notice]].filter(Boolean).join(" · ") || null;
+  // A remote pane adds its connection: a stage, or "QUIC" / "SSH tunnel".
+  const remote = session.kind === "remote" && !ended ? remoteDetail(session.remote, t) : null;
+  const detail = [session.detail, remote, session.notice && t.notice[session.notice]].filter(Boolean).join(" · ") || null;
+  const confirm = !ended && session.remote?.stage === "confirm" ? session.remote : null;
   const classes = [
     "pane",
     focused && "focused",
@@ -201,6 +236,27 @@ export function Pane(props: PaneProps) {
           onTitle={(title) => dispatch({ type: "title", id, title })}
           onFocus={() => !focused && dispatch({ type: "focus", id })}
         />
+        {confirm && session.target && (
+          <div className="pane-overlay" role="alertdialog" aria-label={label}>
+            <p>{t.remote.confirm(confirm.sessions)}</p>
+            <div className="pane-overlay-actions">
+              <button
+                type="button"
+                className="button primary"
+                onClick={() => void postRemote(REMOTE_DECISION_PATH, { target: session.target, replace: true })}
+              >
+                {t.remote.replace}
+              </button>
+              <button
+                type="button"
+                className="button"
+                onClick={() => void postRemote(REMOTE_DECISION_PATH, { target: session.target, replace: false })}
+              >
+                {t.remote.keep}
+              </button>
+            </div>
+          </div>
+        )}
         {ended && (
           <div className="pane-overlay" role="status">
             <p>

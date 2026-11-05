@@ -4,7 +4,7 @@
 
 | Area | What it does |
 |---|---|
-| Activity bar | New shell, terminal-browser, terminal-code, and SSH at the top; a badge shows how many are open. The command palette, Settings, and the sidebar switch at the bottom. |
+| Activity bar | New shell, terminal-browser, terminal-code, SSH, and remote westerm at the top; a badge shows how many are open. The command palette, Settings, and the sidebar switch at the bottom. |
 | Sidebar | The workspaces at the top. Below them, the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: workspace numbers, tab numbers, and the session icons of the tab in view. |
 | Tab bar | `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Panes | Drag a pane's header onto another pane's edge to split there, onto its center to swap, or onto a tab or `+` to move it. Drag a divider to resize. |
@@ -98,6 +98,39 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 - **Remote shell**: runs `ssh <host>` in a pane. Like a local shell, it survives reloads and dashboard restarts.
 - **Remote browser**: opens `terminal-browser --ssh <host>`. Pages load through the remote server, so `localhost:3000` is that server's dev server.
 - Authentication uses your SSH keys and agent. Type passwords into the terminal when a server asks; the dashboard never stores or sends them.
+
+## Remote westerm
+
+A shell on a Linux server that keeps running when your network does not.
+
+- Open it from the activity bar (the server icon with a gear) or the palette: pick a host, then `westerm <host>`.
+- The first time, westerm checks the server over SSH, copies the same version of itself to `~/.local/bin/westerm`, and starts it there. The server needs no internet access.
+- The pane then talks to the server over QUIC. Its status line shows `QUIC`, or `SSH tunnel` when UDP does not get through.
+- The shell lives on the server. Closing the laptop, changing networks, or restarting the dashboard does not end it; the pane reconnects to the same shell. See [Remote sessions](sessions.md#remote-sessions).
+- The plain SSH pane stays as it is, for servers where you do not want to install anything.
+
+| Needs | |
+|---|---|
+| Server | Linux on x86_64 or aarch64 |
+| Login | An SSH key or ssh-agent. Password and one-time-code logins are not supported. |
+| Host key | Already in `~/.ssh/known_hosts`. For a new server, connect once with a plain SSH pane and accept its key. |
+| Firewall | UDP 4317 open on the server (4318–4326 when another user's westerm holds 4317). Without it, westerm falls back to an SSH tunnel. |
+| macOS, server on your LAN | Local Network access for the app that runs westerm: your terminal app, or westerm.app (System Settings ▸ Privacy & Security ▸ Local Network). Without it, macOS blocks UDP to local addresses and westerm uses the SSH tunnel. Servers on the internet do not need it. |
+
+When the server's westerm host is older than this one and has open shells, the pane asks before replacing it: replacing ends the programs in those shells, which then come back from their saved screens. **Keep the old host** keeps them running; the palette's **Update the remote host** replaces it later. westerm never replaces a newer westerm on the server; update this computer first.
+
+On the server:
+
+- `westerm stop` stops the host and the gate.
+- To stop a computer from connecting, delete its line from `~/.local/state/westerm/remote/authorized_clients`.
+- If the server ends your processes at logout (systemd-logind `KillUserProcesses=yes`), run `loginctl enable-linger` once, or the shells end with your SSH login.
+
+| Variable | Where | Effect |
+|---|---|---|
+| `WESTERM_REMOTE_TRANSPORT` | this computer | `quic` or `tunnel`: use only that way. |
+| `WESTERM_REMOTE_BINARY_DIR` | this computer | A folder with `westerm-<target>` Linux builds to install, for source builds. |
+| `WESTERM_RELEASES_URL` | this computer | Another copy of the GitHub releases, as for `install.sh`. |
+| `WESTERM_GATE_PORT` | the server | The gate's UDP port; `0` picks any free port. |
 
 ## Fonts and themes
 
