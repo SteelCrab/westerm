@@ -137,7 +137,7 @@ export type DashboardAction =
    * layout: that layout replaces this one, and every pane connects again.
    */
   | { type: "adopt"; saved: SavedDashboard }
-  /** A remote window's link is back: its disconnected panes connect at once, not after their backoff. */
+  /** A remote window read its server's layout after a reconnect: its disconnected panes connect at once, not after their backoff. */
   | { type: "retryDisconnected" }
   | { type: "newTab"; id: string }
   | { type: "selectTab"; id: string }

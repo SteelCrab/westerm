@@ -20,6 +20,8 @@ interface PaneLayerProps {
   onDragPane: (id: string | null) => void;
   onRename: (target: RenameTarget | null) => void;
   onLaunch: (kind: SessionKind) => void;
+  /** Disconnected panes may connect again (see `mayReattach`). */
+  mayReattach: boolean;
   dispatch: (action: DashboardAction) => void;
 }
 
@@ -76,6 +78,7 @@ export function PaneLayer(props: PaneLayerProps) {
             onRename={props.onRename}
             dragging={dragging}
             away={away}
+            mayReattach={props.mayReattach}
             onDragPane={props.onDragPane}
             dispatch={props.dispatch}
           />

@@ -10,7 +10,7 @@ import { RemoteBanner, RemoteConnect, stageText } from "./components/RemoteConne
 import { SessionList } from "./components/SessionList.tsx";
 import { isCompact, SidebarResizer } from "./components/SidebarResizer.tsx";
 import { TabBar } from "./components/TabBar.tsx";
-import { WorkspaceMenu } from "./components/WorkspaceMenu.tsx";
+import { tabColors, WorkspaceMenu } from "./components/WorkspaceMenu.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { UpdateButton, updateShown } from "./components/UpdateButton.tsx";
 import { useI18n } from "./i18n/index.tsx";
@@ -35,7 +35,7 @@ import { parseFamilies, useSettings } from "./settings.ts";
 import { switchCommand, typingElsewhere, type SwitchCommand } from "./shortcuts.ts";
 import { appBridge } from "./useUpdate.ts";
 import { markEnding } from "./terminal/ending.ts";
-import { loadSaved, reclaimAction, useWorkspacePersistence } from "./useWorkspacePersistence.ts";
+import { loadSaved, mayReattach, reclaimAction, useWorkspacePersistence } from "./useWorkspacePersistence.ts";
 import {
   activeTab,
   activeWorkspace,
@@ -102,16 +102,6 @@ export function App() {
   useEffect(() => {
     if (link.reload) location.reload();
   }, [link.reload]);
-  // How often the link came up; every time after the first is a reconnect.
-  // Panes that lost their socket would wait out their own backoff (up to
-  // 8 s); the link is back, so they connect at once.
-  const [linkUps, setLinkUps] = useState(0);
-  useEffect(() => {
-    if (!link.connected) return;
-    setLinkUps((value) => value + 1);
-    rawDispatch({ type: "retryDisconnected" });
-  }, [link.connected]);
-
   // The macOS app's Settings menu (⌘,) sends this event.
   useEffect(() => {
     const open = () => setSettingsOpen(true);
@@ -224,11 +214,19 @@ export function App() {
 
   // Restore the saved layout; panes then reattach to their running shells.
   // With nothing saved, start with one shell. A remote window reads its
-  // server's layout once the link is up.
+  // server's layout once the link is up, and again after every reconnect;
+  // its disconnected panes wait for that read.
   const away = takenOver(state);
   const persistenceLink =
-    REMOTE_TARGET === null ? LOCAL_LINK : { ready: link.connected, reconnects: Math.max(0, linkUps - 1) };
-  const { loaded, adopted } = useWorkspacePersistence(state, rawDispatch, () => open("shell"), away, persistenceLink);
+    REMOTE_TARGET === null ? LOCAL_LINK : { ready: link.connected, reconnects: link.reconnects };
+  const { loaded, adopted, checked } = useWorkspacePersistence(
+    state,
+    rawDispatch,
+    () => open("shell"),
+    away,
+    persistenceLink,
+  );
+  const reattach = mayReattach(REMOTE_TARGET !== null, link.connected, link.reconnects, checked);
 
   // One window at a time has the sessions. Using this window again, by
   // switching to it or clicking it, takes them back with the latest layout.
@@ -373,7 +371,10 @@ export function App() {
   return (
     <div
       className={`app${sidebarShown ? "" : " sidebar-collapsed"}`}
-      style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+      // The tabs on screen show the color of the workspace in view.
+      style={
+        { "--sidebar-width": `${sidebarWidth}px`, ...tabColors(activeWorkspace(state).color) } as React.CSSProperties
+      }
     >
       <ActivityBar
         sidebarOpen={sidebarOpen}
@@ -482,6 +483,7 @@ export function App() {
             onDragPane={setDragging}
             onRename={rename}
             onLaunch={open}
+            mayReattach={reattach}
             dispatch={dispatch}
           />
         ) : (

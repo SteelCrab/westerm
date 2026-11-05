@@ -6,7 +6,7 @@ import { MESSAGES } from "../src/i18n/messages.ts";
 import { remoteWindowCommands, sshCommands } from "../src/paletteCommands.tsx";
 import { openRemoteWindow, remoteTargetFrom, serverPath, shouldPostRemoteClose } from "../src/remoteWindow.ts";
 import { INITIAL_LINK, linkReducer } from "../src/useRemoteLink.ts";
-import { firstLoad, layoutKey, reclaimAction, reconnectAction, writtenKey } from "../src/useWorkspacePersistence.ts";
+import { firstLoad, layoutKey, mayReattach, reclaimAction, reconnectAction, writtenKey } from "../src/useWorkspacePersistence.ts";
 import { activeTab, createDashboard, dashboardReducer, MAX_RECONNECTS, toSaved } from "../src/workspace.ts";
 
 const layout = (session: Record<string, unknown>) =>
@@ -163,6 +163,42 @@ test("the link state follows the stream", () => {
   assert.ok(!link.connected && link.connectedOnce && !link.reload);
   link = linkReducer(link, { type: "hello", version: "westerm 0.3.1 (host rs-b)" });
   assert.equal(link.reload, true, "a new local westerm reloads the window");
+});
+
+test("the link state counts reconnects, not the first connection", () => {
+  const up = { type: "remote", stage: "connected", via: "quic", killOnLogout: false } as const;
+  const down = { type: "remote", stage: "failed", reason: "unreachable", detail: "" } as const;
+  let link = linkReducer(INITIAL_LINK, { type: "hello", version: "westerm 0.3.0 (host rs-a)" });
+  assert.equal(link.reconnects, 0);
+  link = linkReducer(link, up);
+  assert.equal(link.reconnects, 0, "the first connection is no reconnect");
+  link = linkReducer(link, up);
+  assert.equal(link.reconnects, 0, "connected again without a drop");
+  link = linkReducer(link, down);
+  link = linkReducer(link, up);
+  assert.equal(link.reconnects, 1, "the same update raises connected and the count");
+  assert.ok(link.connected);
+  link = linkReducer(link, down);
+  link = linkReducer(link, { type: "remote", stage: "checking" });
+  link = linkReducer(link, up);
+  assert.equal(link.reconnects, 2);
+  link = linkReducer(link, { type: "hello", version: "westerm 0.3.0 (host rs-a)" });
+  assert.equal(link.reconnects, 2, "a hello is no reconnect");
+  link = linkReducer(link, { type: "closed" });
+  link = linkReducer(link, { type: "hello", version: "westerm 0.3.0 (host rs-a)" });
+  link = linkReducer(link, up);
+  link = linkReducer(link, up);
+  assert.equal(link.reconnects, 3, "a dropped status stream counts once");
+});
+
+test("a remote window's panes reattach only after the server's layout is read", () => {
+  assert.equal(mayReattach(false, false, 0, 0), true, "a local window has no link");
+  assert.equal(mayReattach(false, false, 3, 1), true);
+  assert.equal(mayReattach(true, false, 0, 0), false, "the link is down");
+  assert.equal(mayReattach(true, false, 2, 2), false);
+  assert.equal(mayReattach(true, true, 2, 1), false, "the layout after the reconnect is not read yet");
+  assert.equal(mayReattach(true, true, 2, 2), true);
+  assert.equal(mayReattach(true, true, 0, 0), true, "the first connection");
 });
 
 test("remote window panes keep reconnecting; local shells still give up", () => {
