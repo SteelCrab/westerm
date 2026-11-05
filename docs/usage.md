@@ -99,6 +99,11 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 - Text the server writes into terminals follows it too: the restore notice and session errors. It uses the language the pane had when it connected.
 - Han characters use the chosen language's fonts first, so Japanese shows Japanese glyphs and Chinese shows Simplified glyphs.
 
+## terminal-browser and terminal-code
+
+- When one of these programs is not installed, its pane shows the official install command with a **Copy** button. Run the command, then press **Restart**. westerm never installs anything itself.
+- When the program is installed but cannot start, the pane asks you to read the program's own message in the terminal.
+
 ## SSH
 
 - The SSH launcher and the palette's SSH command list the hosts in `~/.ssh/config` (with Include). You can also type `user@host`.
@@ -115,6 +120,7 @@ A window for a Linux server: its tabs, workspaces, and shells live on the server
 - The window title is `westerm — <target>`. The header shows the server name and how the window is connected: `QUIC`, or `SSH tunnel` when UDP does not get through.
 - The first time, a connecting screen shows the stages: checking the server, installing westerm, starting, connecting. westerm copies the same version of itself to `~/.local/bin/westerm` on the server over SSH and starts it there. The server needs no internet access.
 - Tabs, workspaces, and layout are saved on the server. Shells, terminal-browser, and terminal-code run on the server, started by your login shell there. Programs are found on the PATH of your interactive login shell on the server, so folders that `~/.zshrc` or a similar file adds (such as `~/.local/bin`) count. This applies once westerm next starts the server's host, for example after `westerm stop` there. Plain SSH panes and remote browsers opened inside a remote window run from the server too.
+- If terminal-browser or terminal-code is not installed on the server, its pane says so and shows the install command. Run the command on the server (for example in a shell pane of this window), then press **Restart**. westerm does not install it.
 - Closing the window or losing the network does not end anything. Open the server again to see the same tabs and shells, also from another computer. See [Remote sessions](sessions.md#remote-sessions).
 - A window that comes back (after sleep or a lost network) reads the server's layout first. If another computer changed the tabs meanwhile, the window takes the server's layout, and its own changes from while it was away are lost.
 - Known limit: a window that comes back also takes the sessions from the window in use, which then shows "In use in another window". Click that window to take them back.
