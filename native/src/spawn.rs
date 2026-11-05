@@ -42,6 +42,14 @@ const FOREIGN_TERMINAL_VARS: &[&str] = &[
 ];
 const FOREIGN_TERMINAL_PREFIXES: &[&str] = &["GHOSTTY_", "KITTY_", "ITERM_", "WEZTERM_", "VSCODE_"];
 
+/// terminal-browser and terminal-code draw with the pixel library. In a
+/// terminal it does not know, such as westerm, pixel sends the whole picture
+/// for every change, even a blinking caret. westerm draws pixel's patches
+/// correctly, so it asks for them: only the changed parts are sent. A value
+/// set before westerm starts or in a shell startup file, or terminal-browser's
+/// own `render.presenter` setting, wins.
+const PIXEL_PRESENTER: (&str, &str) = ("TERMINAL_BROWSER_PRESENT", "patched");
+
 pub fn terminal_env(base: impl IntoIterator<Item = (String, String)>) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = base
         .into_iter()
@@ -54,6 +62,10 @@ pub fn terminal_env(base: impl IntoIterator<Item = (String, String)>) -> Vec<(St
     env.push(("TERM".into(), "xterm-256color".into()));
     env.push(("COLORTERM".into(), "truecolor".into()));
     env.push(("TERM_PROGRAM".into(), "westerm".into()));
+    let (presenter, patched) = PIXEL_PRESENTER;
+    if !env.iter().any(|(key, _)| key == presenter) {
+        env.push((presenter.into(), patched.into()));
+    }
     env
 }
 
@@ -208,7 +220,22 @@ mod tests {
             .map(|(k, v)| (k.to_owned(), v.to_owned()));
         let env = terminal_env(base);
         let keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(keys, ["PATH", "TERM", "COLORTERM", "TERM_PROGRAM"]);
+        assert_eq!(keys, ["PATH", "TERM", "COLORTERM", "TERM_PROGRAM", "TERMINAL_BROWSER_PRESENT"]);
         assert!(env.contains(&("TERM_PROGRAM".into(), "westerm".into())));
+    }
+
+    #[test]
+    fn pixel_apps_are_asked_for_patches() {
+        let env = terminal_env([("PATH".to_owned(), "/bin".to_owned())]);
+        assert!(env.contains(&("TERMINAL_BROWSER_PRESENT".into(), "patched".into())));
+    }
+
+    #[test]
+    fn a_presenter_set_before_westerm_stays() {
+        let base = [("TERMINAL_BROWSER_PRESENT", "full"), ("PATH", "/bin")].map(|(k, v)| (k.to_owned(), v.to_owned()));
+        let env = terminal_env(base);
+        let presenters: Vec<&str> =
+            env.iter().filter(|(k, _)| k == "TERMINAL_BROWSER_PRESENT").map(|(_, v)| v.as_str()).collect();
+        assert_eq!(presenters, ["full"]);
     }
 }

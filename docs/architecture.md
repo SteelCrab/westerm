@@ -84,6 +84,10 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
   - terminal-browser sends each frame as an unsized Kitty image (`a=T,...,C=1`).
   - `@wterm/dom` 0.5.9 treats it as an image in shell output and pushes the lines below it down.
   - The patch turns that off on the alternate screen only.
+- **Frame patches** (`native/src/spawn.rs`)
+  - terminal-browser and terminal-code draw with the pixel library. In a terminal that pixel does not know, such as westerm, it sends the whole picture for every change, even a blinking caret.
+  - Every pane gets `TERMINAL_BROWSER_PRESENT=patched`. pixel then sends only the changed tiles, as small Kitty images over the last whole picture, and a whole picture again when the layout changes.
+  - A value set before westerm starts or in a shell startup file wins, and so does terminal-browser's own `render.presenter` setting.
 - **Cmd keys** (`src/terminal/command-keys.ts`)
   - `@wterm/dom` leaves every Cmd+key to the browser.
   - When a program turns on Kitty "report all keys" (flag 8), Cmd combinations go to the program instead.
@@ -92,7 +96,7 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
 
 ## Known limits
 
-- **Choppy video**: browsers cannot read shared memory, so terminal-browser sends frames as base64 text through the PTY. Constantly changing pictures stutter.
+- **Choppy video**: browsers cannot read shared memory, so terminal-browser sends frames as base64 text through the PTY. When most of the picture changes, as in video or scrolling, a patch is the whole picture: about 300 KB for scrolled text and 4.5 MB for video in a 1350 × 780 pane. Such pictures stutter, most of all in a remote window.
 - **terminal-browser and terminal-code on Windows**: both draw with Kitty graphics, which Windows ConPTY does not pass through. Shells and SSH work.
 - **Korean in the terminal-browser address bar**: terminal-browser's own UI font (JetBrains Mono) has no Hangul, so it shows boxes. Page content is fine.
 

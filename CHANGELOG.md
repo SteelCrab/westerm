@@ -22,6 +22,7 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 - The gate passes each authenticated stream to the server's remote dashboard. It no longer reaches the PTY host itself. A server set up by v0.2.0 gets this version at its next connection; `westerm remote-setup` there now reports in a new format (version 2).
 - When the gate stops, connected windows learn it at once and reconnect, instead of freezing for about 15 seconds.
 - `westerm stop` also stops the remote dashboard on a server. It stops the gate and the remote dashboard before the host, so a window cannot start a new host in between.
+- terminal-browser and terminal-code send only the parts of the picture that change, not the whole picture for every change: each pane gets `TERMINAL_BROWSER_PRESENT=patched`. In a 1350 × 780 pane, a blinking caret went from 4.4 Mbit/s to almost nothing, and a small spinner from 24 Mbit/s at 10 frames a second to 2.6 Mbit/s at about 100. Scrolling and video change the whole picture and cost the same as before. terminal-browser 0.13.4 and terminal-code 0.4.3 read the variable; terminal-code 0.2.0 does not. To send whole pictures again, run `terminal-browser config set render.presenter full`, or set `TERMINAL_BROWSER_PRESENT=full` before westerm starts.
 - After this update, open local shells come back once as "restored".
 
 ### Removed

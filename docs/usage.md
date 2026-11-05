@@ -112,6 +112,7 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 
 - When one of these programs is not installed, its pane shows the official install command with a **Copy** button. Run the command, then press **Restart**. westerm never installs anything itself.
 - When the program is installed but cannot start, the pane asks you to read the program's own message in the terminal.
+- Only the changed parts of the picture are sent, which matters most in a remote window. Scrolling and video still send whole pictures. To send whole pictures every time, run `terminal-browser config set render.presenter full`.
 
 ## SSH
 
