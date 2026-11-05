@@ -60,9 +60,9 @@ $env:WESTERM_STATE_DIR = "$env:TEMP\westerm-dev"; .\native\target\release\wester
 - `npm run dev`는 항상 :4317로 전달합니다. 평소 쓰는 대시보드를 먼저 끕니다(Ctrl+C). 셸은 호스트 안에 그대로 남습니다.
 - 시험용 호스트는 같은 `WESTERM_STATE_DIR`로 `westerm stop`을 실행해 끄고, 폴더를 지웁니다.
 
-### 개발 빌드로 원격 westerm 시험하기
+### 개발 빌드로 원격 창 시험하기
 
-소스 빌드의 코드는 릴리스에 없습니다. 그래서 원격 westerm은 직접 만든 Linux 빌드를 설치합니다. 두 빌드는 같은 소스에서 만듭니다. westerm이 양쪽의 버전 줄을 비교하기 때문입니다.
+소스 빌드의 코드는 릴리스에 없습니다. 그래서 원격 창은 직접 만든 Linux 빌드를 서버에 설치합니다. 두 빌드는 같은 소스에서 만듭니다. westerm이 양쪽의 버전 줄을 비교하기 때문입니다.
 
 ```bash
 brew install zig && cargo install cargo-zigbuild   # 한 번만 (zig가 Linux 빌드를 링크합니다)
@@ -91,8 +91,15 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 | `native/src/protocol.rs` | 메시지 형식과 검증 |
 | `native/src/i18n.rs` | 호스트가 터미널에 쓰는 문구의 모든 언어 |
 | `native/src/ipc.rs` | 대시보드 ↔ 호스트 통로: Unix 소켓, Windows는 named pipe |
-| `native/src/remote/` | 서버 쪽 원격 westerm: `westerm gate`, `westerm remote-setup`, 인증서, QUIC 설정 |
-| `native/src/server/remote/` | 대시보드 쪽 원격 westerm: SSH 준비, 설치, QUIC과 터널 연결 |
+| `native/src/remote/` | 서버 쪽 원격 창: `westerm gate`, `westerm remote-setup`, `westerm remote-dashboard`, 인증서, QUIC 설정 |
+| `native/src/remote/daemon.rs` | gate와 서버 대시보드가 함께 쓰는 것: 하나만 실행, 실행 기록, 멈추기 |
+| `native/src/remote/dashboard.rs` | `westerm remote-dashboard`: 서버의 대시보드. 비공개 Unix 소켓에서만 듣습니다 |
+| `native/src/server/remote/` | 로컬 대시보드 쪽 원격 창: SSH 준비, 설치, QUIC과 터널 연결 |
+| `native/src/server/remote_window.rs` | `/remote/<target>/…`: 원격 창의 요청을 서버 대시보드로 보내는 경로 |
+| `native/src/server/http1.rs` | 아무 바이트 스트림 위의 HTTP/1.1 요청 하나: PTY 호스트로, 또는 서버로 가는 연결 위로 |
+| `src/remoteWindow.ts` | 원격 창의 주소(`/?remote=<target>`), 서버 경로, 원격 창 열기 |
+| `src/useRemoteLink.ts` | 로컬 대시보드의 상태 흐름에서 읽는 원격 창의 연결 상태 |
+| `src/components/RemoteConnect.tsx` | 원격 창의 연결 화면과, 연결이 끊긴 동안의 안내 띠 |
 | `tests/` | 화면 테스트(`node:test`) |
 | `native/tests/` | 실제 실행 파일로 돌리는 Rust 통합 테스트 |
 | `macos/` | macOS 앱: Swift 창(`app/main.swift`), 아이콘, `build-app.sh` |
