@@ -40,6 +40,16 @@ impl Lang {
         }
     }
 
+    /// Under the restore notice: the shell runs the agent's resume command.
+    pub fn resuming(self, agent: &str) -> String {
+        match self {
+            Lang::Ko => format!("에이전트 이어가기 · {agent}"),
+            Lang::En => format!("Resuming {agent}"),
+            Lang::Ja => format!("エージェントを再開 · {agent}"),
+            Lang::Zh => format!("正在恢复智能体 · {agent}"),
+        }
+    }
+
     pub fn too_many_sessions(self, limit: usize) -> String {
         match self {
             Lang::Ko => format!("세션은 최대 {limit}개까지 열 수 있습니다"),

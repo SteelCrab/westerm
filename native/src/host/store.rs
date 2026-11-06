@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
+use super::agent::AgentRecord;
 use crate::protocol::{is_id, SessionKind};
 use crate::state_dir::private_file;
 
@@ -26,6 +27,9 @@ pub struct SessionMeta {
     pub cwd: PathBuf,
     /// ISO time of the last save.
     pub saved_at: String,
+    /// The AI agent in the shell's foreground; a revived shell resumes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentRecord>,
 }
 
 /// Saved screens are bounded so a busy log cannot fill the disk.
@@ -116,6 +120,7 @@ impl SessionStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::AgentKind;
 
     #[test]
     fn meta_and_screens_round_trip_and_reject_bad_ids() {
@@ -129,9 +134,21 @@ mod tests {
             target: Some("prod".into()),
             cwd: "/tmp".into(),
             saved_at: "2026-11-04T00:00:00.000Z".into(),
+            agent: None,
         };
         store.write_meta(&meta).unwrap();
-        assert_eq!(store.read_meta("sabc"), Some(meta));
+        assert_eq!(store.read_meta("sabc"), Some(meta.clone()));
+        let with_agent = SessionMeta {
+            agent: Some(AgentRecord {
+                kind: AgentKind::Claude,
+                program: None,
+                session: Some("9f00f957".into()),
+                args: vec!["--model".into(), "opus".into()],
+            }),
+            ..meta
+        };
+        store.write_meta(&with_agent).unwrap();
+        assert_eq!(store.read_meta("sabc"), Some(with_agent));
         store.write_screen("sabc", "hello\r\n").unwrap();
         assert_eq!(store.read_screen("sabc").as_deref(), Some("hello\r\n"));
         assert!(store.read_meta("../etc").is_none());
@@ -150,6 +167,7 @@ mod tests {
         .unwrap();
         let meta = store.read_meta("sold").unwrap();
         assert_eq!(meta.target, None);
+        assert_eq!(meta.agent, None);
         assert_eq!(meta.cwd, PathBuf::from("/Users/x"));
     }
 

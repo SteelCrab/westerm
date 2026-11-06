@@ -26,6 +26,11 @@ fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+/// Now in milliseconds since the epoch, as JavaScript's `Date.now()`.
+pub fn now_millis() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |now| u64::try_from(now.as_millis()).unwrap_or(u64::MAX))
+}
+
 /// Now as "YYYY-MM-DDTHH:MM:SS.mmmZ", the same shape JavaScript writes.
 pub fn now_iso() -> String {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();

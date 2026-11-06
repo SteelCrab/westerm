@@ -21,6 +21,7 @@ mod ipc;
 // remote-setup run on Unix only), so the code only it uses is unused there.
 // Unix builds still report unused code.
 #[cfg_attr(not(unix), allow(dead_code))]
+mod process;
 mod protocol;
 #[cfg_attr(not(unix), allow(dead_code))]
 mod remote;
