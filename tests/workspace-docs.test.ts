@@ -154,3 +154,21 @@ test("a layout with only docs panes is loaded, not replaced", () => {
   const only = run(createDashboard("w1", "t1"), { type: "open", id: "d1", kind: "docs", docs: { ...docsStart, followFrom: null } });
   assert.equal(firstLoad(false, { ok: true, saved: parseSavedDashboard(toSaved(only)) }), "hydrate");
 });
+
+// ---- A new docs pane's first state ----
+
+import { newDocsPane } from "../src/workspace.ts";
+
+test("a new docs pane follows the focused shell", () => {
+  const state = run(createDashboard("w1", "t1"), { type: "open", id: "s1", kind: "shell" }, { type: "ready", id: "s1", pid: 7, mode: "new" });
+  assert.deepEqual(newDocsPane(state), { root: null, followFrom: "s1", file: null, mode: "view" });
+});
+
+test("a new docs pane beside a docs pane opens that pane's folder", () => {
+  const state = run(withDocs(), { type: "docsUpdate", id: "d1", change: { root: "/r", file: "a.md", mode: "split" } });
+  assert.deepEqual(newDocsPane(state), { root: "/r", followFrom: "s1", file: null, mode: "view" });
+});
+
+test("a new docs pane with nothing to go by asks for the home folder", () => {
+  assert.deepEqual(newDocsPane(createDashboard("w1", "t1")), { root: null, followFrom: null, file: null, mode: "view" });
+});
