@@ -88,6 +88,7 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 | Appearance | Color theme | Default, One, GitHub, Solarized, Gruvbox, Catppuccin, Tokyo Night, Rosé Pine, Everforest, or Kanagawa. Colors the window and the terminals; each theme has a light and a dark set, which follow Mode. Default keeps the window's own colors. Programs that ask for the background color (OSC 11) get the theme's. |
 | Terminal | Font size | Overrides the Ghostty `font-size`. "Use the Ghostty size" goes back. |
 | Terminal | Font | Overrides the Ghostty `font-family`; separate fallbacks with commas. Leave it empty for the Ghostty font. Applies on Enter or when the field loses focus. |
+| Terminal | Resume AI agents | On (the default): a shell that comes back as "restored" runs the Claude Code or Codex conversation it had again. See [Sessions ▸ AI agents](sessions.md#ai-agents). |
 | Updates | Check for updates automatically | Asks GitHub for the newest release when the dashboard opens and every 6 hours. With it off, westerm contacts GitHub only when you press Check now. A remote window has no Updates page. |
 
 ## Updates
@@ -107,6 +108,30 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 - Change it in the header, in Settings, or with the palette's `Language:` commands.
 - Text the server writes into terminals follows it too: the restore notice and session errors. It uses the language the pane had when it connected.
 - Han characters use the chosen language's fonts first, so Japanese shows Japanese glyphs and Chinese shows Simplified glyphs.
+
+## AI agents
+
+While Claude Code or Codex runs in a shell (macOS and Linux):
+
+- The pane header shows an AI mark in place of the shell icon: orange for Claude Code, white for Codex. The sidebar's session list shows it too. Point at it for the agent, its state, and its title.
+- The ring around the mark shows the state:
+
+| Ring | State |
+|---|---|
+| Blue, turning | Working |
+| Yellow, pulsing | Needs your input: a permission, approval, or a question with choices |
+| Green | Done: it finished while you were not looking at the pane. It turns gray when you look. |
+| Gray | Idle |
+
+- A tab whose agent works shows a small turning ring; one that asks, a yellow dot; one that finished out of view, a green dot.
+- With reduced motion turned on in the OS, the rings do not move.
+- Press the mark in the pane header (or move to it with Tab and press Enter) for the agent's card. Press the mark again, press outside, or press Esc to close it. The card shows:
+  - The agent and its version (Claude Code only), its state, and for how long.
+  - The conversation id with **Copy**. Codex shows "The folder's latest conversation", since westerm cannot tell its id.
+  - The folder, the model when the command line names one, and when westerm first saw the agent.
+  - The command a reboot runs, with **Copy**.
+  - **Resume in this pane**: clear it to keep this pane's agent from resuming. The layout keeps the choice. When Settings ▸ Terminal ▸ Resume AI agents is off, the box is off for every pane.
+- After a reboot the agent resumes its conversation; see [Sessions ▸ AI agents](sessions.md#ai-agents).
 
 ## terminal-browser and terminal-code
 

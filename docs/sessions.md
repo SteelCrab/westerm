@@ -4,7 +4,7 @@
 |---|---|
 | Reload, or close and reopen the tab | The same shell process, with its screen replayed ("reconnected"). |
 | Restart the dashboard | The same shell process. |
-| Reboot the computer | A new shell in the same folder, with the previous screen restored ("restored"). Programs that were running cannot come back. |
+| Reboot the computer | A new shell in the same folder, with the previous screen restored ("restored"). Programs that were running cannot come back. An AI agent that ran in the shell resumes its conversation (see [AI agents](#ai-agents)). |
 
 ## The PTY host
 
@@ -30,6 +30,37 @@
   - on exit, logout, and reboot (SIGTERM). A Windows host has no console, so it may not hear about logout or shutdown; the 3-second saves keep the loss small.
 - Windows has no public way to read another process's folder, so a new terminal-code and a restored shell may start in the home folder.
 - terminal-browser and terminal-code draw with Kitty images, which cannot be saved. On reconnect they start again and restore their own tabs and folders.
+
+## AI agents
+
+A shell that runs Claude Code or Codex shows it, and resumes it when the shell comes back as "restored": after a reboot, a logout, `westerm stop`, or a host update.
+
+### What the host watches
+
+- Every second, each shell looks at the program in the foreground of its terminal (macOS and Linux).
+- It is an agent when its command is `claude` or `codex`, also when run from a path or by node from the npm package.
+- Claude Code writes `~/.claude/sessions/<pid>.json` (`$CLAUDE_CONFIG_DIR` when set). westerm reads the conversation id and the status from it: busy (works), waiting (asks), or idle.
+- The last 16 rows with text tell the rest: "esc to interrupt" means it works. A question means it asks, and wins: "Do you want to", "Would you like to", Codex's questions with choices ("enter to submit answer"), and Codex's "Implement this plan?". When the file and the screen differ, the more urgent one wins: asks, then works.
+- Not watched: SSH panes (the agent runs on the other end), terminal-browser and terminal-code, and Windows (ConPTY has no foreground process group).
+
+### What is saved
+
+- The session's saved file (`sessions/<id>.json`) keeps the agent, its conversation id, and the flags that a resume keeps.
+- Kept flags: those that set the model, permissions, directories, settings, MCP servers, and system prompts. A prompt on the command line, print mode, and resume flags are not kept.
+- When the agent ends, westerm forgets it after two checks in a row. On a reboot the agent may end a moment before the host saves, and one check must not erase it.
+
+### Resuming
+
+- A restored shell writes "Resuming Claude Code · 9f00f957" under the restore notice. When the shell's prompt is up (300 ms without output, at most 5 seconds), westerm types the command:
+
+| Agent | Command |
+|---|---|
+| Claude Code | `claude --resume <id> <kept flags>`; without an id, `claude --continue` |
+| Codex | `codex resume --last <kept flags>`: the newest conversation in that folder. Codex writes no per-process file, so westerm cannot tell its id; two Codex panes in one folder both resume the newest one. `codex resume <id>` keeps its id. |
+
+- An agent run by its path resumes by the same path.
+- The command runs in the shell, so its output and errors show there. After it ends, the shell stays.
+- Settings ▸ Terminal ▸ Resume AI agents turns this off for the window. The agent's card in a pane turns it off for that pane only (saved with the layout). The shell then comes back without its agent, and the saved agent is forgotten.
 
 ## Layout and saved files
 

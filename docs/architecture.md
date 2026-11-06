@@ -37,7 +37,8 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
 | Path | Contents |
 |---|---|
 | `native/src/server/` | Dashboard server (axum): serves the UI and APIs, relays each browser WebSocket to the host, installs updates (`updates.rs`) |
-| `native/src/host/` | PTY host: runs and keeps processes (`portable-pty`), screen copies (`vt100`), saving and restoring |
+| `native/src/host/` | PTY host: runs and keeps processes (`portable-pty`), screen copies (`vt100`), saving and restoring; AI agents in shells and their resume commands (`agent.rs`) |
+| `native/src/process.rs` | Command line of another process: `KERN_PROCARGS2` on macOS, `/proc` on Linux |
 | `native/src/protocol.rs` | Message format and validation: session id, size, URL, SSH target, language |
 | `native/src/ipc.rs` | Dashboard ↔ host channel: Unix socket, or a named pipe on Windows |
 | `native/src/spawn.rs` | What a session runs: a login shell on macOS and Linux; PowerShell and argument lists on Windows |
@@ -117,6 +118,7 @@ The Rust integration tests (`native/tests/integration.rs`) start the real execut
 - The dashboard accepts WebSockets only from its own origin.
 - A second host refuses to start while one is running.
 - Processes a test starts are cleaned up even when the test fails.
+- A fake `claude` in a shell is found, its conversation and flags are saved, and after a host restart the shell resumes it; with `resume=off` it does not (macOS and Linux).
 
 `native/tests/remote.rs` (macOS and Linux) covers remote windows with the real executable:
 
