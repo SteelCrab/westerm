@@ -255,11 +255,14 @@ async fn the_gate_refuses_unknown_clients() {
     let fingerprint = report["fingerprint"].as_str().unwrap().to_owned();
 
     let stranger = ClientId::new();
-    if let Ok(connection) = quic(port_of(&report), &stranger, &fingerprint).await {
-        let stream = stream(&connection).await;
+    // TLS 1.3 ends the client's handshake before the gate checks its
+    // certificate, so the refusal can also close the connection under a stream.
+    if let Ok(connection) = quic(port_of(&report), &stranger, &fingerprint).await
+        && let Ok((send, recv)) = connection.open_bi().await
+    {
         let attached = tokio::time::timeout(
             Duration::from_secs(5),
-            tokio_tungstenite::client_async(format!("ws://remote/ws/session?{QUERY}"), stream),
+            tokio_tungstenite::client_async(format!("ws://remote/ws/session?{QUERY}"), tokio::io::join(recv, send)),
         )
         .await;
         assert!(!matches!(attached, Ok(Ok(_))), "an unknown client attached");
