@@ -331,6 +331,18 @@ export function focusedShellId(state: Dashboard): string | null {
 const NO_DOCS: DocsPane = { root: null, followFrom: null, file: null, mode: "view" };
 
 /** A docs pane has no process to connect to: it runs from the start. */
+/**
+ * A new docs pane's first state. Beside a docs pane it opens that pane's
+ * folder; otherwise the focused shell's folder, which it follows. With
+ * neither, it asks for the home folder.
+ */
+export function newDocsPane(state: Dashboard): DocsPane {
+  const focusedId = activeTab(state).focusedId;
+  const focused = state.sessions.find((session) => session.id === focusedId);
+  if (focused?.docs) return { root: focused.docs.root, followFrom: focused.docs.followFrom, file: null, mode: "view" };
+  return { root: null, followFrom: focusedShellId(state), file: null, mode: "view" };
+}
+
 function newSession(
   id: string,
   kind: PaneKind,

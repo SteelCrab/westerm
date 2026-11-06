@@ -14,7 +14,7 @@ export interface Draft {
   crlf: boolean;
 }
 
-type Storage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
+export type Storage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
 
 const STORAGE_KEY = "westerm.docs.drafts";
 const SEPARATOR = "\u0000";
@@ -30,6 +30,8 @@ export interface DraftStore {
   clear(key: string): void;
   /** Paths under `root` that have a draft. */
   paths(target: string | null, root: string): Set<string>;
+  /** Drafts of the same machine in other roots, by root and path. */
+  elsewhere(target: string | null, root: string): { root: string; path: string }[];
   subscribe(listener: () => void): () => void;
   /** Changes on every change; for useSyncExternalStore. */
   version(): number;
@@ -86,6 +88,14 @@ export function createDraftStore(storage: Storage | null): DraftStore {
       for (const key of drafts.keys()) if (key.startsWith(prefix)) found.add(key.slice(prefix.length));
       return found;
     },
+    elsewhere(target, root) {
+      const found: { root: string; path: string }[] = [];
+      for (const key of drafts.keys()) {
+        const [owner, draftRoot, path] = key.split(SEPARATOR);
+        if (owner === (target ?? "") && draftRoot !== root && path) found.push({ root: draftRoot, path });
+      }
+      return found.sort((a, b) => (a.root === b.root ? (a.path < b.path ? -1 : 1) : a.root < b.root ? -1 : 1));
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -94,7 +104,7 @@ export function createDraftStore(storage: Storage | null): DraftStore {
   };
 }
 
-function pageStorage(): Storage | null {
+export function pageStorage(): Storage | null {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;
   } catch {

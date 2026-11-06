@@ -64,6 +64,7 @@ const en = {
     overwrite: "Save anyway",
     lines: (count: number) => `${count} lines`,
     keys: (mod: string) => `${mod}E view/edit · ${mod}S save`,
+    elsewhere: (count: number) => `${count} unsaved in other folders`,
     error: {
       missing: "The file is not there anymore.",
       tooLarge: "The file is larger than 2 MiB.",
@@ -71,6 +72,7 @@ const en = {
       badRoot: "This folder cannot be opened.",
       exists: "A file with that name is already there.",
       badName: "Use a .md name inside a folder that exists.",
+      unsupported: "The westerm here has no docs pane yet. Update westerm.",
       failed: (status: number) => (status === 0 ? "westerm did not answer." : `The request failed (${status}).`),
     },
   },
@@ -388,6 +390,7 @@ const ko: Messages = {
     overwrite: "그래도 저장",
     lines: (count) => `${count}줄`,
     keys: (mod) => `${mod}E 보기/편집 · ${mod}S 저장`,
+    elsewhere: (count) => `다른 폴더에 저장 안 한 문서 ${count}개`,
     error: {
       missing: "파일이 더 이상 없습니다.",
       tooLarge: "파일이 2 MiB보다 큽니다.",
@@ -395,6 +398,7 @@ const ko: Messages = {
       badRoot: "이 폴더를 열 수 없습니다.",
       exists: "같은 이름의 파일이 이미 있습니다.",
       badName: "있는 폴더 안의 .md 이름을 쓰세요.",
+      unsupported: "이 westerm에는 문서 패널이 없습니다. westerm을 업데이트하세요.",
       failed: (status) => (status === 0 ? "westerm이 응답하지 않습니다." : `요청이 실패했습니다 (${status}).`),
     },
   },
@@ -686,6 +690,7 @@ const ja: Messages = {
     overwrite: "それでも保存",
     lines: (count) => `${count} 行`,
     keys: (mod) => `${mod}E 表示/編集 · ${mod}S 保存`,
+    elsewhere: (count) => `他のフォルダに未保存のドキュメント ${count} 件`,
     error: {
       missing: "ファイルがもうありません。",
       tooLarge: "ファイルが 2 MiB より大きいです。",
@@ -693,6 +698,7 @@ const ja: Messages = {
       badRoot: "このフォルダは開けません。",
       exists: "同じ名前のファイルがすでにあります。",
       badName: "存在するフォルダ内の .md の名前にしてください。",
+      unsupported: "この westerm にはドキュメントペインがありません。westerm を更新してください。",
       failed: (status) => (status === 0 ? "westerm が応答しません。" : `リクエストに失敗しました (${status})。`),
     },
   },
@@ -984,6 +990,7 @@ const zh: Messages = {
     overwrite: "仍然保存",
     lines: (count) => `${count} 行`,
     keys: (mod) => `${mod}E 查看/编辑 · ${mod}S 保存`,
+    elsewhere: (count) => `其他文件夹中有 ${count} 个未保存的文档`,
     error: {
       missing: "文件已不存在。",
       tooLarge: "文件大于 2 MiB。",
@@ -991,6 +998,7 @@ const zh: Messages = {
       badRoot: "无法打开此文件夹。",
       exists: "已存在同名文件。",
       badName: "请使用现有文件夹中的 .md 文件名。",
+      unsupported: "此处的 westerm 尚不支持文档面板。请更新 westerm。",
       failed: (status) => (status === 0 ? "westerm 没有响应。" : `请求失败 (${status})。`),
     },
   },

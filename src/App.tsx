@@ -42,6 +42,7 @@ import {
   activeWorkspace,
   createDashboard,
   focusedShellId,
+  newDocsPane,
   paneToward,
   stepPane,
   stepTab,
@@ -161,9 +162,8 @@ export function App() {
         setPalette("ssh");
         return;
       }
-      const shellId = focusedShellId(stateRef.current);
-      const cwdFrom = kind === "editor" ? shellId : null;
-      const docs = kind === "docs" ? { root: null, followFrom: shellId, file: null, mode: "view" as const } : undefined;
+      const cwdFrom = kind === "editor" ? focusedShellId(stateRef.current) : null;
+      const docs = kind === "docs" ? newDocsPane(stateRef.current) : undefined;
       dispatch({ type: "open", id: newId("s"), kind, url, cwdFrom, target, aspect: layerAspect(), docs });
     },
     [dispatch],

@@ -24,9 +24,10 @@ import { REMOTE_TARGET } from "../remoteWindow.ts";
 import { useNarrow } from "../useNarrow.ts";
 import type { DashboardAction, DocsPane, Session } from "../workspace.ts";
 import { createFile, fetchCwd, fetchFile, fetchTree, saveFile, type Failed } from "./api.ts";
-import { draftKey, drafts, useDrafts } from "./drafts.ts";
+import { draftKey, drafts, pageStorage, useDrafts } from "./drafts.ts";
 import { resolveLink } from "./links.ts";
 import { renderMarkdown } from "./markdown.ts";
+import { createRecentRoots } from "./recent.ts";
 import { fromDisk, toDisk, treeOf, type TreeNode } from "./text.ts";
 
 /** How often a visible pane reads the tree and the open file again. */
@@ -35,6 +36,9 @@ const REFRESH_MS = 5000;
 const FOLLOW_MS = 3000;
 /** Must match MAX_FILES in native/src/server/docs.rs. */
 const MAX_FILES = 2000;
+
+/** Folders this window's machine showed lately, for the root field's list. */
+const recentRoots = createRecentRoots(pageStorage(), REMOTE_TARGET);
 
 interface DocsViewProps {
   session: Session;
@@ -101,6 +105,9 @@ export function DocsView(props: DocsViewProps) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [treeOpen, setTreeOpen] = useState(false);
+  /** Why the pane has no folder: the server has no docs routes, or did not answer. */
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const [elsewhereOpen, setElsewhereOpen] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLElement>(null);
@@ -113,6 +120,7 @@ export function DocsView(props: DocsViewProps) {
   const key = root && file ? draftKey(REMOTE_TARGET, root, file) : null;
   const draft = key ? drafts.get(key) : null;
   const draftPaths = root ? drafts.paths(REMOTE_TARGET, root) : new Set<string>();
+  const elsewhere = root ? drafts.elsewhere(REMOTE_TARGET, root) : [];
   const current = loaded && loaded.path === file ? loaded : null;
   const text = draft?.text ?? current?.text ?? "";
   const shownMode: DocsMode = narrow && mode === "split" ? "edit" : mode;
@@ -124,16 +132,25 @@ export function DocsView(props: DocsViewProps) {
     void (async () => {
       const followed = followPid !== null ? await fetchCwd(followPid) : null;
       const found = followed?.ok ? followed : await fetchCwd(null);
-      if (!cancelled && found.ok) update({ root: found.path });
+      if (cancelled) return;
+      if (found.ok) {
+        setResolveError(null);
+        update({ root: found.path });
+      } else {
+        // A server from before docs panes answers 404 for every docs route.
+        setResolveError(found.status === 404 ? t.docs.error.unsupported : t.docs.error.failed(found.status));
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [root, followPid, update]);
+  }, [root, followPid, update, t]);
 
   // The pane is named after its folder, like a shell after its title.
   useEffect(() => {
-    if (root) dispatch({ type: "title", id, title: baseName(root) });
+    if (!root) return;
+    dispatch({ type: "title", id, title: baseName(root) });
+    recentRoots.remember(root);
   }, [root, id, dispatch]);
 
   const loadTree = useCallback(async () => {
@@ -143,7 +160,9 @@ export function DocsView(props: DocsViewProps) {
       setTree({ files: result.files, truncated: result.truncated });
       setTreeError(null);
     } else {
-      setTreeError(result.status === 400 ? t.docs.error.badRoot : t.docs.error.failed(result.status));
+      setTree(null);
+      const reason = result.status === 400 ? "badRoot" : result.status === 404 ? "unsupported" : null;
+      setTreeError(reason ? t.docs.error[reason] : t.docs.error.failed(result.status));
     }
   }, [root, t]);
 
@@ -305,7 +324,8 @@ export function DocsView(props: DocsViewProps) {
     }
     setRootInput(null);
     setRootError(null);
-    update({ root: next, followFrom: null, file: null });
+    // The server's spelling of the folder, so `/a/b/` and `/a/b` are one root.
+    update({ root: result.root, followFrom: null, file: null });
   };
 
   const toggleFollow = () => {
@@ -375,7 +395,7 @@ export function DocsView(props: DocsViewProps) {
           <button type="button" className="docs-root" title={`${t.docs.root}: ${root ?? ""} — ${t.docs.rootHint}`} onClick={() => setRootInput(root ?? "")}>
             <Folder size={13} aria-hidden="true" />
             {/* Marks keep a path's slashes in place in the right-to-left box that trims its start. */}
-            <span>{root ? `\u200e${root}\u200e` : t.docs.loading}</span>
+            <span className={resolveError ? "docs-error" : undefined}>{root ? `\u200e${root}\u200e` : (resolveError ?? t.docs.loading)}</span>
           </button>
         ) : (
           <form
@@ -388,6 +408,7 @@ export function DocsView(props: DocsViewProps) {
             <input
               autoFocus
               aria-label={t.docs.root}
+              list={`${id}-recent-roots`}
               value={rootInput}
               placeholder={t.docs.rootPlaceholder}
               onChange={(event) => {
@@ -397,6 +418,11 @@ export function DocsView(props: DocsViewProps) {
               onKeyDown={(event) => event.key === "Escape" && (setRootInput(null), setRootError(null))}
               onBlur={() => !rootError && setRootInput(null)}
             />
+            <datalist id={`${id}-recent-roots`}>
+              {recentRoots.list().map((recent) => (
+                <option key={recent} value={recent} />
+              ))}
+            </datalist>
             {rootError && <span className="docs-error" role="alert">{rootError}</span>}
           </form>
         )}
@@ -457,6 +483,29 @@ export function DocsView(props: DocsViewProps) {
               <TreeRows node={nodes} depth={0} current={file} dirty={draftPaths} forceOpen={filter.trim() !== ""} onOpen={openFile} />
             )}
           </div>
+          {elsewhere.length > 0 && (
+            <div className="docs-elsewhere">
+              <button type="button" className="docs-link-button" aria-expanded={elsewhereOpen} onClick={() => setElsewhereOpen(!elsewhereOpen)}>
+                <span className="docs-dirty" aria-hidden="true" />
+                {t.docs.elsewhere(elsewhere.length)}
+              </button>
+              {elsewhereOpen &&
+                elsewhere.map((item) => (
+                  <button
+                    key={`${item.root}/${item.path}`}
+                    type="button"
+                    className="docs-elsewhere-item"
+                    title={`${item.root}/${item.path}`}
+                    onClick={() => {
+                      setElsewhereOpen(false);
+                      update({ root: item.root, file: item.path, followFrom: null });
+                    }}
+                  >
+                    <span>{baseName(item.root)}</span> / {item.path}
+                  </button>
+                ))}
+            </div>
+          )}
           {tree && (
             <div className="docs-tree-foot">
               {t.docs.count(tree.files.length, folderCount(tree.files))}
