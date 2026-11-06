@@ -522,8 +522,11 @@ mod tests {
     fn list_root_answers_the_folder_as_shown() {
         let (_dir, root) = root();
         touch(&root, "a.md", "");
-        let (shown, files, truncated) = list_root(&format!("{}/", root.display())).unwrap();
-        assert_eq!(shown, root.to_string_lossy());
+        // The page sends the folder as it was shown: on Windows without `\\?\`,
+        // which would keep the `/` as part of the name.
+        let shown_root = shown_path(&root);
+        let (shown, files, truncated) = list_root(&format!("{shown_root}/")).unwrap();
+        assert_eq!(shown, shown_root);
         assert_eq!(files, ["a.md"]);
         assert!(!truncated);
     }
