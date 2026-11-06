@@ -4,7 +4,7 @@
 
 | Area | What it does |
 |---|---|
-| Activity bar | New shell, terminal-browser, terminal-code, SSH, and remote window at the top; a badge shows how many are open. The command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. |
+| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top; a badge shows how many are open. The command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. |
 | Layout | Settings ▸ General ▸ Workspaces and tabs picks one. **Top** (the default): the workspace menu and the tab bar across the top, and no sidebar. **Sidebar**: the workspace menu and the tabs in the sidebar, and no tab bar. |
 | Tab bar (top layout) | The workspace menu at the left, then the tabs. `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Sidebar (sidebar layout) | The workspace menu, then the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: the workspace icon, tab numbers, and the session icons of the tab in view. |
@@ -113,6 +113,23 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 - When one of these programs is not installed, its pane shows the official install command with a **Copy** button. Run the command, then press **Restart**. westerm never installs anything itself.
 - When the program is installed but cannot start, the pane asks you to read the program's own message in the terminal.
 - Only the changed parts of the picture are sent, which matters most in a remote window. Scrolling and video still send whole pictures. To send whole pictures every time, run `terminal-browser config set render.presenter full`.
+
+## Docs
+
+A docs pane lists the Markdown files of a folder and shows, edits, and saves them. It has no process: it sits in tabs and splits like any other pane.
+
+- **Open**: the book icon in the activity bar, or "New docs pane" in the palette. The folder is the one of the focused shell, else your home folder.
+- **Folder**: the chip at the top shows it. Click it to type another absolute folder.
+- **Follow shell**: while on, the folder follows the shell it opened beside. `cd` in that shell, and the pane lists the new folder within a few seconds. Picking a folder by hand turns it off; the switch turns it on again for the first running shell of the tab. Windows has no follow.
+- **Tree**: `.md` and `.markdown` files only, by folder. It follows `.gitignore`, skips `.git`, `node_modules`, and `target`, and lists at most 2,000 files, 8 folders deep. The search box filters by path. The file icon at the top makes a new document; type `notes.md` or `docs/notes.md` in a folder that exists.
+- **Modes**: View (the rendered document), Edit (the text), and Split (both, side by side). On a phone-wide window, Split shows as Edit and the list button opens the tree.
+- **Keys** while the pane has the keyboard: ⌘S (Ctrl+S) saves, ⌘E (Ctrl+E) switches between View and Split.
+- **Links**: a link to another Markdown file opens it in the pane, `#heading` links scroll, and web links open in a terminal-browser pane. Links that leave the folder do nothing.
+- **Unsaved changes** are kept per file in this browser (or the app), also across reloads and when the pane closes. Every docs pane on the same file shows the same changes. The tree marks such files with a dot; **Discard** drops the changes.
+- **Changes on disk**: a file without unsaved changes reloads by itself. When the file changed on disk after you started editing, saving asks first: load the disk version, or save anyway.
+- Files keep their line ends (`\r\n` stays `\r\n`). Files larger than 2 MiB and files that are not UTF-8 text do not open.
+- Images show their description text instead of the picture, and HTML in a document shows as text.
+- In a remote window, the pane shows the server's files.
 
 ## SSH
 

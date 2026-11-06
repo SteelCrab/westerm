@@ -336,6 +336,7 @@ export function uiColors(id: ColorThemeId, scheme: ColorScheme): Record<string, 
   const browser = reach(palette[6], grounds, 3, text);
   const editor = reach(palette[5], grounds, 3, text);
   const ssh = reach(mix(palette[1], palette[3], 0.5), grounds, 3, text);
+  const docs = reach(mix(palette[1], palette[5], 0.5), grounds, 3, text);
   const soft = dark ? 0.16 : 0.12;
   return {
     "--bg": cssColor(bg),
@@ -355,6 +356,8 @@ export function uiColors(id: ColorThemeId, scheme: ColorScheme): Record<string, 
     "--editor-soft": rgba(editor, soft),
     "--ssh": cssColor(ssh),
     "--ssh-soft": rgba(ssh, soft),
+    "--docs": cssColor(docs),
+    "--docs-soft": rgba(docs, soft),
     "--ok": cssColor(reach(palette[2], grounds, 3, text)),
     "--warn": cssColor(reach(palette[3], grounds, 4.5, text)),
     "--danger": cssColor(reach(palette[1], grounds, 4.5, text)),

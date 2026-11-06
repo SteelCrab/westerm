@@ -1,11 +1,11 @@
 import { useCallback, useRef } from "react";
 import { rects, stackRects, type Rect } from "../../shared/layout.ts";
-import type { SessionKind } from "../../shared/protocol.ts";
+import type { PaneKind } from "../../shared/protocol.ts";
 import type { TerminalThemeColors } from "@wterm/core";
 import { useI18n } from "../i18n/index.tsx";
 import { KindIcon, LAUNCHERS } from "../kinds.tsx";
 import type { TerminalFont } from "../terminal/fonts.ts";
-import { activeTab, sessionTab, takenOver, type Dashboard, type DashboardAction } from "../workspace.ts";
+import { activeTab, sessionTab, tabSessions, takenOver, type Dashboard, type DashboardAction, type Session } from "../workspace.ts";
 import type { RenameTarget } from "./InlineRename.tsx";
 import { Pane } from "./Pane.tsx";
 import { SplitDividers } from "./SplitDividers.tsx";
@@ -19,13 +19,32 @@ interface PaneLayerProps {
   dragging: string | null;
   onDragPane: (id: string | null) => void;
   onRename: (target: RenameTarget | null) => void;
-  onLaunch: (kind: SessionKind) => void;
+  onLaunch: (kind: PaneKind) => void;
+  /** Opens a web page in a terminal-browser pane (a link in a docs pane). */
+  onOpenUrl: (url: string) => void;
   /** Disconnected panes may connect again (see `mayReattach`). */
   mayReattach: boolean;
   /** Phone-wide: panes stack top to bottom, without split dividers. */
   narrow: boolean;
   dispatch: (action: DashboardAction) => void;
 }
+
+/**
+ * For a docs pane: the shell it follows (its pid while running; whether it
+ * still exists) and the shell it may start to follow, the first running
+ * shell of its tab.
+ */
+function followInfo(state: Dashboard, session: Session, tabId: string) {
+  const followed = state.sessions.find((item) => item.id === session.docs?.followFrom);
+  const candidate = tabSessions(state, tabId).find((item) => item.kind === "shell" && item.status === "running");
+  return {
+    followPid: followed?.status === "running" ? followed.pid : null,
+    followAlive: followed !== undefined,
+    followCandidate: candidate?.id ?? null,
+  };
+}
+
+const NO_FOLLOW = { followPid: null, followAlive: false, followCandidate: null };
 
 /** Matches .pane-layer padding: the space split fractions refer to. */
 const LAYER_PADDING = 4;
@@ -85,6 +104,8 @@ export function PaneLayer(props: PaneLayerProps) {
             mayReattach={props.mayReattach}
             onDragPane={props.onDragPane}
             dispatch={props.dispatch}
+            onOpenUrl={props.onOpenUrl}
+            {...(session.kind === "docs" ? followInfo(state, session, tab.id) : NO_FOLLOW)}
           />
         );
       })}

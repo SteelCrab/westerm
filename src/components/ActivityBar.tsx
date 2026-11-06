@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import { Command, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
-import type { SessionKind } from "../../shared/protocol.ts";
+import type { PaneKind } from "../../shared/protocol.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KINDS, LAUNCHERS, RemoteWindowIcon } from "../kinds.tsx";
 
 interface ActivityBarProps {
   sidebarOpen: boolean;
-  counts: Record<SessionKind, number>;
-  onLaunch: (kind: SessionKind) => void;
+  counts: Record<PaneKind, number>;
+  onLaunch: (kind: PaneKind) => void;
   /** Null in the top layout, which has no sidebar. */
   onToggleSidebar: (() => void) | null;
   onOpenSettings: () => void;

@@ -45,7 +45,8 @@ export function loadSaved(): Promise<LoadResult> {
 export function firstLoad(remote: boolean, result: LoadResult): "hydrate" | "fresh" | "retry" {
   if (!result.ok) return remote ? "retry" : "fresh";
   const { saved } = result;
-  return saved && saved.sessions.length > (saved.legacyRemoteIds?.length ?? 0) ? "hydrate" : "fresh";
+  const panes = saved ? saved.sessions.length + (saved.docs?.length ?? 0) : 0;
+  return saved && panes > (saved.legacyRemoteIds?.length ?? 0) ? "hydrate" : "fresh";
 }
 
 /**

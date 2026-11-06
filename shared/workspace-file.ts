@@ -22,15 +22,41 @@ export interface SavedSession {
   target?: string | null;
 }
 
+/** How a docs pane shows its file. */
+export type DocsMode = "view" | "edit" | "split";
+
+export const DOCS_MODES: readonly DocsMode[] = ["view", "edit", "split"];
+
+/**
+ * A docs pane: no process, only what it shows. Docs panes live outside
+ * `sessions` and `paneIds`, so a version from before them still reads the
+ * file: it ignores `docs` and `docIds`, and lays such a tab out as a grid.
+ */
+export interface SavedDocs {
+  id: string;
+  title: string;
+  /** User-set name, or null. */
+  name: string | null;
+  /** Absolute folder whose Markdown files the pane lists; null until the pane has asked for one. */
+  root: string | null;
+  /** The shell whose folder the root follows, or null. */
+  followFrom: string | null;
+  /** The open file, relative to the root with `/`, or null. */
+  file: string | null;
+  mode: DocsMode;
+}
+
 export interface SavedTab {
   id: string;
   /** The workspace that shows this tab. */
   workspaceId: string;
   /** User-set name, or null. */
   name: string | null;
-  /** The tab's panes in reading order. */
+  /** The tab's session panes in reading order; docs panes are in `docIds`. */
   paneIds: string[];
-  /** Split tree; files from before split layouts have none and use grid order. */
+  /** The tab's docs panes in reading order. Files from before docs panes have none. */
+  docIds?: string[];
+  /** Split tree of all the tab's panes; files from before split layouts have none and use grid order. */
   layout?: LayoutNode | null;
   focusedId: string | null;
   maximizedId: string | null;
@@ -94,6 +120,8 @@ export interface SavedDashboard {
   activeTabId: string;
   tabs: SavedTab[];
   sessions: SavedSession[];
+  /** Docs panes; a parsed file always has the list. */
+  docs?: SavedDocs[];
   workspaces: SavedWorkspace[];
   activeWorkspaceId: string;
   /**
@@ -116,6 +144,41 @@ const MAX_TEXT = 512;
 
 function text(value: unknown, max = MAX_TEXT): string | null {
   return typeof value === "string" && value.length <= max ? value : null;
+}
+
+const MAX_DOCS = 128;
+const MAX_PATH = 4096;
+
+/** An absolute folder on Unix (`/…`) or Windows (`C:\…`, `\\server\…`). */
+function isAbsolutePath(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_PATH && /^(\/|[A-Za-z]:[\\/]|\\\\)/.test(value) && !value.includes("\0");
+}
+
+/** A file path inside a root: `/`-separated parts, none empty, `.` or `..`. */
+export function isDocPath(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0 || value.length > MAX_PATH) return false;
+  if (value.includes("\\") || value.includes("\0")) return false;
+  return value.split("/").every((part) => part !== "" && part !== "." && part !== "..");
+}
+
+/** The file's docs panes by id, or an empty map when any entry is broken. */
+function parseDocs(value: unknown, sessionIds: ReadonlySet<string>): Map<string, SavedDocs> {
+  const docs = new Map<string, SavedDocs>();
+  if (!Array.isArray(value) || value.length > MAX_DOCS) return docs;
+  for (const item of value as unknown[]) {
+    if (typeof item !== "object" || item === null) return new Map();
+    const raw = item as Record<string, unknown>;
+    const title = text(raw.title);
+    const name = raw.name == null ? null : text(raw.name);
+    const root = raw.root == null ? null : isAbsolutePath(raw.root) ? raw.root : undefined;
+    const mode = DOCS_MODES.find((known) => known === raw.mode);
+    if (!isId(raw.id) || docs.has(raw.id) || sessionIds.has(raw.id)) return new Map();
+    if (title === null || (raw.name != null && name === null) || root === undefined || !mode) return new Map();
+    const followFrom = isId(raw.followFrom) && sessionIds.has(raw.followFrom) ? raw.followFrom : null;
+    const file = isDocPath(raw.file) ? raw.file : null;
+    docs.set(raw.id, { id: raw.id, title, name, root, followFrom, file, mode });
+  }
+  return docs;
 }
 
 /**
@@ -151,6 +214,9 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
     sessions.push({ id: session.id, kind, title, name, url, target });
   }
 
+  const docsById = parseDocs(raw.docs, sessionIds);
+  const placedDocs = new Set<string>();
+
   const tabs: Omit<SavedTab, "workspaceId">[] = [];
   /** Each tab's `workspaceId` as written, still unchecked. */
   const owners: unknown[] = [];
@@ -166,20 +232,25 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
       placed.add(paneId);
       paneIds.push(paneId);
     }
-    const inTab = (id: unknown): string | null => (isId(id) && paneIds.includes(id) ? id : null);
+    // Docs ids that do not add up cost this tab its docs panes, not the file.
+    const docIds = parseDocIds(tab.docIds, docsById, placedDocs);
+    const allIds = [...paneIds, ...docIds];
+    const inTab = (id: unknown): string | null => (isId(id) && allIds.includes(id) ? id : null);
     const name = tab.name == null ? null : text(tab.name);
     if (tab.name != null && name === null) return null;
     tabIds.add(tab.id);
     // The tree must hold exactly this tab's panes; otherwise use grid order.
-    const inThisTab = (id: unknown): id is string => isId(id) && paneIds.includes(id);
+    const inThisTab = (id: unknown): id is string => isId(id) && allIds.includes(id);
     const parsed = tab.layout == null ? null : parseLayout(tab.layout, inThisTab);
     const sameLeaves =
-      parsed !== null && leaves(parsed).length === paneIds.length && new Set(leaves(parsed)).size === paneIds.length;
-    const layout = sameLeaves ? parsed : fromGrid(paneIds);
+      parsed !== null && leaves(parsed).length === allIds.length && new Set(leaves(parsed)).size === allIds.length;
+    const layout = sameLeaves ? parsed : fromGrid(allIds);
+    const order = leaves(layout);
     tabs.push({
       id: tab.id,
       name,
-      paneIds: leaves(layout),
+      paneIds: order.filter((id) => sessionIds.has(id)),
+      docIds: order.filter((id) => docsById.has(id)),
       layout,
       focusedId: inTab(tab.focusedId),
       maximizedId: inTab(tab.maximizedId),
@@ -193,18 +264,31 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
   // Broken workspace data costs the grouping, not the tabs.
   const grouped = parseWorkspaces(raw.workspaces, raw.activeWorkspaceId, tabs, owners);
   const legacy = legacyRemoteIds.length > 0 ? { legacyRemoteIds } : {};
-  if (grouped) return { version: 1, activeTabId, sessions, ...grouped, ...legacy };
+  // A docs pane in no tab is dropped.
+  const docs = [...docsById.values()].filter((item) => placedDocs.has(item.id));
+  if (grouped) return { version: 1, activeTabId, sessions, docs, ...grouped, ...legacy };
   return {
     version: 1,
     activeTabId,
     tabs: tabs.map((tab) => ({ ...tab, workspaceId: DEFAULT_WORKSPACE_ID })),
     sessions,
+    docs,
     workspaces: [
       { id: DEFAULT_WORKSPACE_ID, name: null, activeTabId, icon: DEFAULT_WORKSPACE_ICON, color: positionColor(0) },
     ],
     activeWorkspaceId: DEFAULT_WORKSPACE_ID,
     ...legacy,
   };
+}
+
+/** A tab's docs panes, each known and in no other tab; none when any is not. Marks them placed. */
+function parseDocIds(value: unknown, docs: ReadonlyMap<string, SavedDocs>, placed: Set<string>): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids = value as unknown[];
+  const fits = ids.every((id, index) => isId(id) && docs.has(id) && !placed.has(id) && ids.indexOf(id) === index);
+  if (!fits) return [];
+  for (const id of ids as string[]) placed.add(id);
+  return ids as string[];
 }
 
 /**
