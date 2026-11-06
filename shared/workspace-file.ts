@@ -20,6 +20,8 @@ export interface SavedSession {
   url: string | null;
   /** ssh destination, for ssh sessions and remote browsers. */
   target?: string | null;
+  /** False: a restored shell in this pane does not resume its AI agent. Written only when false. */
+  autoResume?: false;
 }
 
 /** How a docs pane shows its file. */
@@ -211,7 +213,7 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
     if ((session.target != null && target === null) || (kind === "ssh" && !target)) return null;
     sessionIds.add(session.id);
     if (legacyRemote) legacyRemoteIds.push(session.id);
-    sessions.push({ id: session.id, kind, title, name, url, target });
+    sessions.push({ id: session.id, kind, title, name, url, target, ...(session.autoResume === false && { autoResume: false as const }) });
   }
 
   const docsById = parseDocs(raw.docs, sessionIds);

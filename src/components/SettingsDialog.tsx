@@ -328,6 +328,18 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   />
                   <p className="settings-hint">{t.settings.fontFamilyHint(props.ghosttyFont)}</p>
                 </div>
+                <div className="settings-row stacked">
+                  <label className="settings-check" htmlFor="settings-resume-agents">
+                    <input
+                      id="settings-resume-agents"
+                      type="checkbox"
+                      checked={settings.resumeAgents}
+                      onChange={(event) => onChange({ resumeAgents: event.target.checked })}
+                    />
+                    {t.settings.resumeAgents}
+                  </label>
+                  <p className="settings-hint">{t.settings.resumeAgentsHint}</p>
+                </div>
               </>
             )}
 

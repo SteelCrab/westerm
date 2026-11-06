@@ -3,7 +3,8 @@ import { Plus, X } from "lucide-react";
 import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME } from "../dnd.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
-import { activeTab, tabLabel, tabLead, tabSessions, visibleTabs, type Dashboard } from "../workspace.ts";
+import { activeTab, tabAgentDisplay, tabLabel, tabLead, tabSessions, visibleTabs, type Dashboard } from "../workspace.ts";
+import { TabAgentMark } from "./AgentMark.tsx";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
 
 interface TabBarProps {
@@ -73,6 +74,7 @@ export function TabBar(props: TabBarProps) {
         {tabs.map((tab, index) => {
           const lead = tabLead(state, tab);
           const count = tabSessions(state, tab.id).length;
+          const agents = tabAgentDisplay(state, tab.id);
           const active = tab.id === activeId;
           const label = tabLabel(state, tab, t.tabs.untitled);
           const editing = renaming?.kind === "tab" && renaming.id === tab.id && renaming.where === "tabbar";
@@ -134,6 +136,7 @@ export function TabBar(props: TabBarProps) {
                     <span className="tab-index">{index + 1}</span>
                   )}
                   <span className="tab-title">{label}</span>
+                  {agents && <TabAgentMark display={agents} />}
                   {count > 1 && <span className="tab-count">{count}</span>}
                 </button>
               )}

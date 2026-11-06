@@ -14,6 +14,8 @@ interface PaneLayerProps {
   state: Dashboard;
   font: TerminalFont;
   colors: TerminalThemeColors;
+  /** A restored shell resumes its AI agent (Settings ▸ Terminal). */
+  resumeAgents: boolean;
   focusNonce: number;
   renaming: RenameTarget | null;
   dragging: string | null;
@@ -92,6 +94,7 @@ export function PaneLayer(props: PaneLayerProps) {
             session={session}
             font={props.font}
             colors={props.colors}
+            resumeAgents={props.resumeAgents}
             focused={active && session.id === tab.focusedId}
             maximized={maximized}
             covered={!active || (tab.maximizedId !== null && !maximized)}

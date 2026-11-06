@@ -514,6 +514,7 @@ export function App() {
             state={state}
             font={font}
             colors={colors}
+            resumeAgents={settings.resumeAgents}
             focusNonce={focusNonce}
             renaming={renaming}
             dragging={dragging}

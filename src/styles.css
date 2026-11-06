@@ -17,8 +17,12 @@
   --ssh-soft: rgba(240, 163, 94, 0.16);
   --docs: #f07fba;
   --docs-soft: rgba(240, 127, 186, 0.14);
+  /* AI agents: Claude Code's mark; Codex's follows --text. */
+  --agent-claude: #e08a65;
   --ok: #4fc27a;
   --warn: #e5b454;
+  --ok-soft: rgba(79, 194, 122, 0.16);
+  --warn-soft: rgba(229, 180, 84, 0.16);
   --danger: #ef6b6b;
   /* Workspace colors (shared/workspace-file.ts WORKSPACE_COLORS). */
   --ws-blue: #6aa9ff;
@@ -85,8 +89,11 @@
     --ssh-soft: rgba(194, 106, 26, 0.12);
     --docs: #c2407f;
     --docs-soft: rgba(194, 64, 127, 0.12);
+    --agent-claude: #c2603d;
     --ok: #23a058;
     --warn: #c48a12;
+    --ok-soft: rgba(35, 160, 88, 0.12);
+    --warn-soft: rgba(196, 138, 18, 0.14);
     --danger: #d64545;
     --ws-blue: #2f6fde;
     --ws-green: #1f9653;
@@ -133,8 +140,11 @@
   --ssh-soft: rgba(194, 106, 26, 0.12);
   --docs: #c2407f;
   --docs-soft: rgba(194, 64, 127, 0.12);
+  --agent-claude: #c2603d;
   --ok: #23a058;
   --warn: #c48a12;
+  --ok-soft: rgba(35, 160, 88, 0.12);
+  --warn-soft: rgba(196, 138, 18, 0.14);
   --danger: #d64545;
   --ws-blue: #2f6fde;
   --ws-green: #1f9653;
@@ -408,6 +418,289 @@ button {
 
 .status-dot.error {
   background: var(--danger);
+}
+
+/* ---- AI agents --------------------------------------------------------- */
+
+/* Replaces a shell's kind icon while an agent runs: the color names the
+   agent, the ring shows its state. Its margin keeps the icon's footprint. */
+.agent-mark {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--agent-mark, 20px);
+  height: var(--agent-mark, 20px);
+  margin: -3px;
+  border-radius: 50%;
+  color: var(--agent-claude);
+}
+
+.agent-mark.agent-codex {
+  color: var(--text);
+}
+
+.agent-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+}
+
+.agent-mark.agent-working::after {
+  border-color: var(--accent);
+  border-right-color: transparent;
+  animation: agent-turn 0.9s linear infinite;
+}
+
+.agent-mark.agent-waiting::after {
+  border-color: var(--warn);
+  animation: status-pulse 0.6s ease-in-out infinite alternate;
+}
+
+.agent-mark.agent-done::after {
+  border-color: var(--ok);
+}
+
+@keyframes agent-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The pane header's AI mark is a button: it opens the agent's info card. */
+.agent-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  margin: -3px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.agent-button .agent-mark {
+  margin: 0;
+}
+
+.agent-button:hover,
+.agent-button[aria-expanded="true"] {
+  background: var(--accent-soft);
+}
+
+.agent-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Under the header, inside the pane; a short pane scrolls it. */
+.agent-card {
+  position: absolute;
+  top: 36px;
+  left: 6px;
+  z-index: 6;
+  width: min(320px, calc(100% - 12px));
+  max-height: calc(100% - 42px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 16px 40px -12px var(--shadow);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-card p {
+  margin: 0;
+}
+
+.agent-card code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+}
+
+.agent-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-card-name {
+  color: var(--agent-claude);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agent-card-name.agent-codex {
+  color: var(--text);
+}
+
+.agent-card-version,
+.agent-card-rows dt {
+  color: var(--text-faint);
+}
+
+.agent-card-state {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.agent-card-state.agent-working {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.agent-card-state.agent-waiting {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.agent-card-state.agent-done {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.agent-card-rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.agent-card-rows dd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+/* Whole, wrapped anywhere: the end of a command holds the conversation id. */
+.agent-card-path,
+.agent-card-command code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-card-muted {
+  color: var(--text-muted);
+}
+
+.agent-card-resume {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.agent-card-command {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.agent-card-command code {
+  flex: 1;
+  user-select: all;
+}
+
+.agent-card-copy {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.agent-card-copy:hover {
+  background: var(--accent-soft);
+}
+
+.agent-card-error {
+  color: var(--danger);
+}
+
+.agent-card-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.agent-card-check input {
+  margin: 2px 0 0;
+}
+
+.agent-card-check:has(input:disabled) {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* A tab's agents: asks (yellow), finished out of view (green), works (turning). */
+.tab-agent {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.tab-agent-waiting {
+  background: var(--warn);
+  animation: status-pulse 0.6s ease-in-out infinite alternate;
+}
+
+.tab-agent-done {
+  background: var(--ok);
+}
+
+.tab-agent-working {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  animation: agent-turn 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-mark::after,
+  .tab-agent {
+    animation: none;
+  }
+
+  .agent-mark.agent-working::after,
+  .tab-agent-working {
+    border-right-color: var(--accent);
+  }
 }
 
 /* ---- Buttons --------------------------------------------------------- */

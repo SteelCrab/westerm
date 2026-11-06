@@ -30,6 +30,8 @@ export interface TerminalViewProps {
   focusNonce: number;
   /** False while another pane covers this one; parsing continues, painting stops. */
   visible: boolean;
+  /** Read at connect time: a restored shell resumes its AI agent. */
+  resumeAgents: boolean;
   onEvent: (event: ConnectionEvent) => void;
   onTitle: (title: string) => void;
   onFocus: () => void;
@@ -82,6 +84,8 @@ export function TerminalView(props: TerminalViewProps) {
   // Read at connect time only: switching language must not reconnect.
   const localeRef = useRef(locale);
   localeRef.current = locale;
+  const resumeRef = useRef(props.resumeAgents);
+  resumeRef.current = props.resumeAgents;
   const terminalRef = useRef<TerminalHandle>(null);
   const connectionRef = useRef<PtyConnection | null>(null);
   const wtermRef = useRef<WTerm | null>(null);
@@ -129,6 +133,7 @@ export function TerminalView(props: TerminalViewProps) {
         cwdFrom,
         target,
         lang: localeRef.current,
+        resumeAgents: resumeRef.current,
         size: ptySize(wt),
         onOutput: (bytes) => wt.write(bytes),
         onEvent: (event) => callbacks.current.onEvent(event),

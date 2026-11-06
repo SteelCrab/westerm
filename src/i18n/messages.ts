@@ -2,7 +2,8 @@
 // the reference shape: every locale must provide the same keys (the
 // `Messages` type makes a missing translation a type error).
 
-import type { PaneKind, RemoteFailure, RemoteVia } from "../../shared/protocol.ts";
+import type { AgentKind, PaneKind, RemoteFailure, RemoteVia } from "../../shared/protocol.ts";
+import type { AgentDisplay, TabAgentDisplay } from "../workspace.ts";
 
 export type Locale = "ko" | "en" | "ja" | "zh";
 
@@ -316,6 +317,8 @@ const en = {
     version: (version: string) => `Version ${version}`,
     sourceCode: "Source code",
     license: "MIT License",
+    resumeAgents: "Resume AI agents",
+    resumeAgentsHint: "When a shell comes back as \"restored\", the Claude Code or Codex conversation it ran starts again.",
     savedHere: "Settings are saved in this browser.",
     close: "Close",
   },
@@ -338,6 +341,30 @@ const en = {
     checkFailed: "Could not check for updates.",
     disabled: "Update checks are turned off (WESTERM_NO_UPDATE_CHECK).",
     close: "Close",
+  },
+  agent: {
+    names: { claude: "Claude Code", codex: "Codex" } as Record<AgentKind, string>,
+    states: { working: "Working", waiting: "Needs your input", done: "Done", idle: "Idle" } as Record<AgentDisplay, string>,
+    tab: { working: "An agent is working", waiting: "An agent needs your input", done: "An agent finished" } as Record<TabAgentDisplay, string>,
+    card: {
+      open: (agent: string) => `${agent}: show details`,
+      label: (agent: string) => `${agent} details`,
+      for: (minutes: number) =>
+        minutes < 1 ? "just now" : minutes < 60 ? `for ${minutes} min` : `for ${Math.floor(minutes / 60)} h ${minutes % 60} min`,
+      ago: (minutes: number) =>
+        minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : `${Math.floor(minutes / 60)} h ${minutes % 60} min ago`,
+      conversation: "Conversation",
+      latest: "The folder's latest conversation",
+      folder: "Folder",
+      model: "Model",
+      started: "Started",
+      command: "Runs after a reboot",
+      copy: "Copy",
+      copied: "Copied",
+      copyFailed: "Could not copy. Select the text to copy it.",
+      autoResume: "Resume in this pane",
+      autoResumeOff: "Off in Settings ▸ Terminal",
+    },
   },
   away: {
     title: "In use in another window",
@@ -616,6 +643,8 @@ const ko: Messages = {
     version: (version) => `버전 ${version}`,
     sourceCode: "소스 코드",
     license: "MIT 라이선스",
+    resumeAgents: "AI 에이전트 이어가기",
+    resumeAgentsHint: "셸이 \"복원됨\"으로 돌아오면, 그 셸에서 실행하던 Claude Code나 Codex 대화를 다시 시작합니다.",
     savedHere: "설정은 이 브라우저에 저장됩니다.",
     close: "닫기",
   },
@@ -638,6 +667,30 @@ const ko: Messages = {
     checkFailed: "업데이트를 확인하지 못했습니다.",
     disabled: "업데이트 확인이 꺼져 있습니다 (WESTERM_NO_UPDATE_CHECK).",
     close: "닫기",
+  },
+  agent: {
+    names: { claude: "Claude Code", codex: "Codex" },
+    states: { working: "작업 중", waiting: "입력 필요", done: "완료", idle: "대기" },
+    tab: { working: "에이전트가 작업 중입니다", waiting: "에이전트가 입력을 기다립니다", done: "에이전트가 작업을 마쳤습니다" },
+    card: {
+      open: (agent) => `${agent}: 정보 보기`,
+      label: (agent) => `${agent} 정보`,
+      for: (minutes) =>
+        minutes < 1 ? "방금" : minutes < 60 ? `${minutes}분째` : `${Math.floor(minutes / 60)}시간 ${minutes % 60}분째`,
+      ago: (minutes) =>
+        minutes < 1 ? "방금" : minutes < 60 ? `${minutes}분 전` : `${Math.floor(minutes / 60)}시간 ${minutes % 60}분 전`,
+      conversation: "대화",
+      latest: "이 폴더의 마지막 대화",
+      folder: "폴더",
+      model: "모델",
+      started: "시작",
+      command: "재부팅 뒤 실행할 명령",
+      copy: "복사",
+      copied: "복사됨",
+      copyFailed: "복사하지 못했습니다. 글자를 선택해서 복사해 주세요.",
+      autoResume: "이 패널은 자동으로 이어가기",
+      autoResumeOff: "설정 ▸ 터미널에서 꺼져 있습니다",
+    },
   },
   away: {
     title: "다른 창에서 사용 중입니다",
@@ -914,6 +967,8 @@ const ja: Messages = {
     version: (version) => `バージョン ${version}`,
     sourceCode: "ソースコード",
     license: "MIT ライセンス",
+    resumeAgents: "AI エージェントを再開",
+    resumeAgentsHint: "シェルが「復元済み」で戻ると、そのシェルで動いていた Claude Code や Codex の会話をもう一度始めます。",
     savedHere: "設定はこのブラウザに保存されます。",
     close: "閉じる",
   },
@@ -936,6 +991,30 @@ const ja: Messages = {
     checkFailed: "アップデートを確認できませんでした。",
     disabled: "アップデートの確認はオフです (WESTERM_NO_UPDATE_CHECK)。",
     close: "閉じる",
+  },
+  agent: {
+    names: { claude: "Claude Code", codex: "Codex" },
+    states: { working: "作業中", waiting: "入力待ち", done: "完了", idle: "待機中" },
+    tab: { working: "エージェントが作業中です", waiting: "エージェントが入力を待っています", done: "エージェントの作業が終わりました" },
+    card: {
+      open: (agent) => `${agent}: 情報を表示`,
+      label: (agent) => `${agent} の情報`,
+      for: (minutes) =>
+        minutes < 1 ? "たった今" : minutes < 60 ? `${minutes} 分間` : `${Math.floor(minutes / 60)} 時間 ${minutes % 60} 分間`,
+      ago: (minutes) =>
+        minutes < 1 ? "たった今" : minutes < 60 ? `${minutes} 分前` : `${Math.floor(minutes / 60)} 時間 ${minutes % 60} 分前`,
+      conversation: "会話",
+      latest: "このフォルダーの最新の会話",
+      folder: "フォルダー",
+      model: "モデル",
+      started: "開始",
+      command: "再起動後に実行するコマンド",
+      copy: "コピー",
+      copied: "コピーしました",
+      copyFailed: "コピーできませんでした。文字を選択してコピーしてください。",
+      autoResume: "このペインで自動的に再開",
+      autoResumeOff: "設定 ▸ ターミナルでオフになっています",
+    },
   },
   away: {
     title: "別のウィンドウで使用中です",
@@ -1212,6 +1291,8 @@ const zh: Messages = {
     version: (version) => `版本 ${version}`,
     sourceCode: "源代码",
     license: "MIT 许可证",
+    resumeAgents: "恢复 AI 智能体",
+    resumeAgentsHint: "Shell 以“已恢复”状态回来时，重新开始它之前运行的 Claude Code 或 Codex 对话。",
     savedHere: "设置保存在此浏览器中。",
     close: "关闭",
   },
@@ -1234,6 +1315,30 @@ const zh: Messages = {
     checkFailed: "无法检查更新。",
     disabled: "更新检查已关闭 (WESTERM_NO_UPDATE_CHECK)。",
     close: "关闭",
+  },
+  agent: {
+    names: { claude: "Claude Code", codex: "Codex" },
+    states: { working: "工作中", waiting: "需要输入", done: "已完成", idle: "空闲" },
+    tab: { working: "智能体正在工作", waiting: "智能体在等待输入", done: "智能体已完成" },
+    card: {
+      open: (agent) => `${agent}：查看信息`,
+      label: (agent) => `${agent} 信息`,
+      for: (minutes) =>
+        minutes < 1 ? "刚刚" : minutes < 60 ? `已 ${minutes} 分钟` : `已 ${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`,
+      ago: (minutes) =>
+        minutes < 1 ? "刚刚" : minutes < 60 ? `${minutes} 分钟前` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟前`,
+      conversation: "对话",
+      latest: "此文件夹的最新对话",
+      folder: "文件夹",
+      model: "模型",
+      started: "开始",
+      command: "重启后运行的命令",
+      copy: "复制",
+      copied: "已复制",
+      copyFailed: "无法复制。请选中文字后自行复制。",
+      autoResume: "在此面板中自动恢复",
+      autoResumeOff: "已在 设置 ▸ 终端 中关闭",
+    },
   },
   away: {
     title: "正在另一个窗口中使用",
