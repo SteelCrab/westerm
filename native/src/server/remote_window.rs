@@ -195,3 +195,46 @@ async fn relay(mut browser: WebSocket, request: AttachRequest, opened: Opened, t
         drop_link(&state, &target, opened.link);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::server::tests::test_state;
+
+    fn page_headers() -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::HOST, "127.0.0.1:4317".parse().unwrap());
+        headers.insert(header::ORIGIN, "http://127.0.0.1:4317".parse().unwrap());
+        headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+        headers
+    }
+
+    #[test]
+    fn docs_requests_keep_their_query() {
+        assert_eq!(docs_path("tree", Some("root=%2Fr".into())), "/api/docs/tree?root=%2Fr");
+        assert_eq!(docs_path("file", None), "/api/docs/file");
+    }
+
+    /// Refusals answer before any link to the server is opened.
+    #[tokio::test]
+    async fn docs_routes_refuse_unknown_names_and_other_pages() {
+        let state: Shared = Arc::new(test_state(&["http://127.0.0.1:4317"]));
+        let get = |name: &str, headers: HeaderMap| {
+            docs_get(State(state.clone()), Path(("prod".to_owned(), name.to_owned())), RawQuery(None), headers)
+        };
+        assert_eq!(get("secret", page_headers()).await.status(), StatusCode::NOT_FOUND);
+        let mut evil = page_headers();
+        evil.insert(header::HOST, "evil.example:4317".parse().unwrap());
+        assert_eq!(get("tree", evil).await.status(), StatusCode::FORBIDDEN);
+        let mut cross = page_headers();
+        cross.insert("sec-fetch-site", "cross-site".parse().unwrap());
+        assert_eq!(get("file", cross).await.status(), StatusCode::FORBIDDEN);
+
+        assert_eq!(docs_change(&state, "prod", "tree", "PUT", &page_headers(), b"{}").await.status(), StatusCode::NOT_FOUND);
+        let mut no_origin = page_headers();
+        no_origin.remove(header::ORIGIN);
+        assert_eq!(docs_change(&state, "prod", "file", "PUT", &no_origin, b"{}").await.status(), StatusCode::BAD_REQUEST);
+    }
+}

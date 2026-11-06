@@ -7,6 +7,8 @@
 use std::fs;
 use std::io::{ErrorKind, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Query, State};
@@ -30,6 +32,11 @@ const MAX_FILES: usize = 2000;
 const MAX_DEPTH: usize = 8;
 /// Folders that are never listed, whatever .gitignore says.
 const SKIPPED: [&str; 3] = [".git", "node_modules", "target"];
+
+/// Saves take turns, so two saves based on one version cannot both win.
+static SAVES: Mutex<()> = Mutex::new(());
+/// Makes each temp file name unique within this process.
+static TEMP_COUNT: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, PartialEq, Eq)]
 enum DocsError {
@@ -74,6 +81,32 @@ fn canonical_root(root: &str) -> Result<PathBuf, DocsError> {
     }
     let canonical = path.canonicalize().map_err(|_| DocsError::BadRoot)?;
     if canonical.is_dir() { Ok(canonical) } else { Err(DocsError::BadRoot) }
+}
+
+/// A Windows path without the `\\?\` prefix that canonicalize adds.
+fn strip_verbatim(text: &str) -> String {
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) => match rest.strip_prefix(r"UNC\") {
+            Some(share) => format!(r"\\{share}"),
+            None => rest.to_owned(),
+        },
+        None => text.to_owned(),
+    }
+}
+
+/// A path as the page shows and sends it back.
+fn shown_path(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    if cfg!(windows) { strip_verbatim(&text) } else { text.into_owned() }
+}
+
+/// The root as shown, its Markdown files, and whether the list stopped
+/// early. A folder that cannot be read is an error, not an empty tree.
+fn list_root(root: &str) -> Result<(String, Vec<String>, bool), DocsError> {
+    let root = canonical_root(root)?;
+    fs::read_dir(&root).map_err(|_| DocsError::BadRoot)?;
+    let (files, truncated) = list_markdown(&root);
+    Ok((shown_path(&root), files, truncated))
 }
 
 fn is_markdown(path: &Path) -> bool {
@@ -156,6 +189,7 @@ fn write_doc(root: &Path, rel: &str, text: &str, base: Option<&str>) -> Result<S
     if text.len() as u64 > MAX_FILE_BYTES {
         return Err(DocsError::TooLarge);
     }
+    let _turn = SAVES.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let (path, permissions) = match resolve(root, rel, true) {
         Ok(path) => {
             let current = version(&fs::read(&path).map_err(io_error)?);
@@ -170,7 +204,8 @@ fn write_doc(root: &Path, rel: &str, text: &str, base: Option<&str>) -> Result<S
         Err(error) => return Err(error),
     };
     let name = path.file_name().and_then(|name| name.to_str()).ok_or(DocsError::BadPath)?;
-    let temp = path.with_file_name(format!(".{name}.westerm-{}.tmp", std::process::id()));
+    let count = TEMP_COUNT.fetch_add(1, Ordering::Relaxed);
+    let temp = path.with_file_name(format!(".{name}.westerm-{}-{count}.tmp", std::process::id()));
     let written = (|| {
         let mut file = fs::File::create(&temp)?;
         file.write_all(text.as_bytes())?;
@@ -232,9 +267,8 @@ async fn tree(State(state): State<Shared>, headers: HeaderMap, Query(query): Que
         return StatusCode::FORBIDDEN.into_response();
     }
     let listed = blocking(move || {
-        let root = canonical_root(&query.root)?;
-        let (files, truncated) = list_markdown(&root);
-        Ok(json!({ "root": root.to_string_lossy(), "files": files, "truncated": truncated }))
+        let (root, files, truncated) = list_root(&query.root)?;
+        Ok(json!({ "root": root, "files": files, "truncated": truncated }))
     });
     match listed.await {
         Ok(body) => no_store(Json(body)),
@@ -311,12 +345,15 @@ async fn cwd(State(state): State<Shared>, headers: HeaderMap, Query(query): Quer
     if !read_allowed(&state, &headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let found = match query.pid {
-        None => Some(home_dir()),
-        Some(pid) => tokio::task::spawn_blocking(move || crate::cwd::process_cwd(pid).filter(|path| path.is_dir())).await.ok().flatten(),
-    };
-    match found {
-        Some(path) => no_store(Json(json!({ "path": path.to_string_lossy() }))),
+    let found = tokio::task::spawn_blocking(move || match query.pid {
+        None => {
+            let home = home_dir();
+            Some(home.canonicalize().unwrap_or(home))
+        }
+        Some(pid) => crate::cwd::process_cwd(pid).filter(|path| path.is_dir()),
+    });
+    match found.await.ok().flatten() {
+        Some(path) => no_store(Json(json!({ "path": shown_path(&path) }))),
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -463,6 +500,98 @@ mod tests {
         assert_eq!(create_doc(&root, "docs/new.md", "# new\n"), Ok(version(b"# new\n")));
         assert_eq!(fs::read_to_string(root.join("docs/new.md")).unwrap(), "# new\n");
         assert_eq!(create_doc(&root, "missing/new.md", ""), Err(DocsError::BadPath));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_root_is_an_error_not_an_empty_tree() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_dir, root) = root();
+        touch(&root, "a.md", "");
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o000)).unwrap();
+        let readable = fs::read_dir(&root).is_ok();
+        let listed = list_root(root.to_str().unwrap());
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).unwrap();
+        if readable {
+            return; // root ignores permissions
+        }
+        assert_eq!(listed.map(|_| ()), Err(DocsError::BadRoot));
+    }
+
+    #[test]
+    fn list_root_answers_the_folder_as_shown() {
+        let (_dir, root) = root();
+        touch(&root, "a.md", "");
+        // The page sends the folder as it was shown: on Windows without `\\?\`,
+        // which would keep the `/` as part of the name.
+        let shown_root = shown_path(&root);
+        let (shown, files, truncated) = list_root(&format!("{shown_root}/")).unwrap();
+        assert_eq!(shown, shown_root);
+        assert_eq!(files, ["a.md"]);
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn windows_verbatim_prefixes_are_dropped() {
+        assert_eq!(strip_verbatim(r"\\?\C:\Users\me"), r"C:\Users\me");
+        assert_eq!(strip_verbatim(r"\\?\UNC\server\share\docs"), r"\\server\share\docs");
+        assert_eq!(strip_verbatim("/Users/me"), "/Users/me");
+    }
+
+    #[test]
+    fn saves_of_one_file_take_turns() {
+        let (_dir, root) = root();
+        touch(&root, "a.md", "zero");
+        let base = version(b"zero");
+        let root = std::sync::Arc::new(root);
+        let workers: Vec<_> = (0..8)
+            .map(|index| {
+                let (root, base) = (root.clone(), base.clone());
+                std::thread::spawn(move || write_doc(&root, "a.md", &format!("text {index}"), Some(&base)))
+            })
+            .collect();
+        let results: Vec<_> = workers.into_iter().map(|worker| worker.join().unwrap()).collect();
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1, "{results:?}");
+        let leftovers: Vec<_> = fs::read_dir(&*root).unwrap().map(|entry| entry.unwrap().file_name()).collect();
+        assert_eq!(leftovers, ["a.md"]);
+    }
+
+    fn page_headers() -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::HOST, "127.0.0.1:4317".parse().unwrap());
+        headers.insert(header::ORIGIN, "http://127.0.0.1:4317".parse().unwrap());
+        headers.insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
+        headers
+    }
+
+    #[tokio::test]
+    async fn handlers_answer_with_status_codes() {
+        let state: Shared = std::sync::Arc::new(test_state(&["http://127.0.0.1:4317"]));
+        let (_dir, root) = root();
+        touch(&root, "a.md", "one");
+        let at = || root.to_str().unwrap().to_owned();
+        let status = |response: Response| response.status();
+        let query = |path: &str| Query(FileQuery { root: at(), path: path.to_owned() });
+
+        assert_eq!(status(tree(State(state.clone()), page_headers(), Query(TreeQuery { root: at() })).await), StatusCode::OK);
+        let mut cross = page_headers();
+        cross.insert("sec-fetch-site", "cross-site".parse().unwrap());
+        assert_eq!(status(tree(State(state.clone()), cross, Query(TreeQuery { root: at() })).await), StatusCode::FORBIDDEN);
+        assert_eq!(status(tree(State(state.clone()), page_headers(), Query(TreeQuery { root: "rel".into() })).await), StatusCode::BAD_REQUEST);
+        assert_eq!(status(file(State(state.clone()), page_headers(), query("a.md")).await), StatusCode::OK);
+        assert_eq!(status(file(State(state.clone()), page_headers(), query("../a.md")).await), StatusCode::BAD_REQUEST);
+        assert_eq!(status(file(State(state.clone()), page_headers(), query("b.md")).await), StatusCode::NOT_FOUND);
+
+        let body = |base: &str| Bytes::from(format!(r#"{{"root":{:?},"path":"a.md","content":"two","baseVersion":"{base}"}}"#, at()));
+        let mut no_origin = page_headers();
+        no_origin.remove(header::ORIGIN);
+        assert_eq!(status(save(State(state.clone()), no_origin, body(&version(b"one"))).await), StatusCode::FORBIDDEN);
+        assert_eq!(status(save(State(state.clone()), page_headers(), body("stale")).await), StatusCode::CONFLICT);
+        assert_eq!(status(save(State(state.clone()), page_headers(), body(&version(b"one"))).await), StatusCode::OK);
+        let new = Bytes::from(format!(r#"{{"root":{:?},"path":"n.md","content":"x"}}"#, at()));
+        assert_eq!(status(create(State(state.clone()), page_headers(), new.clone()).await), StatusCode::CREATED);
+        assert_eq!(status(create(State(state.clone()), page_headers(), new).await), StatusCode::CONFLICT);
+        assert_eq!(status(cwd(State(state.clone()), page_headers(), Query(CwdQuery { pid: None })).await), StatusCode::OK);
     }
 
     #[test]

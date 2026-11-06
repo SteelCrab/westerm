@@ -255,11 +255,14 @@ async fn the_gate_refuses_unknown_clients() {
     let fingerprint = report["fingerprint"].as_str().unwrap().to_owned();
 
     let stranger = ClientId::new();
-    if let Ok(connection) = quic(port_of(&report), &stranger, &fingerprint).await {
-        let stream = stream(&connection).await;
+    // TLS 1.3 ends the client's handshake before the gate checks its
+    // certificate, so the refusal can also close the connection under a stream.
+    if let Ok(connection) = quic(port_of(&report), &stranger, &fingerprint).await
+        && let Ok((send, recv)) = connection.open_bi().await
+    {
         let attached = tokio::time::timeout(
             Duration::from_secs(5),
-            tokio_tungstenite::client_async(format!("ws://remote/ws/session?{QUERY}"), stream),
+            tokio_tungstenite::client_async(format!("ws://remote/ws/session?{QUERY}"), tokio::io::join(recv, send)),
         )
         .await;
         assert!(!matches!(attached, Ok(Ok(_))), "an unknown client attached");
@@ -536,6 +539,10 @@ async fn stages_until_connected(link: &mut Socket) -> Vec<String> {
         let left = deadline.saturating_duration_since(Instant::now());
         let message = tokio::time::timeout(left, next_message(link)).await.unwrap_or_else(|_| panic!("connected within 30 s; saw {stages:?}"));
         assert_eq!(message["type"], "remote", "{message}");
+        if message["stage"] == "failed" {
+            // Shown only when a test fails: why the try failed.
+            eprintln!("a try failed: {message}");
+        }
         stages.push(message["stage"].as_str().unwrap().to_owned());
     }
     stages
@@ -574,11 +581,31 @@ async fn a_watched_link_shows_its_stages_until_connected() {
     assert!(hello["version"].as_str().unwrap().starts_with("westerm "));
     // The stream shows the latest stage, so a quick one (such as "connecting")
     // can be skipped; the ones shown keep this order and end at "connected".
-    let order = ["checking", "installing", "starting", "connecting", "connected"];
     let stages = stages_until_connected(&mut link).await;
-    let mut rest = order.iter();
-    assert!(stages.iter().all(|stage| rest.any(|known| known == stage)), "{stages:?} is not in the order {order:?}");
+    assert!(keeps_order_per_try(&stages, &STAGE_ORDER), "{stages:?} is not in the order {STAGE_ORDER:?}");
     assert_eq!(stages.last().map(String::as_str), Some("connected"));
+}
+
+const STAGE_ORDER: [&str; 5] = ["checking", "installing", "starting", "connecting", "connected"];
+
+/// Each try keeps `order`. A try can fail on a slow machine (the QUIC
+/// handshake has 3 s); the link then tries again, from any stage.
+fn keeps_order_per_try(stages: &[String], order: &[&str]) -> bool {
+    stages.split(|stage| stage == "failed").all(|attempt| {
+        let mut rest = order.iter();
+        attempt.iter().all(|stage| rest.any(|known| known == stage))
+    })
+}
+
+#[test]
+fn a_failed_try_starts_the_order_again() {
+    let stages = |list: &[&str]| list.iter().map(|stage| stage.to_string()).collect::<Vec<_>>();
+    assert!(keeps_order_per_try(&stages(&["checking", "connecting", "connected"]), &STAGE_ORDER));
+    // Seen on a slow CI machine: the first try failed, and the saved gate answered the next one.
+    let retried = ["checking", "installing", "starting", "connecting", "failed", "connecting", "connected"];
+    assert!(keeps_order_per_try(&stages(&retried), &STAGE_ORDER));
+    assert!(!keeps_order_per_try(&stages(&["connecting", "checking", "connected"]), &STAGE_ORDER));
+    assert!(!keeps_order_per_try(&stages(&["checking", "failed", "connected", "connecting"]), &STAGE_ORDER));
 }
 
 #[tokio::test]

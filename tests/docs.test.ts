@@ -151,3 +151,29 @@ test("docs requests of a remote window go to its server", () => {
   assert.equal(docsPath("tree", { root: "/r" }, "prod"), "/remote/prod/api/docs/tree?root=%2Fr");
   assert.equal(docsPath("file", undefined, "me@host"), "/remote/me%40host/api/docs/file");
 });
+
+test("drafts in other folders of the same machine are listed", () => {
+  const store = createDraftStore(null);
+  store.set(draftKey(null, "/a", "x.md"), draft("1"));
+  store.set(draftKey(null, "/b", "docs/y.md"), draft("2"));
+  store.set(draftKey(null, "/b", "z.md"), draft("3"));
+  store.set(draftKey("prod", "/c", "w.md"), draft("4"));
+  assert.deepEqual(store.elsewhere(null, "/a"), [
+    { root: "/b", path: "docs/y.md" },
+    { root: "/b", path: "z.md" },
+  ]);
+  assert.deepEqual(store.elsewhere("prod", "/a"), [{ root: "/c", path: "w.md" }]);
+});
+
+// ---- recent roots ----
+
+import { createRecentRoots } from "../src/docs/recent.ts";
+
+test("recent roots list the newest first, once each, at most eight", () => {
+  const storage = memoryStorage();
+  const recent = createRecentRoots(storage);
+  for (const root of ["/1", "/2", "/3", "/4", "/5", "/6", "/7", "/8", "/9", "/3"]) recent.remember(root);
+  assert.deepEqual(recent.list(), ["/3", "/9", "/8", "/7", "/6", "/5", "/4", "/2"]);
+  assert.deepEqual(createRecentRoots(storage).list(), recent.list(), "kept across a reload");
+  assert.deepEqual(createRecentRoots({ getItem: () => "[1, null]", setItem: () => {} }).list(), [], "junk is ignored");
+});

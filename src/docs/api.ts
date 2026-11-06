@@ -29,7 +29,8 @@ function sendJson(method: "PUT" | "POST", body: Record<string, unknown>): Reques
   return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
 }
 
-export const fetchTree = (root: string) => call<{ files: string[]; truncated: boolean }>(docsPath("tree", { root }));
+/** The folder as the server spells it, and its Markdown files. */
+export const fetchTree = (root: string) => call<{ root: string; files: string[]; truncated: boolean }>(docsPath("tree", { root }));
 
 export const fetchFile = (root: string, path: string) =>
   call<{ content: string; version: string }>(docsPath("file", { root, path }));
