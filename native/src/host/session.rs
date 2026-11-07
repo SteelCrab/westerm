@@ -24,8 +24,10 @@ use super::agent::{self, AgentRecord, Tracker};
 use super::store::{SessionMeta, SessionStore};
 use crate::cwd::process_cwd;
 use crate::i18n::Lang;
+use crate::pixels::{PixelStream, KIND_TEXT};
 use crate::protocol::{
-    AttachMode, ClientMessage, PtySize, ServerMessage, SessionKind, CLOSE_TAKEN_OVER, FLOW_HIGH_WATER, FLOW_LOW_WATER,
+    AttachMode, ClientMessage, PixelCodec, PtySize, ServerMessage, SessionKind, CLOSE_TAKEN_OVER, FLOW_HIGH_WATER,
+    FLOW_LOW_WATER,
 };
 use crate::screen::{agent_notice, restored_notice, Screen};
 use crate::spawn::{pty_size, spawn, LaunchSpec};
@@ -161,11 +163,25 @@ struct Session {
     agent: Tracker,
     foreground: Option<Foreground>,
     resume: Option<Resume>,
+    /// A pixel app whose viewer takes pixel updates.
+    pixels: Option<Pixels>,
+}
+
+/// Most pixel updates sent and not yet drawn. Later frames wait and merge,
+/// so a slow page gets fewer, newer frames instead of a backlog.
+const PIXELS_IN_FLIGHT: u8 = 2;
+
+struct Pixels {
+    stream: PixelStream,
+    codec: PixelCodec,
+    in_flight: u8,
 }
 
 pub struct Spec {
     pub id: String,
     pub launch: LaunchSpec,
+    /// The viewer takes pixel updates in this codec (pixel apps only).
+    pub pixels: Option<PixelCodec>,
 }
 
 pub fn start(
@@ -178,6 +194,12 @@ pub fn start(
     ended: mpsc::UnboundedSender<(String, u64)>,
 ) -> Result<Handle, String> {
     let kind = spec.launch.kind;
+    // A pixel app restarts on every attach, so its one viewer is known here.
+    // Windows ConPTY drops Kitty graphics, so nothing would arrive.
+    let pixels = spec
+        .pixels
+        .filter(|_| !kind.is_text() && cfg!(unix))
+        .map(|codec| Pixels { stream: PixelStream::new(size), codec, in_flight: 0 });
     let screen = kind.is_text().then(|| {
         let mut screen = Screen::new(size);
         // The old screen goes in before the new shell prints its prompt.
@@ -260,6 +282,7 @@ pub fn start(
         agent,
         foreground: None,
         resume,
+        pixels,
     };
     session.write_meta();
     tokio::spawn(session.run(rx, events_rx, out_rx, exit_rx));
@@ -390,10 +413,15 @@ impl Session {
         self.viewer = Some(Viewer { generation, out, window });
         self.in_flight = 0;
         self.paused = false;
-        self.send_json(&ServerMessage::Ready { pid: self.pid, mode });
+        self.send_json(&ServerMessage::Ready { pid: self.pid, mode, pixels: self.pixels.is_some() });
         if self.kind == SessionKind::Shell {
             self.send_agent();
         }
+        if let Some(pixels) = &mut self.pixels {
+            pixels.in_flight = 0;
+        }
+        // A frame the app drew before this viewer came.
+        self.send_pixels();
         if mode != AttachMode::New && self.screen.is_some() {
             self.held = Some(Vec::new());
             self.awaiting = Some((size, Instant::now() + RESIZE_WAIT));
@@ -427,6 +455,12 @@ impl Session {
                         self.paused = false;
                     }
                 }
+                Some(ClientMessage::Painted) => {
+                    if let Some(pixels) = &mut self.pixels {
+                        pixels.in_flight = pixels.in_flight.saturating_sub(1);
+                    }
+                    self.send_pixels();
+                }
                 Some(ClientMessage::Close) => return self.end(true),
                 None => {}
             },
@@ -457,14 +491,51 @@ impl Session {
         if let Some(resume) = &mut self.resume {
             resume.at = (Instant::now() + RESUME_QUIET).min(resume.latest);
         }
-        let Some(viewer) = &self.viewer else { return };
-        self.in_flight += bytes.len() as u64;
-        match &mut self.held {
-            Some(held) => held.push(bytes),
-            None => viewer.send(Message::Binary(bytes)),
+        // Graphics stay here; the rest goes on behind a kind byte. The app's
+        // questions get answered even before a viewer comes.
+        let (message, text_len) = match &mut self.pixels {
+            Some(pixels) => {
+                let fed = pixels.stream.feed(&bytes);
+                if !fed.reply.is_empty() {
+                    let _ = self.input.send(fed.reply);
+                }
+                let text_len = fed.text.len();
+                let mut message = Vec::with_capacity(1 + text_len);
+                message.push(KIND_TEXT);
+                message.extend(fed.text);
+                (Bytes::from(message), text_len)
+            }
+            None => {
+                let len = bytes.len();
+                (bytes, len)
+            }
+        };
+        if let Some(viewer) = &self.viewer
+            && text_len > 0
+        {
+            // The page acknowledges the bytes it parses, without the kind byte.
+            self.in_flight += text_len as u64;
+            match &mut self.held {
+                Some(held) => held.push(message),
+                None => viewer.send(Message::Binary(message)),
+            }
+            if self.in_flight >= FLOW_HIGH_WATER {
+                self.paused = true;
+            }
         }
-        if self.in_flight >= FLOW_HIGH_WATER {
-            self.paused = true;
+        self.send_pixels();
+    }
+
+    /// Sends the newest finished frame's changes, unless the page is still
+    /// drawing earlier ones. The PTY keeps flowing meanwhile: frames merge.
+    fn send_pixels(&mut self) {
+        let (Some(viewer), Some(pixels)) = (&self.viewer, &mut self.pixels) else { return };
+        if pixels.in_flight >= PIXELS_IN_FLIGHT {
+            return;
+        }
+        if let Some(update) = pixels.stream.take_update(pixels.codec) {
+            viewer.send(Message::Binary(update.into()));
+            pixels.in_flight += 1;
         }
     }
 
@@ -488,7 +559,11 @@ impl Session {
         if let Some(screen) = &mut self.screen {
             screen.resize(size);
         }
+        if let Some(pixels) = &mut self.pixels {
+            pixels.stream.resize(size);
+        }
         let _ = self.master.resize(pty_size(size));
+        self.send_pixels();
     }
 
     fn end(&mut self, forget: bool) -> Flow {

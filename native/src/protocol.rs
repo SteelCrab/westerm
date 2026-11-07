@@ -141,6 +141,8 @@ pub enum ClientMessage {
     Input { data: String },
     Resize { cols: u16, rows: u16, width: u16, height: u16 },
     Ack { bytes: u64 },
+    /// The page drew one pixel update; the host may send the next.
+    Painted,
     /// The user closed the pane: end the process and forget the session.
     Close,
 }
@@ -206,7 +208,14 @@ pub struct AgentState {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ServerMessage {
-    Ready { pid: u32, mode: AttachMode },
+    /// `pixels`: graphics come as pixel updates, and every binary message
+    /// starts with a kind byte (see pixels/mod.rs).
+    Ready {
+        pid: u32,
+        mode: AttachMode,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        pixels: bool,
+    },
     /// After `ready` and on every change in a shell: the agent in its foreground.
     Agent { agent: Option<AgentState> },
     Exit { code: i64, signal: i64 },
@@ -280,6 +289,31 @@ pub fn normalize_ssh_target(input: &str) -> Option<String> {
     (user_ok && host_ok).then(|| text.to_owned())
 }
 
+/// How a pane takes pixel updates from a pixel app: raw rectangles for the
+/// local dashboard, deflated ones for a remote window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PixelCodec {
+    Raw,
+    Deflate,
+}
+
+impl PixelCodec {
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "raw" => Some(Self::Raw),
+            "deflate" => Some(Self::Deflate),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Raw => "raw",
+            Self::Deflate => "deflate",
+        }
+    }
+}
+
 /// What a pane asks the host for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttachRequest {
@@ -297,6 +331,9 @@ pub struct AttachRequest {
     pub window: Option<String>,
     /// A restored shell resumes the AI agent it ran (`resume=off` turns it off).
     pub resume: bool,
+    /// The page takes pixel updates. An unknown codec reads as none, so a
+    /// newer page still gets the Kitty images it can draw.
+    pub pixels: Option<PixelCodec>,
 }
 
 impl AttachRequest {
@@ -337,7 +374,8 @@ impl AttachRequest {
             None => None,
         };
         let resume = query.get("resume").map(String::as_str) != Some("off");
-        Some(Self { id, kind, url, target, cwd_from, size, lang, window, resume })
+        let pixels = query.get("pixels").and_then(|codec| PixelCodec::parse(codec));
+        Some(Self { id, kind, url, target, cwd_from, size, lang, window, resume, pixels })
     }
 
     /// The same request as a query string, from validated fields only.
@@ -365,6 +403,9 @@ impl AttachRequest {
         }
         if !self.resume {
             pairs.push(("resume", "off".to_owned()));
+        }
+        if let Some(pixels) = self.pixels {
+            pairs.push(("pixels", pixels.as_str().to_owned()));
         }
         pairs
             .into_iter()
@@ -463,6 +504,29 @@ mod tests {
         ssh.insert("kind".into(), "ssh".into());
         ssh.remove("target");
         assert!(AttachRequest::from_query(&ssh).is_none(), "ssh needs a destination");
+    }
+
+    #[test]
+    fn attach_requests_carry_the_pixel_codec() {
+        let mut query = shell_query();
+        query.insert("kind".into(), "browser".into());
+        assert_eq!(AttachRequest::from_query(&query).unwrap().pixels, None);
+        query.insert("pixels".into(), "deflate".into());
+        let request = AttachRequest::from_query(&query).unwrap();
+        assert_eq!(request.pixels, Some(PixelCodec::Deflate));
+        assert!(request.to_query().contains("pixels=deflate"));
+        // A codec this host does not know: the old way, not a refusal.
+        query.insert("pixels".into(), "zstd".into());
+        assert_eq!(AttachRequest::from_query(&query).unwrap().pixels, None);
+    }
+
+    #[test]
+    fn pixel_messages_serialize_and_parse() {
+        assert_eq!(ClientMessage::parse(r#"{"type":"painted"}"#), Some(ClientMessage::Painted));
+        let ready = ServerMessage::Ready { pid: 7, mode: AttachMode::New, pixels: true }.to_json();
+        assert_eq!(ready, r#"{"type":"ready","pid":7,"mode":"new","pixels":true}"#);
+        let old = ServerMessage::Ready { pid: 7, mode: AttachMode::New, pixels: false }.to_json();
+        assert_eq!(old, r#"{"type":"ready","pid":7,"mode":"new"}"#, "older pages see the message they know");
     }
 
     fn shell_query() -> HashMap<String, String> {

@@ -23,6 +23,7 @@ mod process;
 // Unix builds still report unused code.
 #[cfg_attr(not(unix), allow(dead_code))]
 mod protocol;
+mod pixels;
 #[cfg_attr(not(unix), allow(dead_code))]
 mod remote;
 mod screen;
