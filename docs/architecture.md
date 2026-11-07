@@ -107,6 +107,7 @@ Page       src/terminal/pixel-surface.ts: a Worker draws the rectangles on an
 - **Frames.** Commands inside a synchronized update (`CSI ? 2026 h` … `l`) belong to one frame. At its end the changed areas are composed, so an update never shows half a frame. An update that stays open longer than one second is shown anyway.
 - **Kitty rules.** A placement sits at the cursor cell plus `X`/`Y` pixels. A higher `z` covers a lower one; among equal `z` the newer one is on top. Sending an image again under the same id deletes the old one and its placements. `a=d` with `d=a/A/i/I` deletes. Leaving the alternate screen clears the picture. Images are kept up to 96 MiB per session; the oldest images that nothing shows go first.
 - **Update format** (little endian): kind `1`, flags (bit 0: deflate), frame width and height (u16), rectangle count (u16); then per rectangle x, y, w, h (u16), byte length (u32), and RGBA rows (raw deflate with the flag). At most 16 rectangles; more are merged.
+- **The canvas stays.** wterm empties `.term-grid` whenever its rows or columns change and puts back only its own layers, so the pixel canvas puts itself back (a `MutationObserver`). Without that, a pane or window resize leaves the pane blank.
 - **Flow control.** The page answers `{"type":"painted"}` after drawing an update. The host keeps at most 2 updates unanswered; later frames merge into the next one, so a slow page gets fewer, newer frames and the PTY never waits. A hidden pane holds its answers until it is shown again.
 - **Socket buffers** (`native/src/ipc.rs`). macOS gives a Unix socket 8 KiB. tungstenite moves the rest of its buffer forward after every partial write, so a 7 MB update cost quadratic copying, a whole CPU core in the host. Both ends of the dashboard ↔ host socket ask for 4 MiB.
 - `localStorage["westerm.pixels"] = "off"` in the page brings back the Kitty images, for comparison (`bench/pixel/`).
@@ -159,7 +160,7 @@ The Rust integration tests (`native/tests/integration.rs`) start the real execut
 - Processes a test starts are cleaned up even when the test fails.
 - A fake `claude` in a shell is found, its conversation and flags are saved, and after a host restart the shell resumes it; with `resume=off` it does not (macOS and Linux).
 
-Pixel updates have unit tests in `native/src/pixels/` (splitting, Kitty rules, shared memory, frames, encoding) and `tests/pixels.test.ts` (the page side). `bench/pixel/README.md` describes how to measure them.
+Pixel updates have unit tests in `native/src/pixels/` (splitting, Kitty rules, shared memory, frames, encoding) and `tests/pixels.test.ts` (the page side). `tests/pixel-surface.test.ts` runs wterm's real renderer in happy-dom and checks that the pixel canvas survives the renderer emptying the grid on a resize. `bench/pixel/README.md` describes how to measure them.
 
 `native/tests/remote.rs` (macOS and Linux) covers remote windows with the real executable:
 
