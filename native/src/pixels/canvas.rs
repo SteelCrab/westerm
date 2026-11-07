@@ -369,7 +369,7 @@ fn add_rect(list: &mut Vec<Rect>, rect: Rect) {
 
 /// Non-premultiplied `source` over `target`, one row.
 fn blend(target: &mut [u8], source: &[u8]) {
-    for (dst, src) in target.chunks_exact_mut(4).zip(source.chunks_exact(4)) {
+    for (dst, src) in target.as_chunks_mut::<4>().0.iter_mut().zip(source.as_chunks::<4>().0) {
         let sa = u32::from(src[3]);
         if sa == 255 {
             dst.copy_from_slice(src);

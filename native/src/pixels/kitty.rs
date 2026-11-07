@@ -141,7 +141,7 @@ pub fn load(command: &Command, data: &[u8]) -> Result<Image, String> {
     let mut rgba = pixels;
     rgba.truncate(expected);
     if channels == 3 {
-        rgba = rgba.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+        rgba = rgba.as_chunks::<3>().0.iter().flat_map(|&[r, g, b]| [r, g, b, 255]).collect();
     }
     Ok(Image { width, height, rgba })
 }
