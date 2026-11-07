@@ -2,6 +2,7 @@
 //! (through the same JSON) the browser.
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -173,6 +174,27 @@ pub enum AttachMode {
 pub enum AgentKind {
     Claude,
     Codex,
+    Gemini,
+}
+
+impl AgentKind {
+    /// Its JSON name, which is also its `agent` query value.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Gemini => "gemini",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "claude" => Some(Self::Claude),
+            "codex" => Some(Self::Codex),
+            "gemini" => Some(Self::Gemini),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -205,6 +227,13 @@ pub struct AgentState {
     pub model: Option<String>,
 }
 
+/// A shell's current folder and the git branch there, if any.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Place {
+    pub cwd: String,
+    pub branch: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ServerMessage {
@@ -218,6 +247,8 @@ pub enum ServerMessage {
     },
     /// After `ready` and on every change in a shell: the agent in its foreground.
     Agent { agent: Option<AgentState> },
+    /// After `ready` and when the folder or branch changes in a shell.
+    Place { place: Option<Place> },
     Exit { code: i64, signal: i64 },
     Error { message: String },
     /// The first message on a remote window's status stream: the local
@@ -314,6 +345,26 @@ impl PixelCodec {
     }
 }
 
+/// An agent a new shell starts by typing its command: a fresh conversation,
+/// or the one with this id.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Launch {
+    pub kind: AgentKind,
+    pub conversation: Option<String>,
+}
+
+/// A conversation id an agent prints, as the hex-and-dash text it is made of.
+pub fn is_conversation_id(text: &str) -> bool {
+    (8..=64).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
+}
+
+/// A start folder: absolute, no NUL, at most 4096 bytes. A `/` path counts on
+/// every OS: a remote window on Windows relays folders from a Unix server, and
+/// the host that starts the shell checks the folder on its own OS.
+fn is_start_folder(text: &str) -> bool {
+    text.len() <= 4096 && !text.contains('\0') && (text.starts_with('/') || Path::new(text).is_absolute())
+}
+
 /// What a pane asks the host for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttachRequest {
@@ -324,6 +375,10 @@ pub struct AttachRequest {
     pub target: Option<String>,
     /// Start in this session's directory (the focused shell), for an editor.
     pub cwd_from: Option<String>,
+    /// Start a new shell in this folder.
+    pub cwd: Option<String>,
+    /// Type this agent's command into a new shell.
+    pub launch: Option<Launch>,
     pub size: PtySize,
     /// UI language for text the host writes (restore notice, errors).
     pub lang: Lang,
@@ -355,6 +410,24 @@ impl AttachRequest {
             Some(_) => return None,
             None => None,
         };
+        let cwd = match query.get("cwd") {
+            Some(path) if is_start_folder(path) => Some(path.clone()),
+            Some(_) => return None,
+            None => None,
+        };
+        let conversation = match query.get("conversation") {
+            Some(id) if is_conversation_id(id) => Some(id.clone()),
+            Some(_) => return None,
+            None => None,
+        };
+        let launch = match query.get("agent") {
+            Some(name) if kind == SessionKind::Shell => {
+                Some(Launch { kind: AgentKind::parse(name)?, conversation })
+            }
+            Some(_) => return None,
+            None if conversation.is_some() => return None,
+            None => None,
+        };
         let target = match query.get("target") {
             Some(raw) => Some(normalize_ssh_target(raw)?),
             None => None,
@@ -375,7 +448,7 @@ impl AttachRequest {
         };
         let resume = query.get("resume").map(String::as_str) != Some("off");
         let pixels = query.get("pixels").and_then(|codec| PixelCodec::parse(codec));
-        Some(Self { id, kind, url, target, cwd_from, size, lang, window, resume, pixels })
+        Some(Self { id, kind, url, target, cwd_from, cwd, launch, size, lang, window, resume, pixels })
     }
 
     /// The same request as a query string, from validated fields only.
@@ -397,6 +470,15 @@ impl AttachRequest {
         }
         if let Some(cwd_from) = &self.cwd_from {
             pairs.push(("cwdFrom", cwd_from.clone()));
+        }
+        if let Some(cwd) = &self.cwd {
+            pairs.push(("cwd", cwd.clone()));
+        }
+        if let Some(launch) = &self.launch {
+            pairs.push(("agent", launch.kind.as_str().to_owned()));
+            if let Some(conversation) = &launch.conversation {
+                pairs.push(("conversation", conversation.clone()));
+            }
         }
         if let Some(window) = &self.window {
             pairs.push(("window", window.clone()));
@@ -430,6 +512,22 @@ fn percent_encode(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn percent_decode(text: &str) -> String {
+        let bytes = text.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%' {
+                out.push(u8::from_str_radix(&text[i + 1..i + 3], 16).unwrap());
+                i += 3;
+            } else {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+        String::from_utf8(out).unwrap()
+    }
 
     #[test]
     fn ids_name_files_safely() {
@@ -577,6 +675,84 @@ mod tests {
         assert_eq!(ServerMessage::Agent { agent: None }.to_json(), r#"{"type":"agent","agent":null}"#);
         let hello = ServerMessage::Hello { version: "westerm 0.3.0 (host rs-a)".into() }.to_json();
         assert_eq!(hello, r#"{"type":"hello","version":"westerm 0.3.0 (host rs-a)"}"#);
+    }
+
+    #[test]
+    fn place_messages_are_json() {
+        let place = Place { cwd: "/w".into(), branch: Some("main".into()) };
+        assert_eq!(ServerMessage::Place { place: Some(place) }.to_json(), r#"{"type":"place","place":{"cwd":"/w","branch":"main"}}"#);
+        assert_eq!(ServerMessage::Place { place: None }.to_json(), r#"{"type":"place","place":null}"#);
+    }
+
+    #[test]
+    fn attach_checks_cwd_and_launch() {
+        let with = |pairs: &[(&str, &str)]| {
+            let mut q = shell_query();
+            for (k, v) in pairs {
+                q.insert((*k).to_owned(), (*v).to_owned());
+            }
+            AttachRequest::from_query(&q)
+        };
+        let claude = with(&[("cwd", "/work"), ("agent", "claude")]).unwrap();
+        assert_eq!(claude.cwd.as_deref(), Some("/work"));
+        assert_eq!(claude.launch, Some(Launch { kind: AgentKind::Claude, conversation: None }));
+        let id = "9f00f957-d4e0-4b3b-a88c-a76633c0e762";
+        let codex = with(&[("agent", "codex"), ("conversation", id)]).unwrap();
+        assert_eq!(codex.launch, Some(Launch { kind: AgentKind::Codex, conversation: Some(id.into()) }));
+        let gemini = with(&[("agent", "gemini")]).unwrap();
+        assert_eq!(gemini.launch, Some(Launch { kind: AgentKind::Gemini, conversation: None }));
+        let plain = with(&[]).unwrap();
+        assert!(plain.cwd.is_none() && plain.launch.is_none());
+        let long = format!("/{}", "a".repeat(4096));
+        for bad in [
+            vec![("cwd", "work")],
+            vec![("cwd", "/a\0b")],
+            vec![("cwd", long.as_str())],
+            vec![("agent", "bard")],
+            vec![("agent", "claude"), ("conversation", "x;rm")],
+            vec![("conversation", id)],
+            vec![("kind", "browser"), ("agent", "claude")],
+        ] {
+            assert!(with(&bad).is_none(), "{bad:?}");
+        }
+        for request in [claude, codex] {
+            let mut q = HashMap::new();
+            for pair in request.to_query().split('&') {
+                let (k, v) = pair.split_once('=').unwrap();
+                q.insert(k.to_owned(), percent_decode(v));
+            }
+            assert_eq!(AttachRequest::from_query(&q), Some(request));
+        }
+    }
+
+    #[test]
+    fn start_folders_from_a_unix_server_pass_on_every_os() {
+        // A remote window on a Windows client relays a folder that a Linux server reported.
+        assert!(is_start_folder("/home/x"));
+        assert!(is_start_folder("/"));
+        #[cfg(windows)]
+        assert!(is_start_folder(r"C:\Users\x"));
+        for bad in ["home/x", "", "./x"] {
+            assert!(!is_start_folder(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn agent_kind_names_match_their_json() {
+        for kind in [AgentKind::Claude, AgentKind::Codex, AgentKind::Gemini] {
+            assert_eq!(serde_json::to_value(kind).unwrap(), serde_json::Value::String(kind.as_str().to_owned()));
+            assert_eq!(AgentKind::parse(kind.as_str()), Some(kind));
+        }
+        assert_eq!(AgentKind::parse("Claude"), None);
+        assert_eq!(AgentKind::parse("bard"), None);
+    }
+
+    #[test]
+    fn conversation_ids_are_hex_and_dashes() {
+        assert!(is_conversation_id("9f00f957-d4e0-4b3b-a88c-a76633c0e762"));
+        for bad in ["", "abc", "x;rm -rf", &"a".repeat(65)] {
+            assert!(!is_conversation_id(bad), "{bad}");
+        }
     }
 
     #[test]

@@ -41,5 +41,13 @@ test("parameterized messages include their values in every language", () => {
     assert.ok(t.workspaces.changeLook("빌드").includes("빌드"), locale);
     assert.ok(t.palette.moveTabToWorkspace("빌드").includes("빌드"), locale);
     assert.ok(t.remote.connectingTo("pista@msi").includes("pista@msi"), locale);
+    assert.ok(t.agents.agentCount(4).includes("4"), locale);
+    assert.ok(t.agents.shellCount(4).includes("4"), locale);
+    assert.ok(t.agents.elsewhere(4).includes("4"), locale);
+    assert.ok(t.agents.elsewhereHint(4).includes("4"), locale);
+    assert.ok(t.agents.past(4).includes("4"), locale);
+    assert.ok(t.agents.start("Gemini CLI").includes("Gemini CLI"), locale);
+    assert.ok(t.agents.resumeLabel("빌드").includes("빌드"), locale);
+    assert.ok(t.settings.resumeAgentsHint.includes("Gemini CLI"), locale);
   }
 });

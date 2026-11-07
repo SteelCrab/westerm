@@ -17,7 +17,7 @@ export function homeShort(path: string): string {
 }
 
 /** The time now, again every `ms`. */
-function useNow(ms: number): number {
+export function useNow(ms: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), ms);

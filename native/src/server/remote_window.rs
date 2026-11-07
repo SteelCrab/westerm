@@ -29,6 +29,7 @@ pub(super) fn routes() -> Router<Shared> {
             "/remote/{target}/api/docs/{name}",
             get(docs_get).put(docs_put).post(docs_post).layer(DefaultBodyLimit::max(super::docs::MAX_BODY_BYTES)),
         )
+        .route("/remote/{target}/api/agents/history", get(agents_history_get))
 }
 
 /// The target from the path, when the Host header is one of this dashboard's
@@ -109,6 +110,22 @@ fn docs_path(name: &str, query: Option<String>) -> String {
     match query {
         Some(query) => format!("/api/docs/{name}?{query}"),
         None => format!("/api/docs/{name}"),
+    }
+}
+
+/// The server's path for the past conversations of a folder, with the page's query as it came.
+fn history_path(query: Option<String>) -> String {
+    match query {
+        Some(query) => format!("/api/agents/history?{query}"),
+        None => "/api/agents/history".to_owned(),
+    }
+}
+
+/// The sidebar of a remote window lists the past conversations of a folder on the server.
+async fn agents_history_get(State(state): State<Shared>, Path(target): Path<String>, RawQuery(query): RawQuery, headers: HeaderMap) -> Response {
+    match checked_get_target(&state, &headers, &target) {
+        Ok(target) => forward(&state, &target, "GET", &history_path(query), None).await,
+        Err(status) => status.into_response(),
     }
 }
 
@@ -215,6 +232,12 @@ mod tests {
     fn docs_requests_keep_their_query() {
         assert_eq!(docs_path("tree", Some("root=%2Fr".into())), "/api/docs/tree?root=%2Fr");
         assert_eq!(docs_path("file", None), "/api/docs/file");
+    }
+
+    #[test]
+    fn history_requests_keep_their_query() {
+        assert_eq!(history_path(Some("dir=%2Fw".into())), "/api/agents/history?dir=%2Fw");
+        assert_eq!(history_path(None), "/api/agents/history");
     }
 
     /// Refusals answer before any link to the server is opened.

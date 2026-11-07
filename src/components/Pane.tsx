@@ -108,6 +108,9 @@ export function Pane(props: PaneProps) {
       case "agent":
         dispatch({ type: "agent", id, agent: event.agent });
         break;
+      case "place":
+        dispatch({ type: "place", id, place: event.place });
+        break;
       case "exit":
         dispatch({ type: "status", id, status: "exited", detail: exitDetail(event), exitCode: event.signal ? null : event.code });
         break;
@@ -289,6 +292,8 @@ export function Pane(props: PaneProps) {
           url={session.url}
           sessionId={id}
           cwdFrom={session.cwdFrom}
+          cwd={session.cwd}
+          launch={session.launch}
           target={session.target}
           label={label}
           font={font}

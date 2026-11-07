@@ -4,10 +4,13 @@ import {
   REMOTE_CLOSE_PATH,
   WS_PATH,
   parseAgentState,
+  parsePlace,
+  type AgentLaunch,
   type AgentState,
   type AttachMode,
   type ClientMessage,
   type PixelCodec,
+  type Place,
   type PtySize,
   type ServerMessage,
   type SessionKind,
@@ -21,6 +24,8 @@ export type ConnectionEvent =
   | { type: "ready"; pid: number; mode: AttachMode; pixels?: boolean }
   /** The AI agent in a shell's foreground, or null. */
   | { type: "agent"; agent: AgentState | null }
+  /** The shell's folder and git branch, or null. */
+  | { type: "place"; place: Place | null }
   | { type: "exit"; code: number; signal: number }
   | { type: "error"; message: string }
   /** The socket closed without an exit. `takenOver`: another window has the sessions. */
@@ -33,6 +38,10 @@ export interface ConnectionOptions {
   url: string | null;
   /** Start in this session's directory, for a new editor. */
   cwdFrom: string | null;
+  /** A new shell starts in this folder. */
+  cwd: string | null;
+  /** A new shell starts this agent. */
+  launch: AgentLaunch | null;
   /** ssh destination. */
   target: string | null;
   /** Language of text the server writes: the restore notice and errors. */
@@ -57,6 +66,38 @@ const ACK_DELAY_MS = 30;
  */
 const WINDOW_ID = `w${Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 
+/** The WebSocket query that names a session and how a new one starts. */
+export function sessionQuery(
+  options: Pick<
+    ConnectionOptions,
+    "session" | "kind" | "url" | "cwdFrom" | "cwd" | "launch" | "target" | "lang" | "resumeAgents" | "size"
+  > &
+    Partial<Pick<ConnectionOptions, "pixels">>,
+  windowId: string = WINDOW_ID,
+): URLSearchParams {
+  const query = new URLSearchParams({
+    session: options.session,
+    kind: options.kind,
+    cols: String(options.size.cols),
+    rows: String(options.size.rows),
+    width: String(options.size.width),
+    height: String(options.size.height),
+    lang: options.lang,
+    window: windowId,
+  });
+  if (options.url) query.set("url", options.url);
+  if (options.cwdFrom) query.set("cwdFrom", options.cwdFrom);
+  if (options.cwd) query.set("cwd", options.cwd);
+  if (options.launch) {
+    query.set("agent", options.launch.kind);
+    if (options.launch.conversation) query.set("conversation", options.launch.conversation);
+  }
+  if (options.target) query.set("target", options.target);
+  if (!options.resumeAgents) query.set("resume", "off");
+  if (options.pixels) query.set("pixels", options.pixels);
+  return query;
+}
+
 /** One WebSocket ↔ one PTY on the local server, or on a remote window's server. */
 export class PtyConnection {
   private readonly ws: WebSocket;
@@ -70,21 +111,7 @@ export class PtyConnection {
 
   constructor(private readonly options: ConnectionOptions) {
     this.pendingSize = options.size;
-    const query = new URLSearchParams({
-      session: options.session,
-      kind: options.kind,
-      cols: String(options.size.cols),
-      rows: String(options.size.rows),
-      width: String(options.size.width),
-      height: String(options.size.height),
-      lang: options.lang,
-      window: WINDOW_ID,
-    });
-    if (options.url) query.set("url", options.url);
-    if (options.cwdFrom) query.set("cwdFrom", options.cwdFrom);
-    if (options.target) query.set("target", options.target);
-    if (!options.resumeAgents) query.set("resume", "off");
-    if (options.pixels) query.set("pixels", options.pixels);
+    const query = sessionQuery(options);
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     this.ws = new WebSocket(`${scheme}//${location.host}${serverPath(WS_PATH)}?${query}`);
     this.ws.binaryType = "arraybuffer";
@@ -169,6 +196,7 @@ export class PtyConnection {
       this.framed = message.pixels === true;
       this.options.onEvent(message);
     } else if (message.type === "agent") this.options.onEvent({ type: "agent", agent: parseAgentState(message.agent) });
+    else if (message.type === "place") this.options.onEvent({ type: "place", place: parsePlace(message.place) });
   }
 
   /** Acknowledge parsed bytes in batches so the server can keep the PTY flowing. */

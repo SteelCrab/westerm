@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Command, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
+import { Bot, Command, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import type { PaneKind } from "../../shared/protocol.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KINDS, LAUNCHERS, RemoteWindowIcon } from "../kinds.tsx";
@@ -16,12 +16,17 @@ interface ActivityBarProps {
   onOpenRemoteWindow: (() => void) | null;
   /** Shown in the palette button's tooltip, e.g. ⌘K. */
   paletteShortcut: string;
+  /** The sidebar slot shows the agents panel. */
+  agentsOpen: boolean;
+  /** An agent in any workspace waits for the user: the button shows a yellow dot. */
+  agentsWaiting: boolean;
+  onToggleAgents: () => void;
 }
 
 /**
- * The icon bar on the far left: launchers at the top; the command palette,
- * settings (language, theme, font, updates), and the sidebar switch at the
- * bottom.
+ * The icon bar on the far left: launchers at the top; the agents panel, the
+ * command palette, settings (language, theme, font, updates), and the sidebar
+ * switch at the bottom.
  */
 export function ActivityBar(props: ActivityBarProps) {
   const { sidebarOpen, counts, onLaunch, onToggleSidebar, onOpenSettings } = props;
@@ -66,6 +71,17 @@ export function ActivityBar(props: ActivityBarProps) {
         )}
       </div>
       <div className="activity-group">
+        <BarButton
+          className="activity-agents"
+          label={props.agentsWaiting ? `${t.agents.title} · ${t.agent.tab.waiting}` : t.agents.title}
+          tooltip={t.agents.title}
+          title={`${t.agents.title} — ${t.agents.hint}`}
+          pressed={props.agentsOpen}
+          onClick={props.onToggleAgents}
+        >
+          <Bot size={19} strokeWidth={1.75} />
+          {props.agentsWaiting && <span className="activity-dot" aria-hidden="true" />}
+        </BarButton>
         <BarButton label={t.palette.open} tooltip={`${t.palette.open} · ${props.paletteShortcut}`} onClick={props.onOpenPalette}>
           <Command size={17} strokeWidth={1.75} />
         </BarButton>
@@ -93,15 +109,17 @@ interface BarButtonProps {
   /** Native tooltip, for a longer text than the styled one. */
   title?: string;
   pressed?: boolean;
+  /** Added to `activity-button`. */
+  className?: string;
   onClick: () => void;
   children: ReactNode;
 }
 
-function BarButton({ label, tooltip, title, pressed, onClick, children }: BarButtonProps) {
+function BarButton({ label, tooltip, title, pressed, className, onClick, children }: BarButtonProps) {
   return (
     <button
       type="button"
-      className="activity-button"
+      className={className ? `activity-button ${className}` : "activity-button"}
       aria-label={label}
       title={title}
       aria-pressed={pressed}

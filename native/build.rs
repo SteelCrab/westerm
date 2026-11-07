@@ -15,6 +15,7 @@ const HOST_SOURCES: &[&str] = &[
     "src/time.rs",
     "src/spawn.rs",
     "src/cwd.rs",
+    "src/git.rs",
     "src/process.rs",
     "src/state_dir.rs",
     "src/screen.rs",

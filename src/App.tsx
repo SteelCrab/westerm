@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
-import type { PaneKind } from "../shared/protocol.ts";
+import type { AgentLaunch, PaneKind } from "../shared/protocol.ts";
 import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts";
+import { anyWaiting, pressAgents, sidebarView, type SidebarFlags } from "./agents.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
+import { AgentPanel } from "./components/AgentPanel.tsx";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.tsx";
 import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
 import { PaneLayer } from "./components/PaneLayer.tsx";
@@ -30,6 +32,7 @@ import { useSshHosts } from "./useSshHosts.ts";
 import { terminalColors } from "./colorThemes.ts";
 import { useColorScheme, useWindowColors } from "./theme.ts";
 import { useNarrow } from "./useNarrow.ts";
+import { useAgentsView } from "./useAgentsView.ts";
 import { useSidebarWidth } from "./useSidebarWidth.ts";
 import { useTerminalFont } from "./useTerminalFont.ts";
 import { useUpdate } from "./useUpdate.ts";
@@ -99,6 +102,7 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [narrow, drawerOpen]);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
+  const [agentsView, setAgentsView] = useAgentsView();
   const [renaming, setRenaming] = useState<RenameTarget | null>(null);
   // "commands": the command palette. "ssh": the same palette listing ssh hosts.
   // "window": the host list again, with only the "open in a new window" entries.
@@ -178,6 +182,14 @@ export function App() {
   );
   const openUrl = useCallback((url: string) => open("browser", url), [open]);
 
+  // The agents panel's start and resume buttons: a new shell in the folder runs the agent.
+  const startAgent = useCallback(
+    (folder: string, launch: AgentLaunch) => {
+      dispatch({ type: "open", id: newId("s"), kind: "shell", cwd: folder, launch, aspect: layerAspect() });
+      closeDrawer();
+    },
+    [dispatch, closeDrawer],
+  );
 
   // A new tab starts with a shell, like a terminal app's new tab.
   const newTab = useCallback(() => {
@@ -212,10 +224,14 @@ export function App() {
         return;
       }
       const placed = placeRename(target, layout);
-      if (placed.where === "sidebar") setSidebar(true);
+      if (placed.where === "sidebar") {
+        setSidebar(true);
+        // Tab and session names are edited in the sessions list; both views have the workspace menu.
+        if (placed.kind !== "workspace") setAgentsView(false);
+      }
       setRenaming(placed);
     },
-    [layout, setSidebar],
+    [layout, setSidebar, setAgentsView],
   );
 
   const renameWorkspace = useCallback(
@@ -396,10 +412,21 @@ export function App() {
   const counts = { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0 } satisfies Record<PaneKind, number>;
   for (const session of state.sessions) counts[session.kind] += 1;
 
-  // Top: the workspace menu and the tab bar, no sidebar. Sidebar: both in the
-  // sidebar, no tab bar; the header stays only for the update button.
+  // Top: the workspace menu and the tab bar; the sidebar slot opens only for
+  // the agents panel. Sidebar: both in the sidebar, no tab bar; the header
+  // stays only for the update button. The sidebar slot shows the sessions
+  // list or the agents panel (agents.ts sidebarView).
   const onTop = layout === "top";
-  const sidebarShown = !onTop && sidebarVisible;
+  const sidebarFlags: SidebarFlags = { layout, narrow, sidebarOpen, drawerOpen, agentsView };
+  const view = sidebarView(sidebarFlags);
+  const sidebarShown = view !== null;
+  const toggleAgents = () => {
+    const next = pressAgents(sidebarFlags);
+    setAgentsView(next.agentsView);
+    setSidebarOpen(next.sidebarOpen);
+    setDrawerOpen(next.drawerOpen);
+  };
+  const compact = !narrow && isCompact(sidebarWidth);
   // A remote window always shows its server in the header.
   const headerShown = onTop || REMOTE_TARGET !== null || updateShown(update.status, updateOpen);
 
@@ -420,41 +447,67 @@ export function App() {
         onOpenPalette={() => setPalette("commands")}
         onOpenRemoteWindow={openWindow && (() => setPalette("window"))}
         paletteShortcut={PALETTE_SHORTCUT}
+        agentsOpen={view === "agents"}
+        agentsWaiting={anyWaiting(state)}
+        onToggleAgents={toggleAgents}
       />
       {sidebarShown && (
         <div className="sidebar-slot">
-          <SessionList
-            state={state}
-            renaming={renaming}
-            onSelectTab={(id) => {
-              dispatch({ type: "selectTab", id });
-              closeDrawer();
-            }}
-            onCloseTab={(id) => dispatch({ type: "closeTab", id, fallbackId: newId("t") })}
-            onNewTab={newTab}
-            onFocus={(id) => {
-              dispatch({ type: "focus", id });
-              closeDrawer();
-            }}
-            onClose={(id) => dispatch({ type: "close", id })}
-            onRename={rename}
-            onRenameTab={(id, name) => dispatch({ type: "renameTab", id, name })}
-            onRenameSession={(id, name) => dispatch({ type: "renameSession", id, name })}
-            onMoveTab={(id, toIndex) => dispatch({ type: "moveTab", id, toIndex })}
-            onMovePane={(id, toTabId) => dispatch({ type: "movePane", id, toTabId, aspect: layerAspect() })}
-            onSwapPanes={(id, withId) => dispatch({ type: "swapPanes", id, withId })}
-            onDragPane={setDragging}
-            onNewWorkspace={newWorkspace}
-            onSelectWorkspace={(id) => {
-              dispatch({ type: "selectWorkspace", id });
-              closeDrawer();
-            }}
-            onCloseWorkspace={closeWorkspace}
-            onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
-            onSetWorkspaceIcon={setWorkspaceIcon}
-            onSetWorkspaceColor={setWorkspaceColor}
-            compact={!narrow && isCompact(sidebarWidth)}
-          />
+          {view === "agents" ? (
+            <AgentPanel
+              state={state}
+              renaming={renaming}
+              onRename={rename}
+              onSelectWorkspace={(id) => {
+                dispatch({ type: "selectWorkspace", id });
+                closeDrawer();
+              }}
+              onNewWorkspace={newWorkspace}
+              onCloseWorkspace={closeWorkspace}
+              onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
+              onSetWorkspaceIcon={setWorkspaceIcon}
+              onSetWorkspaceColor={setWorkspaceColor}
+              onFocus={(id) => {
+                dispatch({ type: "focus", id });
+                closeDrawer();
+              }}
+              onStart={startAgent}
+              compact={compact}
+            />
+          ) : (
+            <SessionList
+              state={state}
+              renaming={renaming}
+              onSelectTab={(id) => {
+                dispatch({ type: "selectTab", id });
+                closeDrawer();
+              }}
+              onCloseTab={(id) => dispatch({ type: "closeTab", id, fallbackId: newId("t") })}
+              onNewTab={newTab}
+              onFocus={(id) => {
+                dispatch({ type: "focus", id });
+                closeDrawer();
+              }}
+              onClose={(id) => dispatch({ type: "close", id })}
+              onRename={rename}
+              onRenameTab={(id, name) => dispatch({ type: "renameTab", id, name })}
+              onRenameSession={(id, name) => dispatch({ type: "renameSession", id, name })}
+              onMoveTab={(id, toIndex) => dispatch({ type: "moveTab", id, toIndex })}
+              onMovePane={(id, toTabId) => dispatch({ type: "movePane", id, toTabId, aspect: layerAspect() })}
+              onSwapPanes={(id, withId) => dispatch({ type: "swapPanes", id, withId })}
+              onDragPane={setDragging}
+              onNewWorkspace={newWorkspace}
+              onSelectWorkspace={(id) => {
+                dispatch({ type: "selectWorkspace", id });
+                closeDrawer();
+              }}
+              onCloseWorkspace={closeWorkspace}
+              onRenameWorkspace={(id, name) => dispatch({ type: "renameWorkspace", id, name })}
+              onSetWorkspaceIcon={setWorkspaceIcon}
+              onSetWorkspaceColor={setWorkspaceColor}
+              compact={compact}
+            />
+          )}
           <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
         </div>
       )}

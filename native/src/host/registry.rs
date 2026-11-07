@@ -101,8 +101,15 @@ impl Registry {
         }
 
         let meta = self.store.read_meta(&request.id).filter(|meta| meta.kind == request.kind);
-        let cwd = match &meta {
-            Some(meta) if meta.cwd.is_dir() => meta.cwd.clone(),
+        // The requested folder and agent apply to a brand-new session only: the
+        // browser sends the same query again on every reconnect.
+        let requested = meta.is_none().then(|| request.cwd.as_ref().map(PathBuf::from)).flatten().filter(|cwd| cwd.is_dir());
+        // A folder that is gone opens the shell in the home folder, without the agent:
+        // a resume would find no conversation there, and a new one would start in the wrong place.
+        let folder_found = request.cwd.is_none() || requested.is_some();
+        let cwd = match (&meta, requested) {
+            (Some(meta), _) if meta.cwd.is_dir() => meta.cwd.clone(),
+            (_, Some(requested)) => requested,
             _ => self.cwd_for(request.cwd_from.as_deref()).await,
         };
         let restored = meta.as_ref().filter(|_| request.kind.is_text()).and_then(|meta| {
@@ -126,7 +133,9 @@ impl Registry {
         };
         let mode = if meta.is_some() { AttachMode::Revived } else { AttachMode::New };
         self.serial += 1;
-        let spec = Spec { id: request.id.clone(), launch, pixels: request.pixels };
+        let brand_new_shell = meta.is_none() && request.kind == SessionKind::Shell;
+        let agent = request.launch.clone().filter(|_| brand_new_shell && folder_found);
+        let spec = Spec { id: request.id.clone(), launch, pixels: request.pixels, agent };
         match session::start(spec, request.size, self.store.clone(), restored, resuming, self.serial, ended.clone()) {
             Ok(handle) => {
                 let _ = handle.tx.send(Command::Attach { ws, size: request.size, mode, window });

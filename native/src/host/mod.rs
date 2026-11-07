@@ -2,7 +2,7 @@
 //! shells survive dashboard restarts and page reloads. It listens only on a
 //! private local channel (see ipc.rs): a Unix socket or a Windows named pipe.
 
-mod agent;
+pub(crate) mod agent;
 mod registry;
 mod session;
 pub mod store;
