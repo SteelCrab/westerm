@@ -6,10 +6,17 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ### Added
 
+- Desktop app for Windows and Linux, from the same code as the macOS app (Tauri 2, in `desktop/`). Windows: `westerm-windows-app-setup.exe`. Linux: `.deb` and `.rpm` for x64 and arm64. Like the macOS app, it opens the westerm on port 4317 or starts the one it ships, and quitting it keeps your shells running. A second launch brings the open window forward. On Linux an update opens the release page; install the new package from there.
 - Docs pane: a new pane that lists a folder's Markdown files as a tree and shows them in View, Edit, or Split mode. It opens in the focused shell's folder and can follow that shell's `cd`. ⌘S saves; a file changed on disk since editing started asks before it is overwritten. Unsaved changes are kept per file across reloads. In a remote window it shows the server's files.
 - AI agents in shells: while Claude Code or Codex runs, the pane header and the sidebar show an AI mark with a ring for its state (working, needs input, done out of view, idle), and the tab shows a dot. macOS and Linux.
 - A shell that comes back as "restored" (a reboot, a logout, `westerm stop`, a host update) resumes the agent it ran: `claude --resume <id>` with the flags it had, or `codex resume --last`. Settings ▸ Terminal ▸ Resume AI agents turns it off.
 - The AI mark in a pane header opens the agent's card: its state and for how long, the conversation id, the folder, the model, the command a reboot runs (with Copy buttons), and a choice to keep this pane from resuming.
+
+### Changed
+
+- The macOS app is now the same Tauri app as on Windows and Linux; the Swift app (`macos/`) is gone. It keeps the window, the remote windows, the menu, and the update from `westerm-macos-app.zip`, so the old app updates to it as before. Its log moves to `~/Library/Logs/io.github.steelcrab.westerm/westerm.log`. Check for Updates now opens the dashboard's update panel.
+- `GET /api/update` reports the channel `app` instead of `mac-app` for a westerm inside the desktop app.
+- ⌘ terminal keys (⌘1–9, ⌘] and so on) work in the macOS app only. On Windows and Linux the app uses the Ctrl+Shift keys.
 
 ## [0.2.1] - 2026-11-05
 

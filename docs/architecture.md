@@ -3,7 +3,7 @@
 ## Components
 
 ```
-Browser or westerm.app (React + wterm, Ghostty WASM)
+Browser or the desktop app (React + wterm, Ghostty WASM)
    │  WebSocket /ws/session, HTTP /api/*
    ▼
 Dashboard server   westerm            127.0.0.1:4317, UI embedded
@@ -49,7 +49,9 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
 | `native/src/server/remote_window.rs` | The `/remote/<target>/…` routes: they pass the layout, ssh-hosts, and session requests over the server link |
 | `native/src/server/http1.rs` | Sends and reads one HTTP/1.1 request over a stream; the remote routes and the server dashboard use it |
 | `src/remoteWindow.ts`, `src/useRemoteLink.ts`, `src/components/RemoteConnect.tsx` | The window's side: the target and its URLs, the status stream, and the connecting screen |
-| `macos/` | The macOS app: a WKWebView window (Swift), a window for each remote server, its updater, icon, and build script. It uses a westerm on port 4317 or starts its own. |
+| `desktop/` | The desktop app (Tauri 2) for macOS, Windows, and Linux: a window around the dashboard, a window for each remote server, the macOS menu bar, and its updater. It ships the westerm executable next to its own (`westerm-app`) and uses a westerm on port 4317 or starts that one. |
+| `src/appBridge.ts` | The page's side of the desktop app: `window.westermApp.request` and the menu's page events |
+| `scripts/desktop.mjs` | `npm run app:dev` and `npm run build:app`: builds westerm for the app and bundles it |
 | `src/` | UI: React + wterm (Ghostty WASM) |
 | `src/i18n/` | UI text in four languages, and language detection |
 | `shared/` | Protocol types, the layout tree, saved-file validation |
@@ -66,7 +68,11 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
   - a first instance created with `first_pipe_instance`, so the host does not start when someone else created the name first;
   - refusing remote clients;
   - the dashboard checking that the pipe's server process id matches `host.pipe`.
-- Updates check each download against the SHA-256 sum published with it, and run the new executable once to confirm its version before it replaces the old one.
+- Updates check each download against the SHA-256 sum published with it, and run the new executable once to confirm its version before it replaces the old one. The desktop app checks its download the same way, and on macOS also the new app's version.
+- **Desktop app**
+  - Each window shows only the app's own start page and the dashboard on its port. Any other address opens in the default browser.
+  - The page asks the app for remote windows and updates through one Tauri command, `app_request`. A capability (`desktop/capabilities/dashboard.json`) allows it only for `http://127.0.0.1:*`, and the app also checks that the page is the dashboard on its port. The page gets no other Tauri API.
+  - The app passes a remote window's target to the dashboard only when it is a valid ssh destination, as the dashboard checks it.
 - The layout file is checked by the server only for size (256 KiB) and basic shape; the UI validates the rest when it loads it.
 - **Remote windows** open a UDP port on the server: the gate. It is the only port westerm opens to a network.
   - TLS 1.3 with a certificate on both ends. Each side pins the other's SHA-256 fingerprint, exchanged over SSH; there is no certificate authority.

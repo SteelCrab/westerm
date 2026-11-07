@@ -8,7 +8,7 @@ import type { ThemeChoice } from "./theme.ts";
  */
 export type Layout = "top" | "sidebar";
 
-/** Preferences kept in this browser (or in the macOS app's web view). */
+/** Preferences kept in this browser (or in the desktop app's web view). */
 export interface Settings {
   /** "system" follows the OS appearance. */
   theme: ThemeChoice;

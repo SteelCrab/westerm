@@ -102,7 +102,8 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 | `src/components/RemoteConnect.tsx` | The connecting screen and the banner while a remote window's link is down |
 | `tests/` | UI tests (`node:test`) |
 | `native/tests/` | Rust integration tests against the real executable |
-| `macos/` | macOS app: Swift window (`app/main.swift`), icon, `build-app.sh` |
+| `desktop/` | Desktop app (Tauri 2) for macOS, Windows, and Linux: `src/` (Rust), `tauri.conf.json`, icons |
+| `scripts/desktop.mjs` | `npm run app:dev` and `npm run build:app` |
 | `scripts/start.mjs` | `npm start` on every OS |
 | `docs/` | Usage, sessions, architecture |
 
@@ -122,7 +123,7 @@ Every issue starts from a form: **Bug report** or **Feature request**. Blank iss
 The form asks for:
 
 - `westerm --version` output (it includes the host build id)
-- How you run westerm: install script, release archive, macOS app, or a source build
+- How you run westerm: install script, release archive, desktop app, or a source build
 - OS and browser, with versions
 - Steps to reproduce, what you expected, and what happened
 - Relevant lines from the host log and the browser console. The log is `~/.local/state/westerm/host.log` on macOS and Linux, and `%LOCALAPPDATA%\westerm\host.log` on Windows.
@@ -140,12 +141,13 @@ Remove private data first: host names, paths, and screen contents.
 - Branch from `main`. Keep one topic per pull request.
 - Write the title as `<type>(<scope>): <subject>`, about 72 characters or less in all.
   - `type`: `feat` (new behavior), `fix` (a bug fix), `docs`, `refactor`, `test`, or `chore` (build, CI, releases).
-  - `scope`: the part the change touches, such as `remote`, `host`, `ui`, `i18n`, or `macos`.
+  - `scope`: the part the change touches, such as `remote`, `host`, `ui`, `i18n`, or `desktop`.
   - `subject`: imperative mood, starting in lowercase, with no period at the end.
   - Examples: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
 - Fill in the template: a summary of at most 5 bullets, one line each, and the commands a reviewer runs to test. Link the issue with `Closes #123`, so the issue closes on merge.
 - Open a draft while you still work on it. Mark it ready when the checks in [Before you open a pull request](#before-you-open-a-pull-request) pass.
-- CI must pass on macOS, Linux, and Windows. It runs the type check, the UI tests, and the UI build once; clippy and `cargo test` on each system; the release build on Linux; shellcheck on the shell scripts; and a type check of the macOS app's Swift code.
+- CI must pass on macOS, Linux, and Windows. It runs the type check, the UI tests, and the UI build once; clippy and `cargo test` on each system, for westerm and for the desktop app; the release build on Linux; and shellcheck on the shell scripts.
+- A pull request that changes the desktop app or its UI (`desktop/`, `src/`, `shared/`, and the build files) also bundles the app for macOS, Windows, and Linux ([Desktop app workflow](.github/workflows/app.yml)). To try the installers before a release, open the run and download them from Artifacts. They are kept for 14 days. Changes to `native/` alone do not start it; run it from the Actions tab (Run workflow) for those.
 - Answer review comments with new commits. Do not force-push during a review, so reviewers can see what changed.
 - A maintainer merges after review.
 
@@ -214,6 +216,8 @@ westerm runs on macOS, Linux, and Windows. CI tests every pull request on all th
   cargo check --target x86_64-pc-windows-msvc --all-targets --manifest-path native/Cargo.toml
   ```
 
+  The desktop app's check also needs `llvm-rc` on PATH for the Windows resources (on macOS: `brew install llvm`, then `PATH="$(brew --prefix llvm)/bin:$PATH"`), and a placeholder for the westerm it ships: `touch desktop/binaries/westerm-x86_64-pc-windows-msvc.exe`.
+
 - Run the Linux tests from macOS with Docker:
 
   ```bash
@@ -243,12 +247,13 @@ There is no formatter configuration yet. Match the code around your change.
 
 For maintainers. A version tag builds and publishes everything.
 
-1. Set the same version in `package.json` and `native/Cargo.toml`:
+1. Set the same version in `package.json`, `native/Cargo.toml`, and `desktop/Cargo.toml` (the app reads its version from `package.json`):
 
    ```bash
    npm version 0.2.0 --no-git-tag-version     # package.json and package-lock.json
-   # edit `version` in native/Cargo.toml, then update Cargo.lock:
+   # edit `version` in native/Cargo.toml and desktop/Cargo.toml, then update both Cargo.lock files:
    cargo check --manifest-path native/Cargo.toml
+   cargo check --manifest-path desktop/Cargo.toml
    ```
 
 2. Commit, push, and wait for CI to pass on all three systems.
@@ -259,7 +264,7 @@ For maintainers. A version tag builds and publishes everything.
    git push origin v0.2.0
    ```
 
-4. The [Release workflow](.github/workflows/release.yml) checks that the tag matches both versions, tests and builds macOS (Apple silicon, Intel), Linux (x64, arm64, static), and Windows, bundles the universal macOS app, and publishes a GitHub release with the archives and SHA-256 sums. A last job installs the release with `install.sh` and `install.ps1` on every system. `install.sh` and `install.ps1` install it as the latest release.
+4. The [Release workflow](.github/workflows/release.yml) checks that the tag matches the three versions, tests and builds macOS (Apple silicon, Intel), Linux (x64, arm64, static), and Windows, bundles the desktop app (universal macOS, Windows x64, Linux x64 and arm64), and publishes a GitHub release with the archives and SHA-256 sums. A last job installs the release with `install.sh` and `install.ps1` on every system. `install.sh` and `install.ps1` install it as the latest release.
 
 A new version with changed PTY host code restarts users' shells once, as "restored". Mention it in the release notes.
 

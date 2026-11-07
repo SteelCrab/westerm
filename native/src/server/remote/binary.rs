@@ -125,6 +125,6 @@ mod tests {
         assert_eq!(binary_source(None, Channel::Binary, &cache, triple), BinarySource::Download(cache.clone()));
         std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
         std::fs::write(&cache, b"elf").unwrap();
-        assert_eq!(binary_source(None, Channel::MacApp, &cache, triple), BinarySource::Cached(cache.clone()));
+        assert_eq!(binary_source(None, Channel::App, &cache, triple), BinarySource::Cached(cache.clone()));
     }
 }

@@ -1,0 +1,42 @@
+[package]
+name = "westerm-app"
+version = "0.2.1"
+description = "The westerm desktop app: a window around the westerm dashboard"
+license = "MIT"
+repository = "https://github.com/SteelCrab/westerm"
+edition = "2024"
+rust-version = "1.89"
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+sys-locale = "0.3.2"
+tauri = { version = "2.12.5", features = [] }
+tauri-plugin-opener = "2.7.2"
+tauri-plugin-window-state = "2.5.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
+# macOS keeps one copy of an app by itself.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+tauri-plugin-single-instance = "2.5.5"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1
+
+# Proc macros and build scripts stay unstripped. The Tauri CLI sets
+# MACOSX_DEPLOYMENT_TARGET (bundle.macOS.minimumSystemVersion), and with it
+# some macOS toolchains write stripped proc-macro libraries that rustc cannot
+# load ("mis-aligned LINKEDIT string pool").
+[profile.release.build-override]
+strip = false

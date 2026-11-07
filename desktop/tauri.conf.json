@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "westerm",
+  "mainBinaryName": "westerm-app",
+  "version": "../package.json",
+  "identifier": "io.github.steelcrab.westerm",
+  "build": {
+    "frontendDist": "ui"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "copyright": "Copyright © 2026 SteelCrab. MIT License.",
+    "shortDescription": "Web Session Terminal",
+    "longDescription": "A terminal whose sessions survive closing the window, restarting the program, and rebooting.",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "homepage": "https://github.com/SteelCrab/westerm",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "externalBin": ["binaries/westerm"],
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": "-",
+      "dmg": {
+        "background": "assets/dmg-background.tiff",
+        "windowSize": { "width": 640, "height": 400 },
+        "appPosition": { "x": 160, "y": 190 },
+        "applicationFolderPosition": { "x": 480, "y": 190 }
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "windows/hooks.nsh",
+        "languages": ["English", "Korean", "Japanese", "SimpChinese"],
+        "displayLanguageSelector": false
+      }
+    },
+    "linux": {
+      "deb": { "section": "utils" },
+      "rpm": { "release": "1" }
+    }
+  }
+}

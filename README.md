@@ -22,7 +22,11 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS app: download `westerm-macos-app.dmg` from [Releases](https://github.com/SteelCrab/westerm/releases/latest), open it, and drag **westerm** onto the Applications folder.
+Desktop app for macOS, Windows, and Linux, from [Releases](https://github.com/SteelCrab/westerm/releases/latest):
+
+- macOS: open `westerm-macos-app.dmg` and drag **westerm** onto the Applications folder.
+- Windows: run `westerm-windows-app-setup.exe`.
+- Linux: install `westerm-linux-app-<arch>.deb` or `.rpm`.
 
 Other ways, and how to allow the app's first open on macOS: [docs/install.md](docs/install.md).
 

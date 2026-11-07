@@ -32,14 +32,23 @@ To install by hand, download an archive from [Releases](https://github.com/Steel
 
 macOS blocks a file downloaded in a browser once. Allow it with `xattr -d com.apple.quarantine westerm`.
 
-## macOS app
+## Desktop app
 
-Download `westerm-macos-app.dmg` (Apple silicon and Intel) from [Releases](https://github.com/SteelCrab/westerm/releases/latest) and open it. In the window that opens, drag **westerm** onto the Applications folder, then eject the disk image. The app opens the same dashboard in its own window.
+The desktop app opens the same dashboard in its own window, on macOS, Windows, and Linux. Download it from [Releases](https://github.com/SteelCrab/westerm/releases/latest):
 
-- If a westerm already runs on port 4317 (for example from a terminal), the app opens that one, so both show the same sessions. Otherwise it starts its own.
-- Quitting the app keeps your shells running, as with the CLI. To save and stop them, run `/Applications/westerm.app/Contents/MacOS/westerm stop`.
-- The app is not notarized by Apple, so macOS blocks the first open. Allow it once with `xattr -dr com.apple.quarantine /Applications/westerm.app`, or in System Settings ▸ Privacy & Security ▸ Open Anyway.
-- To build it yourself: `npm run build:app` (creates `dist-app/westerm.app`, `westerm-macos-app.zip`, and `westerm-macos-app.dmg`).
+| System | File | Install |
+|---|---|---|
+| macOS (Apple silicon and Intel) | `westerm-macos-app.dmg` | Open it, drag **westerm** onto the Applications folder, then eject the disk image. |
+| Windows x64 | `westerm-windows-app-setup.exe` | Run it. It installs for your user only, in `%LOCALAPPDATA%\westerm`. Installing or removing it first stops the PTY host, which saves every session; the shells come back once as "restored". |
+| Linux x64 | `westerm-linux-app-amd64.deb`, `westerm-linux-app-x86_64.rpm` | `sudo apt install ./westerm-linux-app-amd64.deb`, or `sudo dnf install ./westerm-linux-app-x86_64.rpm` |
+| Linux arm64 | `westerm-linux-app-arm64.deb`, `westerm-linux-app-aarch64.rpm` | The same, with the arm64 file. |
+
+- If a westerm already runs on port 4317 (for example from a terminal), the app opens that one, so both show the same sessions. Otherwise it starts the westerm that comes with the app.
+- Quitting the app keeps your shells running, as with the CLI. To save and stop them, run the app's westerm with `stop`: `/Applications/westerm.app/Contents/MacOS/westerm stop` on macOS, `%LOCALAPPDATA%\westerm\westerm.exe stop` on Windows, `/usr/bin/westerm stop` on Linux.
+- The app writes the output of the westerm it starts to `westerm.log` in its log folder: `~/Library/Logs/io.github.steelcrab.westerm` (macOS), `%LOCALAPPDATA%\io.github.steelcrab.westerm\logs` (Windows), `~/.local/share/io.github.steelcrab.westerm/logs` (Linux).
+- Updates: see [Updates](usage.md#updates). On Linux the app opens the release page; install the new package from there.
+- The app is not notarized by Apple, so macOS blocks the first open. Allow it once with `xattr -dr com.apple.quarantine /Applications/westerm.app`, or in System Settings ▸ Privacy & Security ▸ Open Anyway. Windows SmartScreen may also ask once: More info ▸ Run anyway.
+- To build it yourself: `npm run build:app` for this computer's system and CPU (`-- --target universal-apple-darwin` for both Mac CPUs). The files go to `dist-app/`. Linux needs the WebKitGTK 4.1 development packages (on Ubuntu: `libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev libdbus-1-dev`). `npm run app:dev` runs a debug build.
 
 ## Build from source
 

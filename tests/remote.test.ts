@@ -4,6 +4,7 @@ import { CONFIG_PATH, isPermanentFailure, isSessionKind, SSH_HOSTS_PATH, WS_PATH
 import { parseSavedDashboard, WORKSPACE_PATH } from "../shared/workspace-file.ts";
 import { MESSAGES } from "../src/i18n/messages.ts";
 import { remoteWindowCommands, sshCommands } from "../src/paletteCommands.tsx";
+import type { AppMessage } from "../src/appBridge.ts";
 import { openRemoteWindow, remoteTargetFrom, serverPath, shouldPostRemoteClose } from "../src/remoteWindow.ts";
 import { INITIAL_LINK, linkReducer } from "../src/useRemoteLink.ts";
 import { firstLoad, layoutKey, mayReattach, reclaimAction, reconnectAction, writtenKey } from "../src/useWorkspacePersistence.ts";
@@ -100,9 +101,9 @@ test("in the app, every open asks the app for the window", () => {
   const posted: unknown[] = [];
   const opened: unknown[] = [];
   const open = (...args: [string, string, string]) => (opened.push(args), null);
-  const post = (message: { type: "remoteWindow"; target: string }) => void posted.push(message);
-  openRemoteWindow("pista@msi", open, post);
-  openRemoteWindow("pista@msi", open, post);
+  const bridge = { request: async (message: AppMessage) => void posted.push(message) };
+  openRemoteWindow("pista@msi", open, bridge);
+  openRemoteWindow("pista@msi", open, bridge);
   assert.deepEqual(posted, [
     { type: "remoteWindow", target: "pista@msi" },
     { type: "remoteWindow", target: "pista@msi" },

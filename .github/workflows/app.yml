@@ -1,0 +1,84 @@
+name: Desktop app
+
+# Bundles the desktop app (desktop/, Tauri) for macOS, Windows, and Linux,
+# with the westerm executable inside.
+# - release.yml calls it for a version tag and publishes the files.
+# - A pull request that changes the app or the UI it shows bundles it too,
+#   so the installers can be tried on each system before a release. Open the
+#   run and download them from Artifacts; they are kept for 14 days.
+#   Changes to native/ alone do not start it: run it by hand for those.
+# - "Run workflow" on the Actions tab bundles any branch. GitHub shows that
+#   button only once this file is on the default branch.
+# scripts/desktop.mjs names the files; the app's updater looks for
+# westerm-macos-app.zip and westerm-windows-app-setup.exe.
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "src/**"
+      - "shared/**"
+      - "public/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "scripts/desktop.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/app.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: build (${{ matrix.name }} app)
+    # A newer push to a pull request cancels the build that is still going.
+    # Release and hand-started builds each run to the end.
+    concurrency:
+      group: app-${{ matrix.target }}-${{ github.event.pull_request.number || github.sha }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, os: macos-latest, target: universal-apple-darwin, rust: "aarch64-apple-darwin,x86_64-apple-darwin" }
+          - { name: Windows, os: windows-latest, target: x86_64-pc-windows-msvc, rust: x86_64-pc-windows-msvc }
+          # The oldest supported Ubuntu: packages built here run on newer systems.
+          - { name: Linux x64, os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, rust: x86_64-unknown-linux-gnu }
+          - { name: Linux arm64, os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, rust: aarch64-unknown-linux-gnu }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust }}
+      - name: WebKitGTK and its build packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev libdbus-1-dev
+      - run: npm ci
+      - name: Build the app
+        run: npm run build:app -- --target ${{ matrix.target }}
+      - name: Checksum
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null; then sum="sha256sum"; else sum="shasum -a 256"; fi
+          for path in dist-app/westerm-*-app*; do
+            file=$(basename "$path")
+            mv "$path" .
+            # "<sum>  <name>", also where sha256sum marks binary files with "*".
+            $sum "$file" | sed 's/ \*/  /' > "$file.sha256"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.target }}
+          path: westerm-*-app*
+          retention-days: 14
+          if-no-files-found: error

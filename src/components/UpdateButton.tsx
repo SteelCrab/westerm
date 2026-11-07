@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { CircleArrowUp, ExternalLink, LoaderCircle } from "lucide-react";
 import { useI18n } from "../i18n/index.tsx";
 import type { UpdateStatus } from "../../shared/protocol.ts";
-import { appBridge, type UpdateState } from "../useUpdate.ts";
+import { appBridge } from "../appBridge.ts";
+import type { UpdateState } from "../useUpdate.ts";
 
 interface UpdateButtonProps {
   update: UpdateState;
@@ -58,8 +59,10 @@ export function UpdateButton({ update, open, onOpenChange }: UpdateButtonProps) 
     let action;
     if (status.channel === "source") {
       action = <p>{t.update.source}</p>;
-    } else if (status.channel === "mac-app" && !appBridge()) {
+    } else if (status.channel === "app" && !appBridge()) {
       action = <p>{t.update.app}</p>;
+    } else if (phase === "manual") {
+      action = <p className="update-note">{t.update.manual}</p>;
     } else if (phase === "installing" || phase === "restarting") {
       action = (
         <p className="update-progress" role="status">
@@ -72,10 +75,10 @@ export function UpdateButton({ update, open, onOpenChange }: UpdateButtonProps) 
         <>
           {phase === "failed" && error && <p className="update-error" role="alert">{t.update.failed(error)}</p>}
           {phase === "timeout" && <p className="update-error" role="alert">{t.update.timeout}</p>}
-          {status.channel === "binary" && <p className="update-note">{t.update.restartNote}</p>}
+          <p className="update-note">{t.update.restartNote}</p>
           <div className="update-actions">
             <button type="button" className="button primary" onClick={update.install}>
-              {status.channel === "mac-app" ? t.update.appInstall : t.update.install}
+              {status.channel === "app" ? t.update.appInstall : t.update.install}
             </button>
             <button type="button" className="button" onClick={() => onOpenChange(false)}>
               {t.update.later}

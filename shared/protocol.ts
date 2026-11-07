@@ -153,8 +153,8 @@ export const SSH_HOSTS_PATH = "/api/ssh-hosts";
 /** GET: whether a newer release exists. POST (dashboard origin only): install it and restart. */
 export const UPDATE_PATH = "/api/update";
 
-/** binary: an installed executable · mac-app: inside westerm.app · source: built from source */
-export type UpdateChannel = "binary" | "mac-app" | "source";
+/** binary: an installed executable · app: inside the westerm desktop app · source: built from source */
+export type UpdateChannel = "binary" | "app" | "source";
 
 export interface UpdateStatus {
   current: string;

@@ -5,6 +5,7 @@
 
 import { SSH_HOSTS_PATH, WS_PATH } from "../shared/protocol.ts";
 import { isSshTarget, WORKSPACE_PATH } from "../shared/workspace-file.ts";
+import { appBridge, type AppBridge } from "./appBridge.ts";
 
 /** The server a window's address names (`?remote=<target>`), or null for a local window. */
 export function remoteTargetFrom(search: string): string | null {
@@ -35,19 +36,8 @@ export function shouldPostRemoteClose(target: string | null, end: boolean, ready
 /** The popups this page opened in a browser, by server. A window that is closed counts as gone. */
 const openWindows = new Map<string, Window>();
 
-/** What the macOS app listens for on its "westerm" message handler. */
-export type AppBridge = (message: { type: "remoteWindow"; target: string }) => void;
-
-/** The app's message handler, bound; undefined in a browser and where there is no page (tests). */
-function appBridge(): AppBridge | undefined {
-  if (typeof window === "undefined") return undefined;
-  const handler = (window as { webkit?: { messageHandlers?: { westerm?: { postMessage?: AppBridge } } } }).webkit
-    ?.messageHandlers?.westerm;
-  return handler?.postMessage ? (message) => handler.postMessage?.(message) : undefined;
-}
-
 /**
- * Opens `target`'s remote window. In the macOS app the app opens or raises
+ * Opens `target`'s remote window. In the desktop app the app opens or raises
  * the window: a page cannot raise a window it opened, so every call asks the
  * app. In a browser, this page opens a popup, or focuses the one it opened
  * before when it is still open.
@@ -55,10 +45,12 @@ function appBridge(): AppBridge | undefined {
 export function openRemoteWindow(
   target: string,
   open: (url: string, name: string, features: string) => Window | null = window.open.bind(window),
-  post: AppBridge | undefined = appBridge(),
+  bridge: AppBridge | null = appBridge(),
 ): void {
-  if (post) {
-    post({ type: "remoteWindow", target });
+  if (bridge) {
+    bridge.request({ type: "remoteWindow", target }).catch((reason: unknown) => {
+      console.warn("westerm: the app could not open the remote window", reason);
+    });
     return;
   }
   const existing = openWindows.get(target);

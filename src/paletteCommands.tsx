@@ -32,7 +32,7 @@ import {
 import { postRemote } from "./remoteApi.ts";
 import type { SshHost } from "./useSshHosts.ts";
 import { shortcutLabel, type SwitchCommand } from "./shortcuts.ts";
-import { appBridge } from "./useUpdate.ts";
+import { appBridge, appCommandKeys } from "./appBridge.ts";
 import {
   activeTab,
   activeWorkspace,
@@ -99,8 +99,8 @@ const LANGUAGE_KEYWORDS: Record<Locale, string> = {
 
 export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
   const { state, dispatch, t } = ctx;
-  const inApp = appBridge() !== null;
-  const keys = (command: SwitchCommand) => shortcutLabel(command, inApp, IS_MAC);
+  const appKeys = appCommandKeys(appBridge(), IS_MAC);
+  const keys = (command: SwitchCommand) => shortcutLabel(command, appKeys, IS_MAC);
   const g = t.palette.groups;
   const label = (tab: Tab) => tabLabel(state, tab, t.tabs.untitled);
   const workspaceName = (workspace: Workspace) => workspaceLabel(state, workspace, t.workspaces.untitled);

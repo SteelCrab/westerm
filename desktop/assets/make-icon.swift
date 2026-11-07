@@ -3,7 +3,8 @@
 // transparent mask, and places it on Apple's icon grid (an 824 px body with
 // a 100 px transparent margin).
 //
-//   swift macos/make-icon.swift macos/icon-source.png macos/AppIcon.png
+//   swift desktop/assets/make-icon.swift desktop/assets/icon-source.png desktop/assets/AppIcon.png
+//   npx tauri icon desktop/assets/AppIcon.png -o desktop/icons   (then keep only the icons tauri.conf.json lists)
 
 import AppKit
 
