@@ -41,8 +41,8 @@ impl Release {
 pub enum Channel {
     /// An installed executable: replaced in place.
     Binary,
-    /// Inside westerm.app: the app replaces its whole bundle.
-    MacApp,
+    /// Inside the westerm desktop app (desktop/): the app updates itself.
+    App,
     /// Built from source (target/release): update with git pull and npm run build.
     Source,
 }
@@ -58,16 +58,25 @@ pub fn channel() -> Channel {
     channel_of(&path)
 }
 
+/// The desktop app's own executable. The app installs westerm next to it.
+const APP_EXECUTABLE: &str = if cfg!(windows) { "westerm-app.exe" } else { "westerm-app" };
+
 fn channel_of(path: &Path) -> Channel {
     if path.to_string_lossy().contains(".app/Contents/MacOS/") {
-        return Channel::MacApp;
+        return Channel::App;
     }
     // target/release, target/debug, or target/<triple>/release
     let parts: Vec<String> = path.components().map(|part| part.as_os_str().to_string_lossy().into_owned()).collect();
     let built = |name: &str| name == "release" || name == "debug";
     let from_source = parts.windows(2).any(|w| w[0] == "target" && built(&w[1]))
         || parts.windows(3).any(|w| w[0] == "target" && built(&w[2]));
-    if from_source { Channel::Source } else { Channel::Binary }
+    if from_source {
+        Channel::Source
+    } else if path.with_file_name(APP_EXECUTABLE).is_file() {
+        Channel::App
+    } else {
+        Channel::Binary
+    }
 }
 
 /// "1.2.3" or "v1.2.3-rc.1" as (1, 2, 3).
@@ -251,7 +260,7 @@ fn staging_path(folder: &Path) -> PathBuf {
 /// Downloads `release`, checks it, and puts it in place of the executable at `exe`.
 pub fn install(release: &Release, exe: &Path) -> Result<(), String> {
     match channel_of(exe) {
-        Channel::MacApp => return Err("this westerm is inside westerm.app; update the app from its menu".into()),
+        Channel::App => return Err("this westerm is inside the westerm app; update the app instead".into()),
         Channel::Source => return Err("this westerm was built from source; update it with git pull and npm run build".into()),
         Channel::Binary => {}
     }
@@ -450,10 +459,20 @@ mod tests {
 
     #[test]
     fn copies_are_told_apart_by_where_they_live() {
-        assert_eq!(channel_of(Path::new("/Applications/westerm.app/Contents/MacOS/westerm")), Channel::MacApp);
+        assert_eq!(channel_of(Path::new("/Applications/westerm.app/Contents/MacOS/westerm")), Channel::App);
         assert_eq!(channel_of(Path::new("/home/me/westerm/native/target/release/westerm")), Channel::Source);
         assert_eq!(channel_of(Path::new("/w/native/target/x86_64-pc-windows-msvc/release/westerm.exe")), Channel::Source);
         assert_eq!(channel_of(Path::new("/home/me/.local/bin/westerm")), Channel::Binary);
+    }
+
+    #[test]
+    fn the_desktop_app_is_found_next_to_westerm() {
+        let folder = tempfile::tempdir().unwrap();
+        let westerm = folder.path().join(if cfg!(windows) { "westerm.exe" } else { "westerm" });
+        std::fs::write(&westerm, b"").unwrap();
+        assert_eq!(channel_of(&westerm), Channel::Binary);
+        std::fs::write(folder.path().join(APP_EXECUTABLE), b"").unwrap();
+        assert_eq!(channel_of(&westerm), Channel::App);
     }
 
     #[test]
