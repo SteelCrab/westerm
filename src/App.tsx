@@ -17,6 +17,7 @@ import { useI18n } from "./i18n/index.tsx";
 import { RemoteWindowIcon } from "./kinds.tsx";
 import {
   buildCommands,
+  IS_MAC,
   isPaletteShortcut,
   PALETTE_SHORTCUT,
   remoteWindowCommands,
@@ -34,7 +35,7 @@ import { useTerminalFont } from "./useTerminalFont.ts";
 import { useUpdate } from "./useUpdate.ts";
 import { parseFamilies, useSettings } from "./settings.ts";
 import { switchCommand, typingElsewhere, type SwitchCommand } from "./shortcuts.ts";
-import { appBridge } from "./useUpdate.ts";
+import { appBridge, appCommandKeys } from "./appBridge.ts";
 import { markEnding } from "./terminal/ending.ts";
 import { loadSaved, mayReattach, reclaimAction, useWorkspacePersistence } from "./useWorkspacePersistence.ts";
 import {
@@ -119,7 +120,7 @@ export function App() {
   // A remote window's link to its server. A new local westerm (an update)
   // brings new page files, so the window loads again.
   const link = useRemoteLink(REMOTE_TARGET);
-  // The macOS app uses the page title as the window title.
+  // The desktop app uses the page title as the window title.
   useEffect(() => {
     if (REMOTE_TARGET !== null) document.title = `westerm — ${REMOTE_TARGET}`;
   }, []);
@@ -136,6 +137,13 @@ export function App() {
   const checkUpdates = useCallback(() => {
     void update.check(true).then(() => setUpdateOpen(true));
   }, [update.check]);
+  // The macOS app's Check for Updates menu sends this event. Remote windows
+  // have no updates of their own.
+  useEffect(() => {
+    if (REMOTE_TARGET !== null) return;
+    window.addEventListener("westerm:update", checkUpdates);
+    return () => window.removeEventListener("westerm:update", checkUpdates);
+  }, [checkUpdates]);
 
   // Keep the latest state at hand for callbacks that must not change identity.
   const stateRef = useRef(state);
@@ -288,11 +296,11 @@ export function App() {
   );
 
   useEffect(() => {
-    const inApp = appBridge() !== null;
+    const appKeys = appCommandKeys(appBridge(), IS_MAC);
     const dialogOpen = () => document.querySelector('[aria-modal="true"]') !== null;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.isComposing || typingElsewhere(event.target) || dialogOpen()) return;
-      const command = switchCommand(event, inApp);
+      const command = switchCommand(event, appKeys);
       if (!command) return;
       event.preventDefault();
       event.stopPropagation();

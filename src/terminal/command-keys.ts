@@ -17,8 +17,8 @@ import {
  * - Cmd+V, so the paste event still delivers clipboard text.
  * - Shortcuts Chrome reserves (Cmd+T, Cmd+W, Cmd+N, Cmd+Q). They never reach
  *   the page.
- * - Cmd+Q, Cmd+H, and Cmd+M. In the macOS app the page sees keys before the
- *   menu, so forwarding these would stop Quit, Hide, and Minimize.
+ * - Cmd+Q, Cmd+H, and Cmd+M. In the macOS app (desktop/) the page sees keys
+ *   before the menu, so forwarding these would stop Quit, Hide, and Minimize.
  *
  * Apps that do not set flag 8 (shells, Neovim) keep wterm's behavior.
  */

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { UPDATE_PATH, type UpdateStatus } from "../shared/protocol.ts";
+import { appBridge, type AppBridge, type AppUpdateResult } from "./appBridge.ts";
 
-/** installing: downloading and checking · restarting: waiting for the new server */
-export type UpdatePhase = "idle" | "installing" | "restarting" | "failed" | "timeout";
+/**
+ * installing: downloading and checking · restarting: waiting for the new
+ * server or app · manual: the app opened the release page for the person
+ */
+export type UpdatePhase = "idle" | "installing" | "restarting" | "manual" | "failed" | "timeout";
 
 export interface UpdateState {
   status: UpdateStatus | null;
@@ -14,22 +18,19 @@ export interface UpdateState {
   install: () => void;
 }
 
-interface AppBridge {
-  postMessage: (message: unknown) => void;
-}
-
-/** The macOS app's message handler; only present inside westerm.app. */
-export function appBridge(): AppBridge | null {
-  const webkit = (window as unknown as { webkit?: { messageHandlers?: { westerm?: AppBridge } } }).webkit;
-  return webkit?.messageHandlers?.westerm ?? null;
-}
-
 const RECHECK_MS = 6 * 60 * 60 * 1000;
 const RESTART_WAIT_MS = 90_000;
 
+/** The update status from the desktop app, or from the dashboard in a browser. */
+export async function fetchUpdateStatus(refresh: boolean, bridge: AppBridge | null = appBridge()): Promise<UpdateStatus | null> {
+  if (bridge) return (await bridge.request({ type: "updateStatus", refresh })) as UpdateStatus;
+  const response = await fetch(refresh ? `${UPDATE_PATH}?refresh=1` : UPDATE_PATH, { cache: "no-store" });
+  return response.ok ? ((await response.json()) as UpdateStatus) : null;
+}
+
 /**
- * Release updates through /api/update; inside the macOS app, through the app.
- * With `automatic` off (Settings), nothing is checked until asked.
+ * Release updates through /api/update; inside the desktop app, of the app,
+ * through the app. With `automatic` off (Settings), nothing is checked until asked.
  */
 export function useUpdate(automatic = true): UpdateState {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
@@ -40,8 +41,7 @@ export function useUpdate(automatic = true): UpdateState {
 
   const check = useCallback(async (refresh = false) => {
     try {
-      const response = await fetch(refresh ? `${UPDATE_PATH}?refresh=1` : UPDATE_PATH, { cache: "no-store" });
-      const next = response.ok ? ((await response.json()) as UpdateStatus) : null;
+      const next = await fetchUpdateStatus(refresh);
       setStatus(next);
       return next;
     } catch {
@@ -61,8 +61,18 @@ export function useUpdate(automatic = true): UpdateState {
     const current = statusRef.current;
     const target = current?.latest;
     if (!current?.newer || !target) return;
-    if (current.channel === "mac-app") {
-      appBridge()?.postMessage({ type: "update" });
+    if (current.channel === "app") {
+      const bridge = appBridge();
+      if (!bridge) return;
+      setPhase("installing");
+      setError(null);
+      bridge.request({ type: "update" }).then(
+        (result) => setPhase((result as AppUpdateResult) === "manual" ? "manual" : "restarting"),
+        (reason: unknown) => {
+          setError(reason instanceof Error ? reason.message : String(reason));
+          setPhase("failed");
+        },
+      );
       return;
     }
     if (current.channel !== "binary") return;
