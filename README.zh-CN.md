@@ -22,7 +22,11 @@ Windows（PowerShell）：
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS 应用：从 [Releases](https://github.com/SteelCrab/westerm/releases/latest) 下载 `westerm-macos-app.dmg` 并打开，把 **westerm** 拖到“应用程序”文件夹。
+macOS、Windows、Linux 桌面应用请从 [Releases](https://github.com/SteelCrab/westerm/releases/latest) 下载：
+
+- macOS：打开 `westerm-macos-app.dmg`，把 **westerm** 拖到“应用程序”文件夹。
+- Windows：运行 `westerm-windows-app-setup.exe`。
+- Linux：安装 `westerm-linux-app-<arch>.deb` 或 `.rpm`。
 
 其他安装方式，以及在 macOS 上允许应用首次打开的方法：[docs/install.md](docs/install.md)（英语）
 

@@ -40,7 +40,7 @@ body:
         - label: macOS
         - label: Linux
         - label: Windows
-        - label: macOS app (westerm.app)
+        - label: Desktop app
 
   - type: dropdown
     id: contribute

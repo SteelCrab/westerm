@@ -15,7 +15,7 @@ body:
       label: westerm version
       description: |
         Output of `westerm --version`. It includes the host build id.
-        For the macOS app, run `/Applications/westerm.app/Contents/MacOS/westerm --version`.
+        For the desktop app, run its westerm: `/Applications/westerm.app/Contents/MacOS/westerm --version` (macOS), `%LOCALAPPDATA%\westerm\westerm.exe --version` (Windows), or `/usr/bin/westerm --version` (Linux).
       placeholder: westerm 0.1.0 (host …)
     validations:
       required: true
@@ -27,7 +27,7 @@ body:
       options:
         - install.sh or install.ps1
         - Archive from Releases
-        - macOS app (westerm.app)
+        - Desktop app (macOS, Windows, or Linux)
         - Built from source
     validations:
       required: true

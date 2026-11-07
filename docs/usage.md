@@ -62,7 +62,7 @@ In a window 640px wide or less, such as a phone:
 
 ## Switching terminals from the keyboard
 
-The same keys work in the browser and in the macOS app. Browsers keep ⌘1–9 and similar keys for their own tabs, so the browser keys use Ctrl+Shift. The macOS app also takes the terminal-app keys used by iTerm and Ghostty.
+The same keys work in the browser and in the desktop app. Browsers keep ⌘1–9 and similar keys for their own tabs, so the browser keys use Ctrl+Shift. The macOS app also takes the terminal-app keys used by iTerm and Ghostty. On Windows and Linux the app uses the Ctrl+Shift keys, since ⌘ there is the Windows or Super key.
 
 | Action | Browser and app | macOS app also |
 |---|---|---|
@@ -74,11 +74,11 @@ The same keys work in the browser and in the macOS app. Browsers keep ⌘1–9 a
 
 - The keys work while a terminal has the keyboard. In the palette, a rename field, or Settings, they type as usual.
 - Ctrl+[ without Shift stays Escape for programs in the terminal.
-- In the macOS app the Window menu lists the same commands.
+- In the macOS app the Window menu lists the same commands. The app has a menu bar on macOS only.
 
 ## Settings
 
-Open Settings from the gear at the bottom of the activity bar, from the palette, or with ⌘, in the macOS app. Pick a page from the menu on the left: General, Appearance, Terminal, or Updates. Changes apply at once and are saved in this browser (or the app).
+Open Settings from the gear at the bottom of the activity bar, from the palette, or with ⌘, in the macOS app. Pick a page from the menu on the left: General, Appearance, Terminal, or Updates. Changes apply at once and are saved in this browser (or the desktop app).
 
 | Page | Setting | Effect |
 |---|---|---|
@@ -97,7 +97,11 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
   - The new version replaces the PTY host, so open shells come back once as "restored".
   - A build from source shows how to update instead: `git pull` and `npm run build`.
 - **Command line**: `westerm update` installs the newest release; `westerm update --check` only reports it.
-- **macOS app**: westerm ▸ Check for Updates downloads `westerm-macos-app.zip`, checks it, replaces the app, and opens the new copy. The update button in the app window does the same.
+- **Desktop app**: the update button in the app window updates the whole app. On macOS, westerm ▸ Check for Updates opens the same panel. The panel is about the app's own version, also when the app shows a westerm started in a terminal; update that one with `westerm update`.
+  - macOS: downloads `westerm-macos-app.zip`, checks its SHA-256 sum and version, replaces the app, and opens the new copy.
+  - Windows: downloads `westerm-windows-app-setup.exe` and checks its SHA-256 sum. The app stops its dashboard, the PTY host saves every session and stops, the app quits, and the installer runs. Open the app again when it is done.
+  - Linux: the app opens the release page in your browser. Install the new `.deb` or `.rpm` from there.
+  - A browser on a westerm that the app started shows "Update it from the app" instead.
 - `WESTERM_NO_UPDATE_CHECK=1` turns update checks off on that machine.
 
 ## Languages
@@ -143,7 +147,7 @@ A docs pane lists the Markdown files of a folder and shows, edits, and saves the
 A window for a Linux server: its tabs, workspaces, and shells live on the server and keep running when your network does not.
 
 - Open it from the activity bar (the server icon) or the command palette: pick a host from `~/.ssh/config` under "Open in a new window", or type `user@host`.
-- In a browser, it opens a new browser window. The browser may block it as a popup: allow popups for `127.0.0.1`. The window's address is `/?remote=<target>` on the dashboard, for example `http://127.0.0.1:4317/?remote=prod`. In westerm.app, it opens an app window; the window of each server remembers its size and position. Opening the same server again brings its window to the front.
+- In a browser, it opens a new browser window. The browser may block it as a popup: allow popups for `127.0.0.1`. The window's address is `/?remote=<target>` on the dashboard, for example `http://127.0.0.1:4317/?remote=prod`. In the desktop app, it opens an app window; the window of each server remembers its size and position. Opening the same server again brings its window to the front.
 - The window title is `westerm — <target>`. The header shows the server name and how the window is connected: `QUIC`, or `SSH tunnel` when UDP does not get through.
 - The first time, a connecting screen shows the stages: checking the server, installing westerm, starting, connecting. westerm copies the same version of itself to `~/.local/bin/westerm` on the server over SSH and starts it there. The server needs no internet access.
 - Tabs, workspaces, and layout are saved on the server. Shells, terminal-browser, and terminal-code run on the server, started by your login shell there. Programs are found on the PATH of your interactive login shell on the server, so folders that `~/.zshrc` or a similar file adds (such as `~/.local/bin`) count. This applies once westerm next starts the server's host, for example after `westerm stop` there. Plain SSH panes and remote browsers opened inside a remote window run from the server too.
@@ -162,7 +166,7 @@ A window for a Linux server: its tabs, workspaces, and shells live on the server
 | Login | An SSH key or ssh-agent. Password and one-time-code logins are not supported. |
 | Host key | Already in `~/.ssh/known_hosts`. For a new server, connect once with a plain SSH pane and accept its key. |
 | Firewall | UDP 4317 open on the server (4318–4326 when another user's westerm holds 4317). Without it, westerm falls back to an SSH tunnel. |
-| macOS, server on your LAN | Local Network access for the app that runs westerm: your terminal app, or westerm.app (System Settings ▸ Privacy & Security ▸ Local Network). Without it, macOS blocks UDP to local addresses and westerm uses the SSH tunnel. Servers on the internet do not need it. |
+| macOS, server on your LAN | Local Network access for the app that runs westerm: your terminal app, or the westerm app (System Settings ▸ Privacy & Security ▸ Local Network). Without it, macOS blocks UDP to local addresses and westerm uses the SSH tunnel. Servers on the internet do not need it. |
 
 ### Updating a server
 

@@ -43,7 +43,7 @@
 
 ## Several windows
 
-The macOS app and browser tabs use the same sessions. One window at a time has them all.
+The desktop app and browser tabs use the same sessions. One window at a time has them all.
 
 - When a window opens a session, every other window lets go of every session, and shows "In use in another window".
 - Switching to that window or clicking it takes the sessions back. It first loads the layout the other window saved, so workspaces, tabs, and panes added or closed there show here too.

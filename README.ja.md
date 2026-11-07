@@ -22,7 +22,11 @@ Windows(PowerShell):
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS アプリ: [Releases](https://github.com/SteelCrab/westerm/releases/latest) から `westerm-macos-app.dmg` を取得して開き、**westerm** をアプリケーションフォルダへドラッグします。
+macOS、Windows、Linux 用のデスクトップアプリは [Releases](https://github.com/SteelCrab/westerm/releases/latest) から取得します。
+
+- macOS: `westerm-macos-app.dmg` を開き、**westerm** をアプリケーションフォルダへドラッグします。
+- Windows: `westerm-windows-app-setup.exe` を実行します。
+- Linux: `westerm-linux-app-<arch>.deb` または `.rpm` をインストールします。
 
 ほかのインストール方法と、macOS でアプリの初回起動を許可する方法: [docs/install.md](docs/install.md)(英語)
 

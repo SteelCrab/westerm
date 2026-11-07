@@ -102,7 +102,8 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 | `src/components/RemoteConnect.tsx` | 원격 창의 연결 화면과, 연결이 끊긴 동안의 안내 띠 |
 | `tests/` | 화면 테스트(`node:test`) |
 | `native/tests/` | 실제 실행 파일로 돌리는 Rust 통합 테스트 |
-| `macos/` | macOS 앱: Swift 창(`app/main.swift`), 아이콘, `build-app.sh` |
+| `desktop/` | macOS, Windows, Linux 데스크톱 앱(Tauri 2): `src/`(Rust), `tauri.conf.json`, 아이콘 |
+| `scripts/desktop.mjs` | `npm run app:dev`, `npm run build:app` |
 | `scripts/start.mjs` | 모든 OS에서 `npm start` |
 | `docs/` | 사용법, 세션, 구조 (영어) |
 
@@ -122,7 +123,7 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 양식은 다음을 묻습니다.
 
 - `westerm --version` 출력(호스트 빌드 ID 포함)
-- 실행 방법: 설치 스크립트, 릴리스 압축 파일, macOS 앱, 소스 빌드
+- 실행 방법: 설치 스크립트, 릴리스 압축 파일, 데스크톱 앱, 소스 빌드
 - OS와 브라우저, 각 버전
 - 재현 순서, 기대한 결과, 실제 결과
 - 호스트 로그와 브라우저 콘솔의 관련 줄. 로그는 macOS·Linux에서 `~/.local/state/westerm/host.log`, Windows에서 `%LOCALAPPDATA%\westerm\host.log`입니다.
@@ -140,12 +141,13 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 - `main`에서 브랜치를 만듭니다. PR 하나에는 주제 하나만 담습니다.
 - 제목은 `<type>(<scope>): <subject>` 형식으로, 전체 약 72자 이하로 씁니다.
   - `type`: `feat`(새 기능), `fix`(버그 수정), `docs`, `refactor`, `test`, `chore`(빌드, CI, 릴리스).
-  - `scope`: 바뀌는 부분. 예: `remote`, `host`, `ui`, `i18n`, `macos`.
+  - `scope`: 바뀌는 부분. 예: `remote`, `host`, `ui`, `i18n`, `desktop`.
   - `subject`: 명령형 영어, 소문자로 시작, 끝에 마침표 없음.
   - 예: `feat(remote): install westerm over SSH and connect over QUIC`, `fix(host): keep the folder of a restored shell`.
 - 템플릿을 채웁니다: 한 줄짜리 항목 5개 이하의 요약, 그리고 리뷰어가 테스트할 때 실행할 명령입니다. `Closes #123`으로 이슈를 연결하면 병합할 때 이슈가 닫힙니다.
 - 작업 중에는 draft로 엽니다. [PR 전 확인](#pr-전-확인)을 통과하면 ready로 바꿉니다.
-- CI는 macOS, Linux, Windows에서 모두 통과해야 합니다. CI는 타입 검사, 화면 테스트, 화면 빌드를 한 번 돌리고, 각 OS에서 clippy와 `cargo test`를, Linux에서 릴리스 빌드를 돌립니다. 셸 스크립트는 shellcheck로, macOS 앱의 Swift 코드는 타입 검사로 확인합니다.
+- CI는 macOS, Linux, Windows에서 모두 통과해야 합니다. CI는 타입 검사, 화면 테스트, 화면 빌드를 한 번 돌리고, 각 OS에서 westerm과 데스크톱 앱의 clippy와 `cargo test`를, Linux에서 릴리스 빌드를 돌립니다. 셸 스크립트는 shellcheck로 확인합니다.
+- 데스크톱 앱이나 그 화면(`desktop/`, `src/`, `shared/`, 빌드 파일)을 바꾼 PR은 앱도 macOS, Windows, Linux용으로 빌드합니다([Desktop app 워크플로](.github/workflows/app.yml)). 릴리스 전에 설치 파일을 시험하려면 실행 기록을 열고 Artifacts에서 받으세요. 파일은 14일 동안 보관됩니다. `native/`만 바꾼 PR에서는 실행되지 않습니다. 그때는 Actions 탭에서 직접 실행하세요(Run workflow).
 - 리뷰 의견에는 새 커밋으로 답합니다. 리뷰 중에는 force-push하지 않습니다. 리뷰어가 바뀐 부분을 볼 수 있어야 합니다.
 - 리뷰가 끝나면 메인테이너가 병합합니다.
 
@@ -214,6 +216,8 @@ westerm은 macOS, Linux, Windows에서 동작합니다. CI가 모든 PR을 세 �
   cargo check --target x86_64-pc-windows-msvc --all-targets --manifest-path native/Cargo.toml
   ```
 
+  데스크톱 앱을 확인할 때는 Windows 리소스용 `llvm-rc`가 PATH에 있어야 합니다(macOS: `brew install llvm` 후 `PATH="$(brew --prefix llvm)/bin:$PATH"`). 앱에 넣을 westerm 자리도 만듭니다: `touch desktop/binaries/westerm-x86_64-pc-windows-msvc.exe`.
+
 - macOS에서 Docker로 Linux 테스트를 돌립니다.
 
   ```bash
@@ -243,12 +247,13 @@ westerm은 macOS, Linux, Windows에서 동작합니다. CI가 모든 PR을 세 �
 
 메인테이너용입니다. 버전 태그를 올리면 빌드와 배포가 모두 진행됩니다.
 
-1. `package.json`과 `native/Cargo.toml`에 같은 버전을 넣습니다.
+1. `package.json`, `native/Cargo.toml`, `desktop/Cargo.toml`에 같은 버전을 넣습니다. 앱은 버전을 `package.json`에서 읽습니다.
 
    ```bash
    npm version 0.2.0 --no-git-tag-version     # package.json, package-lock.json
-   # native/Cargo.toml의 version을 고친 뒤 Cargo.lock 갱신:
+   # native/Cargo.toml과 desktop/Cargo.toml의 version을 고친 뒤 두 Cargo.lock 갱신:
    cargo check --manifest-path native/Cargo.toml
+   cargo check --manifest-path desktop/Cargo.toml
    ```
 
 2. 커밋하고 push한 뒤, CI가 세 OS에서 통과하는지 확인합니다.
@@ -260,9 +265,9 @@ westerm은 macOS, Linux, Windows에서 동작합니다. CI가 모든 PR을 세 �
    ```
 
 4. [Release 워크플로](.github/workflows/release.yml)가 진행합니다.
-   - 태그와 두 버전이 같은지 확인합니다.
+   - 태그와 세 버전이 같은지 확인합니다.
    - macOS(Apple Silicon, Intel), Linux(x64, arm64, 정적 빌드), Windows를 시험하고 빌드합니다.
-   - macOS 앱(공용 빌드)을 묶습니다.
+   - 데스크톱 앱(macOS 공용 빌드, Windows x64, Linux x64와 arm64)을 묶습니다.
    - 압축 파일과 SHA-256 값을 GitHub 릴리스로 올립니다. `install.sh`와 `install.ps1`이 이 릴리스를 최신 버전으로 설치합니다.
    - 마지막으로 모든 OS에서 `install.sh`, `install.ps1`로 릴리스를 실제 설치해 확인합니다.
 
