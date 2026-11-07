@@ -7,6 +7,7 @@ import {
   type AgentState,
   type AttachMode,
   type ClientMessage,
+  type PixelCodec,
   type PtySize,
   type ServerMessage,
   type SessionKind,
@@ -14,9 +15,10 @@ import {
 import type { Locale } from "../i18n/messages.ts";
 import { postRemote } from "../remoteApi.ts";
 import { REMOTE_TARGET, serverPath, shouldPostRemoteClose } from "../remoteWindow.ts";
+import { splitBinary } from "./pixel-update.ts";
 
 export type ConnectionEvent =
-  | { type: "ready"; pid: number; mode: AttachMode }
+  | { type: "ready"; pid: number; mode: AttachMode; pixels?: boolean }
   /** The AI agent in a shell's foreground, or null. */
   | { type: "agent"; agent: AgentState | null }
   | { type: "exit"; code: number; signal: number }
@@ -38,8 +40,12 @@ export interface ConnectionOptions {
   /** A shell that comes back as "restored" resumes its AI agent. */
   resumeAgents: boolean;
   size: PtySize;
+  /** Ask for pixel updates instead of Kitty images (pixel apps only). */
+  pixels: PixelCodec | null;
   /** Parse output synchronously; bytes are acknowledged after this returns. */
   onOutput: (bytes: Uint8Array) => void;
+  /** A pixel update; call sendPainted() once it is drawn. */
+  onPixels: (buffer: ArrayBuffer) => void;
   onEvent: (event: ConnectionEvent) => void;
 }
 
@@ -57,6 +63,8 @@ export class PtyConnection {
   private unacked = 0;
   private ackTimer: ReturnType<typeof setTimeout> | null = null;
   private finished = false;
+  /** "ready" said pixels: binary messages start with a kind byte. */
+  private framed = false;
   /** Latest size; sent first when the socket opens. */
   private pendingSize: PtySize;
 
@@ -76,6 +84,7 @@ export class PtyConnection {
     if (options.cwdFrom) query.set("cwdFrom", options.cwdFrom);
     if (options.target) query.set("target", options.target);
     if (!options.resumeAgents) query.set("resume", "off");
+    if (options.pixels) query.set("pixels", options.pixels);
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     this.ws = new WebSocket(`${scheme}//${location.host}${serverPath(WS_PATH)}?${query}`);
     this.ws.binaryType = "arraybuffer";
@@ -90,6 +99,11 @@ export class PtyConnection {
 
   sendInput(data: string): void {
     this.send({ type: "input", data });
+  }
+
+  /** One pixel update is drawn: the host may send the next. */
+  sendPainted(): void {
+    this.send({ type: "painted" });
   }
 
   sendBinary(data: Uint8Array): void {
@@ -134,9 +148,14 @@ export class PtyConnection {
 
   private receive(data: unknown): void {
     if (data instanceof ArrayBuffer) {
-      const bytes = new Uint8Array(data);
-      this.options.onOutput(bytes);
-      this.consumed(bytes.length);
+      const part = splitBinary(data, this.framed);
+      if (part.kind === "pixels") {
+        this.options.onPixels(part.buffer);
+        return;
+      }
+      this.options.onOutput(part.bytes);
+      // The host counts output without the kind byte.
+      this.consumed(part.bytes.length);
       return;
     }
     let message: ServerMessage;
@@ -146,8 +165,10 @@ export class PtyConnection {
       return;
     }
     if (message.type === "exit" || message.type === "error") this.finish(message);
-    else if (message.type === "ready") this.options.onEvent(message);
-    else if (message.type === "agent") this.options.onEvent({ type: "agent", agent: parseAgentState(message.agent) });
+    else if (message.type === "ready") {
+      this.framed = message.pixels === true;
+      this.options.onEvent(message);
+    } else if (message.type === "agent") this.options.onEvent({ type: "agent", agent: parseAgentState(message.agent) });
   }
 
   /** Acknowledge parsed bytes in batches so the server can keep the PTY flowing. */
