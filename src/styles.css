@@ -17,8 +17,9 @@
   --ssh-soft: rgba(240, 163, 94, 0.16);
   --docs: #f07fba;
   --docs-soft: rgba(240, 127, 186, 0.14);
-  /* AI agents: Claude Code's mark; Codex's follows --text. */
+  /* AI agents: Claude Code's mark; Gemini CLI's blue; Codex's follows --text. */
   --agent-claude: #e08a65;
+  --agent-gemini: #3186ff;
   --ok: #4fc27a;
   --warn: #e5b454;
   --ok-soft: rgba(79, 194, 122, 0.16);
@@ -90,6 +91,7 @@
     --docs: #c2407f;
     --docs-soft: rgba(194, 64, 127, 0.12);
     --agent-claude: #c2603d;
+    --agent-gemini: #165fd6;
     --ok: #23a058;
     --warn: #c48a12;
     --ok-soft: rgba(35, 160, 88, 0.12);
@@ -141,6 +143,7 @@
   --docs: #c2407f;
   --docs-soft: rgba(194, 64, 127, 0.12);
   --agent-claude: #c2603d;
+  --agent-gemini: #165fd6;
   --ok: #23a058;
   --warn: #c48a12;
   --ok-soft: rgba(35, 160, 88, 0.12);
@@ -309,6 +312,27 @@ button {
   color: var(--on-accent);
 }
 
+/* The agents button: an agent somewhere waits for the user. */
+.activity-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.activity-agents[aria-pressed="true"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.activity-agents[aria-pressed="true"] .activity-dot {
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+
 .activity-tooltip {
   position: absolute;
   left: calc(100% + 10px);
@@ -422,7 +446,7 @@ button {
 
 /* ---- AI agents --------------------------------------------------------- */
 
-/* Replaces a shell's kind icon while an agent runs: the color names the
+/* Replaces a shell's kind icon while an agent runs: the logo names the
    agent, the ring shows its state. Its margin keeps the icon's footprint. */
 .agent-mark {
   position: relative;
@@ -433,11 +457,12 @@ button {
   height: var(--agent-mark, 20px);
   margin: -3px;
   border-radius: 50%;
-  color: var(--agent-claude);
+  /* Claude's and Gemini's logos bring their own colors; OpenAI's follows this. */
+  color: var(--text);
 }
 
-.agent-mark.agent-codex {
-  color: var(--text);
+.agent-mark svg {
+  display: block;
 }
 
 .agent-mark::after {
@@ -543,6 +568,10 @@ button {
 
 .agent-card-name.agent-codex {
   color: var(--text);
+}
+
+.agent-card-name.agent-gemini {
+  color: var(--agent-gemini);
 }
 
 .agent-card-version,
@@ -1890,6 +1919,429 @@ button {
   background: var(--tab-color-soft);
   box-shadow: inset 0 0 0 1px var(--tab-color);
   color: var(--text);
+}
+
+/* ---- Agents panel (AgentPanel.tsx) ------------------------------------ */
+
+/* Reuses the session panel's frame, tree rows, and guide lines. */
+.agents-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.agents-elsewhere {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 0 4px 0 6px;
+  color: var(--warn);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.agents-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px 0 14px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agents-header-count {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.agents-header-agents {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.agents-panel .tree {
+  padding-top: 0;
+}
+
+.agents-folder-node + .agents-folder-node {
+  margin-top: 4px;
+}
+
+.agents-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+
+.agents-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+/* Folder rows have two lines: the name, then the branch and the shell count. */
+.agents-folder-toggle {
+  align-items: flex-start;
+  gap: 6px;
+  height: auto;
+  min-height: 28px;
+  padding: 5px 0;
+}
+
+.agents-folder-toggle .agents-chevron {
+  margin-top: 2px;
+}
+
+.agents-folder-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-muted);
+}
+
+.agents-folder-icon.busy {
+  color: var(--tab-color);
+}
+
+.agents-folder-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.agents-folder-text > .tree-label {
+  line-height: 18px;
+}
+
+.agents-parent {
+  color: var(--text-muted);
+}
+
+.agents-folder-name {
+  font-weight: 600;
+}
+
+.agents-folder-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.agents-folder-meta svg,
+.agents-shells {
+  flex: none;
+}
+
+.agents-folder .agents-dot {
+  margin: 0 2px;
+}
+
+.agents-start {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+/* A folder with agents shows its start buttons on hover or keyboard focus,
+   over the right end of the row. */
+.agents-start.on-hover {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  padding-left: 4px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.agents-folder:hover .agents-start.on-hover,
+.agents-folder:focus-within .agents-start.on-hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Touch screens have no hover: the buttons stay. */
+@media (hover: none) {
+  .agents-start.on-hover {
+    position: static;
+    background: transparent;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+}
+
+.agents-start .icon-button:focus-visible,
+.agents-resume:focus-visible,
+.agents-past-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Agent rows: logo, name, state sign, time; a second line when it asks. */
+.agents-agent-select {
+  align-items: flex-start;
+  gap: 8px;
+  height: auto;
+  min-height: 28px;
+  padding: 6px 0;
+  color: var(--text);
+}
+
+.agents-agent-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agents-agent-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 16px;
+}
+
+.agents-agent-line .tree-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.agents-agent.agent-done .tree-label {
+  color: var(--text-muted);
+}
+
+.agents-agent-note {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-time {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.agents-agent.agent-waiting .agents-time {
+  color: var(--warn);
+}
+
+.agents-state {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 12px;
+  height: 16px;
+}
+
+.agents-state::before {
+  content: "";
+  border-radius: 50%;
+}
+
+.agents-state-waiting::before {
+  width: 7px;
+  height: 7px;
+  background: var(--warn);
+  box-shadow: 0 0 0 3px var(--warn-soft);
+  animation: agents-halo 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes agents-halo {
+  to {
+    box-shadow: 0 0 0 1px var(--warn-soft);
+  }
+}
+
+.agents-state-working::before {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: agent-turn 0.9s linear infinite;
+}
+
+.agents-state-done {
+  color: var(--ok);
+}
+
+.agents-state-done::before {
+  display: none;
+}
+
+.agents-state-idle::before {
+  width: 7px;
+  height: 7px;
+  background: var(--text-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agents-state::before {
+    animation: none;
+  }
+
+  .agents-state-working::before {
+    border-color: var(--accent);
+  }
+}
+
+/* One line at any width: the text gives way, the start buttons stay. */
+.agents-none {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 2px 0 4px;
+  color: var(--text-faint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.agents-none-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-start-label {
+  display: none;
+  flex: none;
+  font-size: 11px;
+}
+
+/* "Start here" shows only when the longest language fits beside "No agents". */
+.agents-panel {
+  container-type: inline-size;
+}
+
+@container (min-width: 300px) {
+  .agents-start-label {
+    display: inline;
+  }
+}
+
+.agents-past-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Two lines: the logo and the title across the row; below, when and Resume. */
+.agents-past-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 2px 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.agents-past-row:hover {
+  background: var(--surface-2);
+}
+
+.agents-past-line,
+.agents-past-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agents-past-line {
+  line-height: 18px;
+}
+
+.agents-past-line > svg {
+  flex: none;
+  opacity: 0.85;
+}
+
+/* Under the title, past the logo. */
+.agents-past-meta {
+  justify-content: space-between;
+  padding-left: 22px;
+}
+
+.agents-past-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.agents-past-title.untitled {
+  color: var(--text-muted);
+}
+
+.agents-resume {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.agents-resume:hover {
+  border-color: var(--text-faint);
+  color: var(--text);
+}
+
+.agents-empty {
+  flex: 1;
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.agents-platform {
+  flex: none;
+  margin: 0;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* Icons only: the waiting dot sits on the folder icon, like a session's status dot. */
+.session-panel.compact .agents-folder .agents-dot {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  margin: 0;
 }
 
 

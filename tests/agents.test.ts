@@ -4,6 +4,7 @@ import { parseAgentState, type AgentState } from "../shared/protocol.ts";
 import { parseSavedDashboard } from "../shared/workspace-file.ts";
 import { homeShort, minutesSince } from "../src/components/AgentCard.tsx";
 import { DEFAULT_SETTINGS, parseSettings } from "../src/settings.ts";
+import { sessionQuery, type ConnectionOptions } from "../src/terminal/connection.ts";
 import {
   agentDisplay,
   createDashboard,
@@ -79,6 +80,7 @@ test("agents are live state, never saved with the layout", () => {
 
 test("the host's agent field is checked", () => {
   assert.deepEqual(parseAgentState({ kind: "codex", status: "idle" }), { kind: "codex", status: "idle", ...NO_DETAILS }, "an older host");
+  assert.deepEqual(parseAgentState({ kind: "gemini", status: "working" }), { kind: "gemini", status: "working", ...NO_DETAILS });
   const host = {
     kind: "claude",
     status: "waiting",
@@ -98,7 +100,7 @@ test("the host's agent field is checked", () => {
     "a wrong detail is left out, the agent stays",
   );
   assert.equal(parseAgentState(null), null);
-  assert.equal(parseAgentState({ kind: "gemini", status: "idle" }), null, "an agent this page does not know");
+  assert.equal(parseAgentState({ kind: "aider", status: "idle" }), null, "an agent this page does not know");
   assert.equal(parseAgentState({ kind: "claude", status: "sleeping" }), null);
   assert.equal(parseAgentState("claude"), null);
 });
@@ -143,4 +145,56 @@ test("the info card counts whole minutes and shortens the home folder", () => {
   assert.equal(homeShort("/Users/pistachio-x"), "~");
   assert.equal(homeShort("/srv/app"), "/srv/app");
   assert.equal(homeShort("/Users"), "/Users");
+});
+
+test("a shell keeps its place, but the layout does not save it", () => {
+  let state = reduce(createDashboard("w1", "t1"), { type: "open", id: "a", kind: "shell" });
+  assert.equal(session(state, "a").place, null);
+  state = reduce(state, { type: "place", id: "a", place: { cwd: "/w", branch: "main" } });
+  assert.deepEqual(session(state, "a").place, { cwd: "/w", branch: "main" });
+  state = reduce(state, { type: "place", id: "a", place: null });
+  assert.equal(session(state, "a").place, null);
+  state = reduce(state, { type: "place", id: "a", place: { cwd: "/w", branch: null } });
+  const saved = JSON.stringify(toSaved(state));
+  for (const key of ["place", "cwd", "launch"]) assert.ok(!saved.includes(`"${key}"`), key);
+});
+
+test("ready clears the launch but keeps the folder", () => {
+  const launch = { kind: "claude" as const, conversation: null };
+  let state = reduce(createDashboard("w1", "t1"), { type: "open", id: "a", kind: "shell", cwd: "/w", launch });
+  assert.equal(session(state, "a").cwd, "/w");
+  assert.deepEqual(session(state, "a").launch, launch);
+  state = reduce(state, { type: "ready", id: "a", pid: 7, mode: "new" });
+  assert.equal(session(state, "a").launch, null);
+  assert.equal(session(state, "a").cwd, "/w");
+  const plain = reduce(createDashboard("w1", "t1"), { type: "open", id: "p", kind: "shell" });
+  assert.equal(session(plain, "p").cwd, null);
+  assert.equal(session(plain, "p").launch, null);
+});
+
+test("a new shell asks for its folder and agent", () => {
+  const options: Pick<ConnectionOptions, "session" | "kind" | "url" | "cwdFrom" | "cwd" | "launch" | "target" | "lang" | "resumeAgents" | "size"> = {
+    session: "s1",
+    kind: "shell",
+    url: null,
+    cwdFrom: null,
+    cwd: "/w",
+    launch: { kind: "gemini", conversation: "c-1" },
+    target: null,
+    lang: "en",
+    resumeAgents: true,
+    size: { cols: 80, rows: 24, width: 800, height: 600 },
+  };
+  const query = sessionQuery(options, "w1");
+  assert.equal(query.get("cwd"), "/w");
+  assert.equal(query.get("agent"), "gemini");
+  assert.equal(query.get("conversation"), "c-1");
+  const bare = sessionQuery({ ...options, cwd: null, launch: { kind: "codex", conversation: null } }, "w1");
+  assert.equal(bare.get("cwd"), null);
+  assert.equal(bare.get("agent"), "codex");
+  assert.equal(bare.get("conversation"), null);
+  const plain = sessionQuery({ ...options, launch: null }, "w1");
+  assert.equal(plain.get("cwd"), "/w");
+  assert.equal(plain.get("agent"), null);
+  assert.equal(plain.get("conversation"), null);
 });

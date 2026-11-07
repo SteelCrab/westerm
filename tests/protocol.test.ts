@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isId, isSessionKind, normalizeBrowserUrl } from "../shared/protocol.ts";
+import { isId, isSessionKind, normalizeBrowserUrl, parsePlace } from "../shared/protocol.ts";
 
 // The server side of these rules lives in native/src/protocol.rs (cargo test).
 
@@ -21,4 +21,13 @@ test("browser URLs allow web addresses only", () => {
   assert.equal(normalizeBrowserUrl("--split"), null);
   assert.equal(normalizeBrowserUrl("a\nb"), null);
   assert.equal(normalizeBrowserUrl(null), null);
+});
+
+test("place messages", () => {
+  assert.deepEqual(parsePlace({ cwd: "/w", branch: "main" }), { cwd: "/w", branch: "main" });
+  assert.deepEqual(parsePlace({ cwd: "/w" }), { cwd: "/w", branch: null });
+  assert.equal(parsePlace({ cwd: "" }), null);
+  assert.equal(parsePlace({ cwd: 3 }), null);
+  assert.equal(parsePlace(null), null);
+  assert.deepEqual(parsePlace({ cwd: "/w", branch: "b".repeat(4097) }), { cwd: "/w", branch: null });
 });

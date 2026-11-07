@@ -4,7 +4,7 @@ import type { TerminalThemeColors } from "@wterm/core";
 import type { WTerm } from "@wterm/dom";
 import { GhosttyCore } from "@wterm/ghostty";
 import ghosttyWasmUrl from "@wterm/ghostty/ghostty-vt.wasm?url";
-import type { PtySize, SessionKind } from "../../shared/protocol.ts";
+import type { AgentLaunch, PtySize, SessionKind } from "../../shared/protocol.ts";
 import { KINDS } from "../kinds.tsx";
 import { installAltScreenImages } from "./alt-screen-images.ts";
 import { installImageRepaintCache } from "./image-repaint.ts";
@@ -25,6 +25,10 @@ export interface TerminalViewProps {
   kind: SessionKind;
   url: string | null;
   cwdFrom: string | null;
+  /** Read at connect time: a new shell starts in this folder. */
+  cwd: string | null;
+  /** Read at connect time: a new shell starts this agent. */
+  launch: AgentLaunch | null;
   target: string | null;
   label: string;
   font: TerminalFont;
@@ -106,6 +110,11 @@ export function TerminalView(props: TerminalViewProps) {
   localeRef.current = locale;
   const resumeRef = useRef(props.resumeAgents);
   resumeRef.current = props.resumeAgents;
+  // Read at connect time only: the first attach clears `launch`, and that must not reconnect.
+  const cwdRef = useRef(props.cwd);
+  cwdRef.current = props.cwd;
+  const launchRef = useRef(props.launch);
+  launchRef.current = props.launch;
   const terminalRef = useRef<TerminalHandle>(null);
   const connectionRef = useRef<PtyConnection | null>(null);
   const wtermRef = useRef<WTerm | null>(null);
@@ -163,6 +172,8 @@ export function TerminalView(props: TerminalViewProps) {
         kind,
         url,
         cwdFrom,
+        cwd: cwdRef.current,
+        launch: launchRef.current,
         target,
         lang: localeRef.current,
         resumeAgents: resumeRef.current,

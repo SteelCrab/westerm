@@ -1,4 +1,4 @@
-import type { AgentState, AgentStatus, AttachMode, PaneKind } from "../shared/protocol.ts";
+import type { AgentLaunch, AgentState, AgentStatus, AttachMode, PaneKind, Place } from "../shared/protocol.ts";
 import {
   DEFAULT_WORKSPACE_ICON,
   positionColor,
@@ -73,6 +73,12 @@ export interface Session {
   agent: AgentState | null;
   /** The agent finished while this pane was not in view. */
   agentUnseen: boolean;
+  /** The shell's folder and git branch, as the PTY host reports it. Not saved. */
+  place: Place | null;
+  /** A new shell starts in this folder. Not saved. */
+  cwd: string | null;
+  /** A new shell starts this agent; the first attach clears it. Not saved. */
+  launch: AgentLaunch | null;
   /** A restored shell here resumes its agent, when Settings allow it. Saved with the layout. */
   autoResume: boolean;
 }
@@ -132,6 +138,10 @@ export type DashboardAction =
       kind: PaneKind;
       url?: string | null;
       cwdFrom?: string | null;
+      /** A new shell starts in this folder. */
+      cwd?: string | null;
+      /** A new shell starts this agent. */
+      launch?: AgentLaunch | null;
       target?: string | null;
       /** Layer width / height, to split the focused pane along its longer side. */
       aspect?: number;
@@ -153,6 +163,8 @@ export type DashboardAction =
   | { type: "status"; id: string; status: SessionStatus; detail?: string | null; notice?: Notice | null; exitCode?: number | null }
   | { type: "title"; id: string; title: string }
   | { type: "agent"; id: string; agent: AgentState | null }
+  /** The shell's folder and git branch, or null when the host cannot tell. */
+  | { type: "place"; id: string; place: Place | null }
   /** The pane's own choice to resume its agent after a restore (the agent's info card). */
   | { type: "autoResume"; id: string; on: boolean }
   /** An empty name returns the session to the program's title. */
@@ -407,6 +419,9 @@ function newSession(
     docs: kind === "docs" ? (docs ?? NO_DOCS) : null,
     agent: null,
     agentUnseen: false,
+    place: null,
+    cwd: null,
+    launch: null,
     autoResume: true,
   };
 }
@@ -593,6 +608,8 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
           action.docs ?? null,
         ),
         cwdFrom: action.cwdFrom ?? null,
+        cwd: action.cwd ?? null,
+        launch: action.launch ?? null,
       };
       // A new session leaves maximize so it is visible, beside the focused pane.
       const next = { ...state, sessions: [...state.sessions, session] };
@@ -626,6 +643,8 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
         notice: ATTACH_NOTICE[action.mode],
         pid: action.pid,
         retries: 0,
+        // The host started the agent; a later reconnect must not ask again.
+        launch: null,
       });
     case "disconnected": {
       const session = state.sessions.find((item) => item.id === action.id);
@@ -682,6 +701,8 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
       const agentUnseen = idle && (session.agentUnseen || (busy && !inView(state, action.id)));
       return patch(state, action.id, { agent: action.agent, agentUnseen });
     }
+    case "place":
+      return patch(state, action.id, { place: action.place });
     case "title": {
       const title = action.title.trim();
       return title ? patch(state, action.id, { title }) : state;

@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use super::{cross_site, host_allowed, is_json, no_store, origin_allowed, AppState, Shared};
+use super::{host_allowed, is_json, no_store, origin_allowed, read_allowed, AppState, Shared};
 use crate::state_dir::home_dir;
 
 /// Files larger than this are neither opened nor saved.
@@ -233,11 +233,6 @@ fn create_doc(root: &Path, rel: &str, text: &str) -> Result<String, DocsError> {
     })?;
     file.write_all(text.as_bytes()).map_err(|_| DocsError::Io)?;
     Ok(version(text.as_bytes()))
-}
-
-/// A read from the dashboard's own page. The server's private socket trusts every caller.
-fn read_allowed(state: &AppState, headers: &HeaderMap) -> bool {
-    state.trusted || (host_allowed(state, headers) && !cross_site(state, headers))
 }
 
 /// A change from the dashboard's own page: its Origin, and JSON, which needs a preflight from elsewhere.

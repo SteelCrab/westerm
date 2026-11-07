@@ -1,11 +1,11 @@
-import { Sparkle } from "lucide-react";
 import type { AgentState } from "../../shared/protocol.ts";
+import { AgentIcon } from "../agentIcons.tsx";
 import { useI18n } from "../i18n/index.tsx";
 import type { AgentDisplay, TabAgentDisplay } from "../workspace.ts";
 
 /**
  * The AI mark of a pane that runs an agent, in place of its kind icon. Its
- * color names the agent; the ring around it shows the state: turning while
+ * logo names the agent; the ring around it shows the state: turning while
  * the agent works, pulsing while it asks, green once it finished out of view.
  */
 export function AgentMark({ agent, display, size, detail }: { agent: AgentState; display: AgentDisplay; size: number; detail?: string }) {
@@ -19,7 +19,7 @@ export function AgentMark({ agent, display, size, detail }: { agent: AgentState;
       title={detail ? `${label}\n${detail}` : label}
       style={{ "--agent-mark": `${size + 6}px` } as React.CSSProperties}
     >
-      <Sparkle size={size - 2} strokeWidth={2} aria-hidden="true" />
+      <AgentIcon kind={agent.kind} size={size - 2} />
     </span>
   );
 }
