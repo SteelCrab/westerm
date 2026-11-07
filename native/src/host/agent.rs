@@ -5,19 +5,22 @@
 //! Claude Code writes `~/.claude/sessions/<pid>.json` with its conversation id
 //! and a busy, waiting, or idle status. Codex keeps no per-process file and starts its
 //! conversation file lazily, so it resumes the newest conversation of the
-//! folder (`codex resume --last`). The rest comes from the screen.
+//! folder (`codex resume --last`). Gemini CLI is the same, and its conversation id
+//! is known only when the command line names it (`gemini --resume latest`
+//! otherwise). The rest comes from the screen.
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{AgentKind, AgentState, AgentStatus};
+use crate::protocol::{is_conversation_id, AgentKind, AgentState, AgentStatus, Launch};
 
 impl AgentKind {
-    fn program(self) -> &'static str {
+    pub(crate) fn program(self) -> &'static str {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
+            Self::Gemini => "gemini",
         }
     }
 
@@ -26,6 +29,7 @@ impl AgentKind {
         match self {
             Self::Claude => "Claude Code",
             Self::Codex => "Codex",
+            Self::Gemini => "Gemini CLI",
         }
     }
 }
@@ -54,6 +58,8 @@ impl AgentRecord {
             (AgentKind::Claude, None) => words.push("--continue".to_owned()),
             (AgentKind::Codex, Some(id)) => words.extend(["resume".to_owned(), id.clone()]),
             (AgentKind::Codex, None) => words.extend(["resume".to_owned(), "--last".to_owned()]),
+            (AgentKind::Gemini, Some(id)) => words.extend(["--resume".to_owned(), id.clone()]),
+            (AgentKind::Gemini, None) => words.extend(["--resume".to_owned(), "latest".to_owned()]),
         }
         words.extend(self.args.iter().cloned());
         words.iter().map(|word| shell_quote(word)).collect::<Vec<_>>().join(" ")
@@ -72,6 +78,22 @@ impl AgentRecord {
             }
         }
         None
+    }
+}
+
+/// The record of a launch that opens an existing conversation. None for a new one.
+pub fn launch_record(launch: &Launch) -> Option<AgentRecord> {
+    let session = launch.conversation.clone()?;
+    Some(AgentRecord { kind: launch.kind, program: None, session: Some(session), args: Vec::new() })
+}
+
+/// The command line typed into a new shell to start an agent: a fresh
+/// conversation, or the one the launch names. Built from the launch alone,
+/// never from text the browser sent.
+pub fn launch_command(launch: &Launch) -> String {
+    match launch_record(launch) {
+        Some(record) => record.resume_command(),
+        None => launch.kind.program().to_owned(),
     }
 }
 
@@ -109,11 +131,15 @@ fn named(path: &str) -> Option<AgentKind> {
     if path.contains("@openai/codex/") {
         return Some(AgentKind::Codex);
     }
+    if path.contains("@google/gemini-cli/") {
+        return Some(AgentKind::Gemini);
+    }
     let name = file_name(path);
     let name = name.strip_suffix(".js").or_else(|| name.strip_suffix(".mjs")).unwrap_or(name);
     match name {
         "claude" => Some(AgentKind::Claude),
         "codex" => Some(AgentKind::Codex),
+        "gemini" => Some(AgentKind::Gemini),
         _ => None,
     }
 }
@@ -136,6 +162,7 @@ fn tool_command(kind: AgentKind, word: &str) -> bool {
             "a", "app-server", "apply", "cloud", "completion", "debug", "e", "exec", "features", "help", "login",
             "logout", "mcp", "mcp-server", "proto", "review", "sandbox",
         ],
+        AgentKind::Gemini => &["mcp", "extensions", "extension", "skills", "skill", "hooks", "hook", "gemma"],
     };
     commands.contains(&word)
 }
@@ -161,12 +188,26 @@ fn kept_flags(kind: AgentKind) -> (&'static [&'static str], &'static [&'static s
             ],
             &["--dangerously-bypass-approvals-and-sandbox", "--search", "--oss", "--approve-for-me", "--no-alt-screen"],
         ),
+        AgentKind::Gemini => (
+            &[
+                "-m", "--model", "--approval-mode", "--policy", "--admin-policy", "--allowed-mcp-server-names",
+                "--allowed-tools", "-e", "--extensions", "--include-directories",
+            ],
+            &["-y", "--yolo", "-s", "--sandbox", "--skip-trust", "--screen-reader"],
+        ),
     }
 }
 
-fn is_conversation_id(text: &str) -> bool {
-    (8..=64).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
-}
+/// Gemini CLI flags that run one task, list, or print instead of opening a conversation.
+const GEMINI_NOT_A_CONVERSATION: &[&str] = &[
+    "-p", "--prompt", "--acp", "--experimental-acp", "--list-sessions", "--delete-session", "-l", "--list-extensions",
+    "-v", "--version", "-h", "--help",
+];
+
+/// Gemini CLI flags that a resume drops, with the word after them: the start
+/// prompt, a worktree (a resume must not make another), a session file, and output options.
+const GEMINI_DROPPED_VALUES: &[&str] =
+    &["-i", "--prompt-interactive", "-w", "--worktree", "--session-file", "-o", "--output-format"];
 
 /// The agent a command line runs, its conversation id when the command names
 /// one, and the flags a resume keeps. None for other programs, print mode,
@@ -209,6 +250,24 @@ pub fn identify(argv: &[String]) -> Option<AgentRecord> {
                     },
                 };
                 session = value.filter(|id| is_conversation_id(id)).map(str::to_owned);
+            }
+            _ if kind == AgentKind::Gemini && GEMINI_NOT_A_CONVERSATION.contains(&flag) => return None,
+            "-r" | "--resume" | "--session-id" if kind == AgentKind::Gemini => {
+                // The word after it is an id, `latest`, or a number; only an id names a conversation.
+                let value = match inline {
+                    Some(value) => Some(value),
+                    None => words.clone().next().filter(|next| !next.starts_with('-')).map(|next| {
+                        words.next();
+                        next.as_str()
+                    }),
+                };
+                session = value.filter(|id| is_conversation_id(id)).map(str::to_owned);
+            }
+            _ if kind == AgentKind::Gemini && GEMINI_DROPPED_VALUES.contains(&flag) => {
+                // `-w` takes an optional name, so only a word that is no flag belongs to it.
+                if inline.is_none() && words.clone().next().is_some_and(|next| !next.starts_with('-')) {
+                    words.next();
+                }
             }
             _ if values.contains(&flag) => {
                 let value = match inline {
@@ -288,16 +347,23 @@ fn parse_claude_report(bytes: &[u8], pid: u32) -> Option<ClaudeReport> {
 
 /// Text of an agent's questions to the user: approvals ("Do you want to",
 /// "Would you like to"), Codex's questions with choices, whose footer also
-/// reads "esc to interrupt", and Codex's end of Plan mode.
-const QUESTIONS: &[&str] = &["do you want to", "would you like to", "to submit answer", "implement this plan?"];
+/// reads "esc to interrupt", Codex's end of Plan mode, and Gemini's tool and
+/// edit approvals.
+const QUESTIONS: &[&str] =
+    &["do you want to", "would you like to", "to submit answer", "implement this plan?", "allow execution of", "apply this change?"];
+
+/// Text of an agent's progress line while it works: "esc to interrupt" for
+/// Claude Code and Codex, "(esc to cancel, 3s)" for Gemini. Gemini's comma
+/// keeps the "Esc to cancel" hint of other dialogs from reading as work.
+const WORKING: &[&str] = &["esc to interrupt", "(esc to cancel,"];
 
 /// Reads the last rows of an agent's screen: its status line while it works
-/// ("esc to interrupt") and its questions, which win.
+/// and its questions, which win.
 pub fn screen_status(last: &str) -> Option<AgentStatus> {
     let text = last.to_lowercase();
     if QUESTIONS.iter().any(|question| text.contains(question)) {
         Some(AgentStatus::Waiting)
-    } else if text.contains("esc to interrupt") {
+    } else if WORKING.iter().any(|working| text.contains(working)) {
         Some(AgentStatus::Working)
     } else {
         None
@@ -484,6 +550,63 @@ mod tests {
     }
 
     #[test]
+    fn finds_gemini_by_program_and_script() {
+        assert_eq!(identify(&argv("gemini")), Some(record(AgentKind::Gemini, None, &[])));
+        let path = identify(&argv("/opt/homebrew/bin/gemini")).unwrap();
+        assert_eq!((path.kind, path.program.as_deref()), (AgentKind::Gemini, Some("/opt/homebrew/bin/gemini")));
+        let npm = argv("node /opt/homebrew/lib/node_modules/@google/gemini-cli/bundle/gemini.js");
+        assert_eq!(identify(&npm), Some(record(AgentKind::Gemini, None, &[])));
+        for other in [
+            "gemini -p hi", "gemini --prompt hi", "gemini mcp list", "gemini extensions list", "gemini extension list",
+            "gemini skills list", "gemini skill list", "gemini hooks list", "gemini hook list", "gemini gemma",
+            "gemini --list-sessions", "gemini --delete-session 2", "gemini --acp", "gemini --experimental-acp",
+            "gemini -l", "gemini --list-extensions", "gemini -v", "gemini --version", "gemini -h", "gemini --help",
+        ] {
+            assert_eq!(identify(&argv(other)), None, "{other}");
+        }
+    }
+
+    #[test]
+    fn gemini_keeps_its_flags_and_drops_prompts_and_worktrees() {
+        let line = argv("gemini -m gemini-2.5-pro --yolo -w feat -i \"fix it\" --include-directories ../lib \"start\"");
+        let found = identify(&line).unwrap();
+        assert_eq!(found, record(AgentKind::Gemini, None, &["-m", "gemini-2.5-pro", "--yolo", "--include-directories", "../lib"]));
+        assert_eq!(found.resume_command(), "gemini --resume latest -m gemini-2.5-pro --yolo --include-directories ../lib");
+        assert_eq!(found.model(), Some("gemini-2.5-pro"));
+        // A worktree name and a prompt with spaces are one word each.
+        let quoted: Vec<String> = ["gemini", "--worktree", "feat", "-o", "json", "-d", "fix it", "-s"].map(str::to_owned).to_vec();
+        assert_eq!(identify(&quoted), Some(record(AgentKind::Gemini, None, &["-s"])));
+    }
+
+    #[test]
+    fn gemini_reads_its_conversation_from_the_command_line() {
+        let resume = identify(&argv(&format!("gemini --resume {ID}"))).unwrap();
+        assert_eq!(resume.session.as_deref(), Some(ID));
+        assert_eq!(resume.resume_command(), format!("gemini --resume {ID}"));
+        let session = identify(&argv(&format!("gemini --session-id {ID} --yolo"))).unwrap();
+        assert_eq!(session.session.as_deref(), Some(ID));
+        assert_eq!(session.args, ["--yolo"]);
+        assert_eq!(identify(&argv(&format!("gemini --resume={ID}"))).unwrap().session.as_deref(), Some(ID));
+        for line in ["gemini -r latest", "gemini -r 3", "gemini --resume", "gemini --resume latest --yolo"] {
+            assert_eq!(identify(&argv(line)).unwrap().session, None, "{line}");
+        }
+        // The word after `-r latest` is not a prompt that sets a conversation.
+        assert_eq!(identify(&argv("gemini -r 3 -m x")).unwrap().args, ["-m", "x"]);
+    }
+
+    #[test]
+    fn gemini_screens_tell_work_and_questions() {
+        assert_eq!(screen_status("⠋ Thinking (esc to cancel, 3s)"), Some(AgentStatus::Working));
+        assert_eq!(screen_status("Allow execution of [Shell]?"), Some(AgentStatus::Waiting));
+        assert_eq!(screen_status("Apply this change?"), Some(AgentStatus::Waiting));
+        assert_eq!(screen_status("Do you want to proceed?"), Some(AgentStatus::Waiting));
+        assert_eq!(screen_status("Allow execution of [Shell]?\n(esc to cancel, 3s)"), Some(AgentStatus::Waiting), "a question wins");
+        let dialog = "Enter to select · ↑/↓ to navigate · Esc to cancel";
+        assert_eq!(screen_status(dialog), None, "another agent's dialog hint is not work");
+        assert_eq!(AgentKind::Gemini.label(), "Gemini CLI");
+    }
+
+    #[test]
     fn print_mode_and_tool_commands_are_not_conversations() {
         for line in ["claude -p hello", "claude --print", "claude mcp list", "claude doctor", "codex exec fix", "codex login"] {
             assert_eq!(identify(&argv(line)), None, "{line}");
@@ -503,6 +626,17 @@ mod tests {
         assert_eq!(record(AgentKind::Claude, None, &["--model", "opus"]).model(), Some("opus"));
         let tricky = record(AgentKind::Claude, None, &["--append-system-prompt", "--model", "--verbose"]);
         assert_eq!(tricky.model(), None, "a value that reads like the flag");
+    }
+
+    #[test]
+    fn launch_commands() {
+        let launch = |kind, conversation: Option<&str>| Launch { kind, conversation: conversation.map(str::to_owned) };
+        assert_eq!(launch_command(&launch(AgentKind::Claude, None)), "claude");
+        assert_eq!(launch_command(&launch(AgentKind::Codex, None)), "codex");
+        assert_eq!(launch_command(&launch(AgentKind::Gemini, None)), "gemini");
+        assert_eq!(launch_command(&launch(AgentKind::Claude, Some(ID))), format!("claude --resume {ID}"));
+        assert_eq!(launch_command(&launch(AgentKind::Codex, Some(ID))), format!("codex resume {ID}"));
+        assert_eq!(launch_command(&launch(AgentKind::Gemini, Some(ID))), format!("gemini --resume {ID}"));
     }
 
     #[test]

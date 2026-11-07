@@ -37,9 +37,11 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
 | Path | Contents |
 |---|---|
 | `native/src/server/` | Dashboard server (axum): serves the UI and APIs, relays each browser WebSocket to the host, installs updates (`updates.rs`) |
-| `native/src/host/` | PTY host: runs and keeps processes (`portable-pty`), screen copies (`vt100`), saving and restoring; AI agents in shells and their resume commands (`agent.rs`) |
+| `native/src/host/` | PTY host: runs and keeps processes (`portable-pty`), screen copies (`vt100`), saving and restoring; AI agents in shells and their resume commands (`agent.rs`), and each shell's folder and git branch (`place`) |
+| `native/src/git.rs` | The git branch of a folder, read from the files in `.git` (also linked worktrees; a detached HEAD gives 7 characters of the commit). It never runs `git`. |
+| `native/src/server/agents.rs` | `GET /api/agents/history`: a folder's past Claude Code, Codex, and Gemini CLI conversations (ids and titles only) |
 | `native/src/process.rs` | Command line of another process: `KERN_PROCARGS2` on macOS, `/proc` on Linux |
-| `native/src/protocol.rs` | Message format and validation: session id, size, URL, SSH target, language |
+| `native/src/protocol.rs` | Message format and validation: session id, size, URL, SSH target, language, start folder, agent kind, conversation id |
 | `native/src/ipc.rs` | Dashboard ↔ host channel: Unix socket, or a named pipe on Windows |
 | `native/src/pixels/` | Pixel updates: the host takes Kitty graphics out of a pixel app's output, keeps the picture, and sends the changed rectangles (see below) |
 | `native/src/spawn.rs` | What a session runs: a login shell on macOS and Linux; PowerShell and argument lists on Windows |
@@ -70,6 +72,8 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
   - refusing remote clients;
   - the dashboard checking that the pipe's server process id matches `host.pipe`.
 - Updates check each download against the SHA-256 sum published with it, and run the new executable once to confirm its version before it replaces the old one. The desktop app checks its download the same way, and on macOS also the new app's version.
+- `GET /api/agents/history?dir=<folder>` lists a folder's past conversations. It is GET only, and checks the Host header and `Sec-Fetch-Site` like the docs routes. `dir` must be an absolute path, else 400. It returns ids and titles only (a title may be the first or last prompt), never the conversation. Reads are bounded: 16 MiB per file, 50 Claude Code files (also those of another folder with the same encoded name), 500 Codex files, 1 MiB for a Codex first line, 4 MiB from the end of Codex's `session_index.jsonl`, 256 Gemini `.project_root` folders, 10 results, and titles of 120 characters. Gemini `.jsonl` chats are read one line at a time. The UI shows 5 of the results, after it drops the conversations that run now.
+- A session opened from the agents sidebar adds `cwd`, `agent`, and `conversation` to `/ws/session`. `cwd` must be an absolute path (no NUL, 4096 bytes at most). `agent` is `claude`, `codex`, or `gemini`, and only for a shell. `conversation` must look like an id, and needs `agent`. The browser never sends a command: the host builds it from the agent kind and the checked id, and types it only into a brand-new shell.
 - **Desktop app**
   - Each window shows only the app's own start page and the dashboard on its port. Any other address opens in the default browser.
   - The page asks the app for remote windows and updates through one Tauri command, `app_request`. A capability (`desktop/capabilities/dashboard.json`) allows it only for `http://127.0.0.1:*`, and the app also checks that the page is the dashboard on its port. The page gets no other Tauri API.

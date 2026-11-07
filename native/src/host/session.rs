@@ -23,11 +23,12 @@ use tokio::time::{sleep_until, Instant, MissedTickBehavior};
 use super::agent::{self, AgentRecord, Tracker};
 use super::store::{SessionMeta, SessionStore};
 use crate::cwd::process_cwd;
+use crate::git;
 use crate::i18n::Lang;
 use crate::pixels::{PixelStream, KIND_TEXT};
 use crate::protocol::{
-    AttachMode, ClientMessage, PixelCodec, PtySize, ServerMessage, SessionKind, CLOSE_TAKEN_OVER, FLOW_HIGH_WATER,
-    FLOW_LOW_WATER,
+    AttachMode, ClientMessage, Launch, PixelCodec, Place, PtySize, ServerMessage, SessionKind, CLOSE_TAKEN_OVER,
+    FLOW_HIGH_WATER, FLOW_LOW_WATER,
 };
 use crate::screen::{agent_notice, restored_notice, Screen};
 use crate::spawn::{pty_size, spawn, LaunchSpec};
@@ -98,7 +99,8 @@ struct Foreground {
 
 const SETTLED_READS: u8 = 3;
 
-/// The resume command, waiting for the new shell's prompt.
+/// A command waiting for the new shell's prompt: the agent's resume command,
+/// or the launch of a new session.
 struct Resume {
     input: Vec<u8>,
     at: Instant,
@@ -163,6 +165,8 @@ struct Session {
     agent: Tracker,
     foreground: Option<Foreground>,
     resume: Option<Resume>,
+    /// The folder and branch last sent (or about to be sent) to the viewer.
+    place: Option<Place>,
     /// A pixel app whose viewer takes pixel updates.
     pixels: Option<Pixels>,
 }
@@ -182,6 +186,8 @@ pub struct Spec {
     pub launch: LaunchSpec,
     /// The viewer takes pixel updates in this codec (pixel apps only).
     pub pixels: Option<PixelCodec>,
+    /// An agent to start in a new shell once its prompt is up.
+    pub agent: Option<Launch>,
 }
 
 pub fn start(
@@ -212,13 +218,16 @@ pub fn start(
         }
         screen
     });
+    // What the shell types once its prompt is up, and the agent it then runs.
+    // A launch has no restore notice: the user just asked for it.
+    let (command, record) = match (resuming, &spec.agent) {
+        (Some(resuming), _) => (Some(resuming.record.resume_command()), Some(resuming.record)),
+        (None, Some(launch)) => (Some(agent::launch_command(launch)), agent::launch_record(launch)),
+        (None, None) => (None, None),
+    };
     let latest = Instant::now() + RESUME_LATEST;
-    let resume = resuming.as_ref().map(|resuming| Resume {
-        input: format!("{}\r", resuming.record.resume_command()).into_bytes(),
-        at: latest,
-        latest,
-    });
-    let agent = resuming.map(|resuming| Tracker::resuming(resuming.record)).unwrap_or_default();
+    let resume = command.map(|command| Resume { input: format!("{command}\r").into_bytes(), at: latest, latest });
+    let agent = record.map(Tracker::resuming).unwrap_or_default();
 
     let mut pty = spawn(&spec.launch, size)?;
     let mut reader = pty.master.try_clone_reader().map_err(|e| e.to_string())?;
@@ -282,6 +291,7 @@ pub fn start(
         agent,
         foreground: None,
         resume,
+        place: None,
         pixels,
     };
     session.write_meta();
@@ -416,6 +426,8 @@ impl Session {
         self.send_json(&ServerMessage::Ready { pid: self.pid, mode, pixels: self.pixels.is_some() });
         if self.kind == SessionKind::Shell {
             self.send_agent();
+            self.refresh_place();
+            self.send_place();
         }
         if let Some(pixels) = &mut self.pixels {
             pixels.in_flight = 0;
@@ -612,6 +624,21 @@ impl Session {
         if changes.state {
             self.send_agent();
         }
+        if self.refresh_place() {
+            self.send_place();
+        }
+    }
+
+    /// Reads the shell's folder and branch. True when they differ from the
+    /// last read; a folder that cannot be read keeps the old place.
+    fn refresh_place(&mut self) -> bool {
+        let Some(cwd) = process_cwd(self.pid) else { return false };
+        let place = Place { branch: git::branch(&cwd), cwd: cwd.to_string_lossy().into_owned() };
+        if self.place.as_ref() == Some(&place) {
+            return false;
+        }
+        self.place = Some(place);
+        true
     }
 
     /// The program in the foreground of the shell's terminal, when it is an
@@ -655,6 +682,10 @@ impl Session {
 
     fn send_agent(&self) {
         self.send_json(&ServerMessage::Agent { agent: self.agent.state().cloned() });
+    }
+
+    fn send_place(&self) {
+        self.send_json(&ServerMessage::Place { place: self.place.clone() });
     }
 
     fn refresh_cwd(&mut self) {

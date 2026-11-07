@@ -10,6 +10,7 @@
 //!   westerm remote-setup [--replace-host]  (run over SSH by a remote dashboard)
 
 mod cwd;
+mod git;
 // The PTY host's files (HOST_SOURCES in build.rs) keep these lints quiet
 // here: any change to them changes the host build id, which restarts every
 // shell. Fix them with the next change that touches the host anyway.

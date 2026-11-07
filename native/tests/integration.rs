@@ -429,3 +429,138 @@ async fn a_page_that_does_not_ask_for_pixels_still_gets_kitty_images() {
     viewer.detach().await;
     stop_host(state.path(), host).await;
 }
+
+/// A fake `claude` that the host's shell finds first. The shell is a login
+/// shell, and its profiles reorder PATH (macOS `path_helper`, a user's
+/// `~/.profile`), so HOME is an empty folder whose `.profile` puts the fake
+/// folder first.
+#[cfg(unix)]
+fn fake_claude_env(state: &Path, bin: &Path, home: &Path) -> Vec<(&'static str, std::ffi::OsString)> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let claude = bin.join("claude");
+    std::fs::write(&claude, FAKE_CLAUDE).unwrap();
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(home.join(".profile"), format!("PATH='{}':\"$PATH\"\nexport PATH\n", bin.display())).unwrap();
+    vec![("CLAUDE_CONFIG_DIR", state.join("claude").into_os_string()), ("HOME", home.as_os_str().to_owned())]
+}
+
+/// Collects output for `time`, or until the host closes the stream.
+#[cfg(unix)]
+async fn drain_output(pane: &mut Viewer<Stream>, time: Duration) {
+    let deadline = Instant::now() + time;
+    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+        match tokio::time::timeout(left, pane.ws.next()).await {
+            Ok(Some(Ok(Message::Binary(bytes)))) => pane.output.push_str(&String::from_utf8_lossy(&bytes)),
+            Ok(Some(Ok(_))) => {}
+            Ok(None | Some(Err(_))) => break,
+            Err(_) => {}
+        }
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_launch_starts_the_agent_in_its_folder() {
+    let state = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let work_path = work.path().canonicalize().unwrap();
+    let env = fake_claude_env(state.path(), bin.path(), home.path());
+    let host = start_host_with(state.path(), &env);
+    let query = format!("{}&agent=claude&cwd={}", QUERY.replace("stest1", "slaunch1"), work_path.display());
+
+    let (mut pane, ready) = attach_query(state.path(), &query).await;
+    assert_eq!(ready["mode"], "new");
+    let message = agent_message(&mut pane, "working").await;
+    assert_eq!(message["agent"]["kind"], "claude");
+    assert_eq!(message["agent"]["cwd"], work_path.to_str().unwrap());
+    pane.wait_for("FAKE_CLAUDE").await;
+    assert_eq!(pane.output.matches("FAKE_CLAUDE").count(), 1, "typed once, not twice");
+    pane.detach().await;
+
+    // The browser sends the same query on every reconnect: the agent is not typed again.
+    let (mut pane, ready) = attach_query(state.path(), &query).await;
+    assert_eq!(ready["mode"], "reattached");
+    drain_output(&mut pane, Duration::from_secs(2)).await;
+    assert_eq!(pane.output.matches("FAKE_CLAUDE").count(), 1, "only the replayed screen has it");
+    pane.detach().await;
+    stop_host(state.path(), host).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_launch_is_typed_once() {
+    let state = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let env = fake_claude_env(state.path(), bin.path(), home.path());
+    let host = start_host_with(state.path(), &env);
+    let query = format!("{}&agent=claude&cwd={}", QUERY.replace("stest1", "slaunch2"), work.path().display());
+
+    let (mut pane, _) = attach_query(state.path(), &query).await;
+    pane.wait_for("FAKE_CLAUDE").await;
+    pane.detach().await;
+    // A revived shell (the host restarted) ignores the launch; only its saved agent resumes.
+    stop_host(state.path(), host).await;
+    let host = start_host_with(state.path(), &env);
+    let (mut pane, ready) = attach_query(state.path(), &format!("{query}&resume=off")).await;
+    assert_eq!(ready["mode"], "revived");
+    pane.send(MARK_INPUT).await;
+    pane.wait_for("MARK_42").await;
+    // A typed launch would come after 300 ms of quiet, later than MARK_42.
+    drain_output(&mut pane, Duration::from_secs(2)).await;
+    assert_eq!(pane.output.matches("FAKE_CLAUDE").count(), 1, "only the old screen has it");
+    pane.detach().await;
+    stop_host(state.path(), host).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_launch_into_a_missing_folder_opens_a_plain_shell() {
+    let state = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let gone = tempfile::tempdir().unwrap();
+    let gone_path = gone.path().join("removed");
+    let env = fake_claude_env(state.path(), bin.path(), home.path());
+    let host = start_host_with(state.path(), &env);
+    let query = format!("{}&agent=claude&cwd={}", QUERY.replace("stest1", "slaunch3"), gone_path.display());
+
+    let (mut pane, ready) = attach_query(state.path(), &query).await;
+    assert_eq!(ready["mode"], "new");
+    pane.send(MARK_INPUT).await;
+    pane.wait_for("MARK_42").await;
+    // A typed launch would come after 300 ms of quiet, later than MARK_42.
+    drain_output(&mut pane, Duration::from_secs(2)).await;
+    assert_eq!(pane.output.matches("FAKE_CLAUDE").count(), 0, "the shell opens in the home folder without the agent");
+    pane.detach().await;
+    stop_host(state.path(), host).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_shell_reports_its_place() {
+    let state = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let work_path = work.path().canonicalize().unwrap();
+    std::fs::create_dir(work_path.join(".git")).unwrap();
+    std::fs::write(work_path.join(".git/HEAD"), "ref: refs/heads/topic\n").unwrap();
+    let host = start_host(state.path());
+    let query = format!("{}&cwd={}", QUERY.replace("stest1", "splace1"), work_path.display());
+
+    let (mut pane, _) = attach_query(state.path(), &query).await;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let place = loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let message = tokio::time::timeout(left, pane.next_json()).await.expect("a place message in time");
+        if message["type"] == "place" && !message["place"].is_null() {
+            break message;
+        }
+    };
+    assert_eq!(place, serde_json::json!({ "type": "place", "place": { "cwd": work_path.to_str().unwrap(), "branch": "topic" } }));
+    pane.detach().await;
+    stop_host(state.path(), host).await;
+}

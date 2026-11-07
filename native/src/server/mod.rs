@@ -3,6 +3,7 @@
 //! Listens on 127.0.0.1 only. On a server, `remote_router` serves the few
 //! routes a remote window needs, on a private Unix socket instead.
 
+mod agents;
 mod config;
 mod docs;
 pub(crate) mod host_client;
@@ -125,6 +126,7 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         .route("/api/remote/update-host", post(remote_update_host))
         .route("/ws/session", get(session))
         .merge(docs::routes())
+        .merge(agents::routes())
         .merge(remote_window::routes())
         .fallback(asset)
         .with_state(state);
@@ -150,6 +152,7 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         .route("/api/ssh-hosts", get(ssh_hosts))
         .route("/ws/session", get(session))
         .merge(docs::routes())
+        .merge(agents::routes())
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)
 }
@@ -204,6 +207,11 @@ fn host_allowed(state: &AppState, headers: &HeaderMap) -> bool {
 fn cross_site(state: &AppState, headers: &HeaderMap) -> bool {
     let fetch_site = headers.get("sec-fetch-site").and_then(|value| value.to_str().ok());
     matches!(fetch_site, Some("cross-site" | "same-site")) || (headers.contains_key(header::ORIGIN) && !origin_allowed(state, headers))
+}
+
+/// A read from the dashboard's own page. The server's private socket trusts every caller.
+fn read_allowed(state: &AppState, headers: &HeaderMap) -> bool {
+    state.trusted || (host_allowed(state, headers) && !cross_site(state, headers))
 }
 
 /// The request says its body is JSON.

@@ -94,7 +94,7 @@ export function isPermanentFailure(reason: RemoteFailure): boolean {
 }
 
 /** An AI agent in a shell pane, found by the PTY host (native/src/host/agent.rs). */
-export type AgentKind = "claude" | "codex";
+export type AgentKind = "claude" | "codex" | "gemini";
 /** waiting: the agent asks the user, such as a permission or approval question. */
 export type AgentStatus = "working" | "waiting" | "idle";
 
@@ -119,7 +119,7 @@ export interface AgentState {
 export function parseAgentState(value: unknown): AgentState | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
-  const kinds: unknown[] = ["claude", "codex"];
+  const kinds: unknown[] = ["claude", "codex", "gemini"];
   const statuses: unknown[] = ["working", "waiting", "idle"];
   if (!kinds.includes(raw.kind) || !statuses.includes(raw.status)) return null;
   // The details only fill the info card: a wrong one is left out, not the agent.
@@ -138,11 +138,34 @@ export function parseAgentState(value: unknown): AgentState | null {
   };
 }
 
+/** What an agent launch asks the host for: the agent to start in a new shell, and its conversation to continue. */
+export interface AgentLaunch {
+  kind: AgentKind;
+  conversation: string | null;
+}
+
+/** A shell's current folder and the git branch there. */
+export interface Place {
+  cwd: string;
+  branch: string | null;
+}
+
+/** The host's place field, or null for anything this page does not know. */
+export function parsePlace(value: unknown): Place | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const text = (field: unknown) => (typeof field === "string" && field.length > 0 && field.length <= 4096 ? field : null);
+  const cwd = text(raw.cwd);
+  return cwd === null ? null : { cwd, branch: text(raw.branch) };
+}
+
 export type ServerMessage =
   /** `pixels`: the host sends pixel updates (see KIND_TEXT). */
   | { type: "ready"; pid: number; mode: AttachMode; pixels?: boolean }
   /** After "ready" and on every change in a shell: the agent in its foreground, or null. */
   | { type: "agent"; agent: AgentState | null }
+  /** After "ready" and when the folder or branch changes in a shell: where it is, or null. */
+  | { type: "place"; place: Place | null }
   | { type: "exit"; code: number; signal: number }
   | { type: "error"; message: string }
   /** First on a remote window's status stream: the local westerm's version line. */

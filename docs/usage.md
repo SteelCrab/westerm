@@ -4,7 +4,7 @@
 
 | Area | What it does |
 |---|---|
-| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top; a badge shows how many are open. The command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. |
+| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top; a badge shows how many are open. The Agents button, the command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. See [Agents sidebar](#agents-sidebar). |
 | Layout | Settings ▸ General ▸ Workspaces and tabs picks one. **Top** (the default): the workspace menu and the tab bar across the top, and no sidebar. **Sidebar**: the workspace menu and the tabs in the sidebar, and no tab bar. |
 | Tab bar (top layout) | The workspace menu at the left, then the tabs. `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Sidebar (sidebar layout) | The workspace menu, then the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: the workspace icon, tab numbers, and the session icons of the tab in view. |
@@ -88,7 +88,7 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 | Appearance | Color theme | Default, One, GitHub, Solarized, Gruvbox, Catppuccin, Tokyo Night, Rosé Pine, Everforest, or Kanagawa. Colors the window and the terminals; each theme has a light and a dark set, which follow Mode. Default keeps the window's own colors. Programs that ask for the background color (OSC 11) get the theme's. |
 | Terminal | Font size | Overrides the Ghostty `font-size`. "Use the Ghostty size" goes back. |
 | Terminal | Font | Overrides the Ghostty `font-family`; separate fallbacks with commas. Leave it empty for the Ghostty font. Applies on Enter or when the field loses focus. |
-| Terminal | Resume AI agents | On (the default): a shell that comes back as "restored" runs the Claude Code or Codex conversation it had again. See [Sessions ▸ AI agents](sessions.md#ai-agents). |
+| Terminal | Resume AI agents | On (the default): a shell that comes back as "restored" runs the Claude Code, Codex, or Gemini CLI conversation it had again. See [Sessions ▸ AI agents](sessions.md#ai-agents). |
 | Updates | Check for updates automatically | Asks GitHub for the newest release when the dashboard opens and every 6 hours. With it off, westerm contacts GitHub only when you press Check now. A remote window has no Updates page. |
 
 ## Updates
@@ -115,9 +115,9 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 
 ## AI agents
 
-While Claude Code or Codex runs in a shell (macOS and Linux):
+While Claude Code, Codex, or Gemini CLI runs in a shell (macOS and Linux):
 
-- The pane header shows an AI mark in place of the shell icon: orange for Claude Code, white for Codex. The sidebar's session list shows it too. Point at it for the agent, its state, and its title.
+- The pane header shows an AI mark in place of the shell icon: the agent's logo (orange for Claude Code, the OpenAI logo for Codex, colored for Gemini CLI). The sidebar's session list shows it too. Point at it for the agent, its state, and its title.
 - The ring around the mark shows the state:
 
 | Ring | State |
@@ -131,11 +131,75 @@ While Claude Code or Codex runs in a shell (macOS and Linux):
 - With reduced motion turned on in the OS, the rings do not move.
 - Press the mark in the pane header (or move to it with Tab and press Enter) for the agent's card. Press the mark again, press outside, or press Esc to close it. The card shows:
   - The agent and its version (Claude Code only), its state, and for how long.
-  - The conversation id with **Copy**. Codex shows "The folder's latest conversation", since westerm cannot tell its id.
+  - The conversation id with **Copy**. Codex and Gemini CLI show "The folder's latest conversation" unless the command line names the id (`gemini --resume <id>`), since westerm cannot tell it otherwise.
   - The folder, the model when the command line names one, and when westerm first saw the agent.
   - The command a reboot runs, with **Copy**.
   - **Resume in this pane**: clear it to keep this pane's agent from resuming. The layout keeps the choice. When Settings ▸ Terminal ▸ Resume AI agents is off, the box is off for every pane.
 - After a reboot the agent resumes its conversation; see [Sessions ▸ AI agents](sessions.md#ai-agents).
+
+## Agents sidebar
+
+A list of the AI agents in the workspace in view, grouped by the folder they run in. It shows Claude Code, Codex, and Gemini CLI.
+
+### Open it
+
+- Press **Agents** in the activity bar. Point at it for "AI agents in this workspace, by folder". A yellow dot on the button means an agent in any workspace needs your input.
+- Top layout: the button opens and closes the panel.
+- Sidebar layout: the button switches the sidebar between the sessions list and the agents panel. The sidebar switch still opens and closes the sidebar.
+- Windows 640px wide or less: the panel opens as a drawer, like the sidebar. A pick in it, a tap outside it, or Escape closes it.
+- This browser remembers whether the panel is open.
+- At the top is the workspace menu. The workspace you pick is the one the panel shows. "Elsewhere N" next to it counts the agents in other workspaces that need your input.
+- Dragged narrow, the panel shows icons only. Point at a folder for its full path, and at an agent for the agent, its state, and the session name.
+
+### Folders
+
+- Only shells are listed. SSH, terminal-browser, terminal-code, and docs panes are not.
+- A shell belongs to the folder its agent runs in. With no agent, it belongs to the folder of the shell itself.
+- A shell whose folder is not known yet goes under "Unknown folder". On Windows every shell does, and the panel says "Agents show on macOS and Linux".
+- Folders keep the order in which their panes first show: tab order, then pane order. A state change does not move a row.
+- A folder row shows:
+  - the folder name in bold, with its parent in gray: `~/` when the parent is your home folder, else `<parent name>/`; your home folder is `~`;
+  - the git branch, or the first 7 characters of the commit on a detached HEAD;
+  - the number of shells and of agents, and a yellow dot when an agent needs your input.
+- Point at a folder row for its full path. Click it to fold or unfold the folder. The folded state is not saved.
+
+### Agents in a folder
+
+Each agent row shows the agent's logo, its name (as in the session list), how long it has been in this state, and a sign:
+
+| Sign | State |
+|---|---|
+| Yellow dot, pulsing | Needs your input. The row adds "Needs your input", and the time is yellow. |
+| Blue ring, turning | Working |
+| Green check | Done: it finished while you were not looking at the pane. The time says how long ago. |
+| Gray dot | Idle |
+
+- Within a folder the order is: needs your input, done, working, idle. Equal states keep pane order.
+- Click a row to go to its pane. The row of the focused pane has the workspace color.
+- With reduced motion turned on in the OS, the signs do not move.
+
+### Start an agent
+
+- A folder with no agents shows "No agents" and "Start here" with one button for each agent: **Start Claude Code here**, **Start Codex here**, and **Start Gemini CLI here**. A folder with agents shows the same buttons when you point at its row.
+- A button opens a new shell pane in that folder. When its prompt is up, westerm types `claude`, `codex`, or `gemini`.
+- You must have the agent installed. westerm does not install it.
+
+### Past conversations
+
+- Under each folder: "Past conversations N", open at first. It lists up to 5 conversations that ended in that folder, newest first, from Claude Code, Codex, and Gemini CLI. Each line has the agent's logo, the title, when it ended, and **Resume**. A conversation without a title is "Untitled conversation".
+- Conversations that an agent in this dashboard runs now are not listed. Codex and Gemini CLI do not tell which conversation they run, and neither does a Claude Code that just started. While such an agent runs in the folder, its kind's conversations written since it started are not listed either.
+- **Resume** opens a new shell pane in that folder and types `claude --resume <id>`, `codex resume <id>`, or `gemini --resume <id>`.
+- The list is read when the panel opens, and again when a conversation running in that folder changes. A list read less than 30 seconds ago shows again without a new read, for example when you unfold a folder or switch workspaces. westerm reads only ids and titles from the agents' own files (see [Sessions ▸ AI agents](sessions.md#ai-agents)), and sends no conversation text.
+- Where westerm looks:
+
+| Agent | Folder | Title from |
+|---|---|---|
+| Claude Code | `~/.claude/projects` (`$CLAUDE_CONFIG_DIR` when set) | Its custom or AI title, else its summary, else your last prompt |
+| Codex | `~/.codex/sessions` (`$CODEX_HOME` when set) | Its `session_index.jsonl` |
+| Gemini CLI | `~/.gemini/tmp` (`$GEMINI_CLI_HOME/.gemini` when set) | Its summary, else your first message |
+
+- Limits: a file is read up to 16 MiB; at most the 500 newest Codex files are checked; Codex's `session_index.jsonl` is read from its last 4 MiB; Gemini folders are matched by name, or by up to 256 `.project_root` files. Titles are cut to 120 characters.
+- In a remote window, the panel shows the server's shells, folders, and past conversations.
 
 ## terminal-browser and terminal-code
 
