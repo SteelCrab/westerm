@@ -96,11 +96,38 @@ test("the tree filter matches paths without case", () => {
 
 const draft = (text: string): Draft => ({ text, baseVersion: "v1", crlf: false });
 
-/** A storage that keeps what it is given, like localStorage across a reload. */
-const memoryStorage = () => {
+/**
+ * A storage that keeps what it is given, like localStorage across a reload.
+ * One storage behind two stores is two windows of one origin. `limit` makes
+ * longer values fail, like a full storage.
+ */
+const memoryStorage = (limit = Infinity) => {
   const items = new Map<string, string>();
-  return { getItem: (key: string) => items.get(key) ?? null, setItem: (key: string, value: string) => void items.set(key, value) };
+  const storage = {
+    writes: 0,
+    /** The key of the last change, as a storage event names it. */
+    changed: null as string | null,
+    get length() {
+      return items.size;
+    },
+    key: (index: number) => [...items.keys()][index] ?? null,
+    getItem: (key: string) => items.get(key) ?? null,
+    setItem(key: string, value: string) {
+      if (value.length > limit) throw new Error("QuotaExceededError");
+      items.set(key, value);
+      storage.writes += 1;
+      storage.changed = key;
+    },
+    removeItem(key: string) {
+      items.delete(key);
+      storage.changed = key;
+    },
+  };
+  return storage;
 };
+
+/** Writes at once, for tests that do not look at the timing. */
+const now = (task: () => void) => task();
 
 test("every pane on a file sees one draft", () => {
   const store = createDraftStore(null);
@@ -121,27 +148,111 @@ test("every pane on a file sees one draft", () => {
 test("drafts outlive a reload", () => {
   const storage = memoryStorage();
   const key = draftKey("prod", "/srv", "docs/a.md");
-  createDraftStore(storage).set(key, draft("kept"));
-  const after = createDraftStore(storage);
+  createDraftStore(storage, now).set(key, draft("kept"));
+  const after = createDraftStore(storage, now);
   assert.deepEqual(after.get(key), draft("kept"));
   assert.deepEqual(after.paths("prod", "/srv"), new Set(["docs/a.md"]));
   assert.deepEqual(after.paths(null, "/srv"), new Set(), "a local window has its own drafts");
 });
 
+test("drafts of two windows both outlive a reload", () => {
+  const storage = memoryStorage();
+  const local = createDraftStore(storage, now);
+  const remote = createDraftStore(storage, now);
+  const x = draftKey(null, "/r", "x.md");
+  const y = draftKey("prod", "/srv", "y.md");
+  local.set(x, draft("x"));
+  remote.set(y, draft("y"));
+  const reopened = createDraftStore(storage, now);
+  assert.deepEqual(reopened.get(x), draft("x"), "the remote window did not erase the local draft");
+  assert.deepEqual(reopened.get(y), draft("y"));
+});
+
+test("a draft changed in another window shows here", () => {
+  const storage = memoryStorage();
+  const other = createDraftStore(storage, now);
+  const here = createDraftStore(storage, now);
+  const key = draftKey(null, "/r", "a.md");
+  let calls = 0;
+  here.subscribe(() => calls++);
+  other.set(key, draft("theirs"));
+  here.sync(storage.changed);
+  assert.deepEqual(here.get(key), draft("theirs"));
+  assert.equal(calls, 1);
+  other.clear(key);
+  here.sync(storage.changed);
+  assert.equal(here.get(key), null);
+  here.sync("someone.else's.key");
+  assert.equal(calls, 2, "other keys change nothing");
+  other.set(key, draft("again"));
+  here.sync(null); // another window cleared the storage, or many keys changed
+  assert.deepEqual(here.get(key), draft("again"));
+});
+
+test("a draft is written once typing pauses, and at once when the page hides", () => {
+  const tasks: (() => void)[] = [];
+  const storage = memoryStorage();
+  const store = createDraftStore(storage, (task) => void tasks.push(task));
+  const key = draftKey(null, "/r", "a.md");
+  store.set(key, draft("a"));
+  store.set(key, draft("ab"));
+  assert.deepEqual(store.get(key), draft("ab"), "the panes see each key at once");
+  assert.equal(storage.writes, 0);
+  assert.equal(tasks.length, 1);
+  tasks.shift()?.();
+  assert.equal(storage.writes, 1);
+  assert.deepEqual(createDraftStore(storage, now).get(key), draft("ab"));
+  store.set(key, draft("abc"));
+  store.flush();
+  assert.deepEqual(createDraftStore(storage, now).get(key), draft("abc"));
+  const gone = draftKey(null, "/r", "gone.md");
+  store.set(gone, draft("x"));
+  store.clear(gone);
+  for (const task of tasks.splice(0)) task();
+  assert.equal(createDraftStore(storage, now).get(gone), null, "a cleared draft is not written late");
+});
+
+test("a draft that does not fit is marked unkept and leaves no old copy", () => {
+  const storage = memoryStorage(60);
+  const store = createDraftStore(storage, now);
+  const key = draftKey(null, "/r", "a.md");
+  let calls = 0;
+  store.subscribe(() => calls++);
+  store.set(key, draft("short"));
+  assert.equal(store.unkept(key), false);
+  store.set(key, draft("a much longer text that does not fit"));
+  assert.equal(store.unkept(key), true);
+  assert.deepEqual(store.get(key), draft("a much longer text that does not fit"), "this window keeps it");
+  assert.equal(createDraftStore(storage, now).get(key), null, "a reload does not bring back the old text");
+  assert.ok(calls >= 2);
+  store.set(key, draft("short"));
+  assert.equal(store.unkept(key), false);
+});
+
+test("drafts saved by the first version move to one key each", () => {
+  const storage = memoryStorage();
+  const key = draftKey(null, "/r", "a.md");
+  storage.setItem("westerm.docs.drafts", JSON.stringify({ [key]: draft("old"), junk: { text: 1 } }));
+  const store = createDraftStore(storage, now);
+  assert.deepEqual(store.get(key), draft("old"));
+  assert.equal(storage.getItem("westerm.docs.drafts"), null);
+  assert.deepEqual(createDraftStore(storage, now).get(key), draft("old"));
+});
+
 test("a storage that throws or holds junk costs only the persistence", () => {
-  const throwing = {
-    getItem: () => {
-      throw new Error("denied");
-    },
-    setItem: () => {
-      throw new Error("full");
-    },
+  const fail = () => {
+    throw new Error("denied");
   };
-  const store = createDraftStore(throwing);
+  const throwing = { length: 1, key: fail, getItem: fail, setItem: fail, removeItem: fail };
+  const store = createDraftStore(throwing, now);
   store.set("k", draft("x"));
   assert.deepEqual(store.get("k"), draft("x"));
-  const junk = createDraftStore({ getItem: () => "{not json", setItem: () => {} });
-  assert.equal(junk.get("k"), null);
+  const storage = memoryStorage();
+  const key = draftKey(null, "/r", "a.md");
+  createDraftStore(storage, now).set(key, draft("x"));
+  const stored = storage.changed ?? "";
+  storage.setItem(stored, "{not json");
+  assert.equal(createDraftStore(storage, now).get(key), null);
 });
 
 // ---- api ----
