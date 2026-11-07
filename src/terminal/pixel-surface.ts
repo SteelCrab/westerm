@@ -12,6 +12,7 @@ import { paintPixelUpdate, parsePixelUpdate } from "./pixel-update.ts";
  */
 export class PixelSurface {
   private readonly canvas: HTMLCanvasElement;
+  private readonly observer: MutationObserver;
   private readonly worker: Worker | null;
   private readonly context: CanvasRenderingContext2D | null = null;
   private queue: Promise<void> = Promise.resolve();
@@ -28,6 +29,13 @@ export class PixelSurface {
     this.canvas.className = "pixel-surface";
     this.canvas.setAttribute("aria-hidden", "true");
     container.appendChild(this.canvas);
+    // wterm empties the grid whenever its rows or columns change (its
+    // renderer's setup) and puts back only its own layers. Without this the
+    // picture is gone after a pane or window resize.
+    this.observer = new MutationObserver(() => {
+      if (this.canvas.parentNode !== container) container.appendChild(this.canvas);
+    });
+    this.observer.observe(container, { childList: true });
     this.worker = this.startWorker();
     if (!this.worker) this.context = this.canvas.getContext("2d");
   }
@@ -62,6 +70,7 @@ export class PixelSurface {
   }
 
   dispose(): void {
+    this.observer.disconnect();
     this.worker?.terminate();
     this.canvas.remove();
   }
