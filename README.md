@@ -4,7 +4,7 @@
 
 **English** · [한국어](README.ko.md) · [日本語](README.ja.md) · [中文](README.zh-CN.md)
 
-![westerm demo](assets/demo.gif)
+![westerm demo: the session survives closing the tab, restarting westerm, and rebooting](assets/westerm-main.gif)
 
 ![westerm: terminal-browser, a shell, and terminal-code split in one tab](assets/screenshot.png)
 
