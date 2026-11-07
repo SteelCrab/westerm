@@ -150,7 +150,7 @@ A docs pane lists the Markdown files of a folder and shows, edits, and saves the
 - **Modes**: View (the rendered document), Edit (the text), and Split (both, side by side). On a phone-wide window, Split shows as Edit and the list button opens the tree.
 - **Keys** while the pane has the keyboard: ⌘S (Ctrl+S) saves, ⌘E (Ctrl+E) switches between View and Split.
 - **Links**: a link to another Markdown file opens it in the pane, `#heading` links scroll, and web links open in a terminal-browser pane. Links that leave the folder do nothing.
-- **Unsaved changes** are kept per file in this browser (or the app), also across reloads and when the pane closes. Every docs pane on the same file shows the same changes. The tree marks such files with a dot; **Discard** drops the changes. Unsaved files in other folders are listed under the tree; click one to open it.
+- **Unsaved changes** are kept per file in this browser (or the app), also across reloads and when the pane closes. Every docs pane on the same file shows the same changes, also in other windows. When the browser's storage is full, the status bar says that the changes are lost when the window closes; save them to keep them. The tree marks such files with a dot; **Discard** drops the changes. Unsaved files in other folders are listed under the tree; click one to open it.
 - **Folder field**: it suggests the folders this window's computer (or server) showed lately.
 - **Changes on disk**: a file without unsaved changes reloads by itself. When the file changed on disk after you started editing, saving asks first: load the disk version, or save anyway.
 - Files keep their line ends (`\r\n` stays `\r\n`). Files larger than 2 MiB and files that are not UTF-8 text do not open.
