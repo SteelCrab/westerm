@@ -165,10 +165,50 @@ pub enum AttachMode {
     Revived,
 }
 
+/// An AI agent in a shell pane; see host/agent.rs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentKind {
+    Claude,
+    Codex,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentStatus {
+    Working,
+    /// Asks the user: a permission or approval question.
+    Waiting,
+    Idle,
+}
+
+/// The agent a pane shows, if any, with what its info card shows.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct AgentState {
+    pub kind: AgentKind,
+    pub status: AgentStatus,
+    /// When this status began, in milliseconds since the epoch.
+    pub since: u64,
+    /// When the host first saw this agent, in milliseconds since the epoch.
+    pub started: u64,
+    /// Its conversation id, when it tells it.
+    pub conversation: Option<String>,
+    /// The command a restored shell types to resume it.
+    pub resume: String,
+    /// Its current folder.
+    pub cwd: Option<String>,
+    /// Its version, when it tells it (Claude Code).
+    pub version: Option<String>,
+    /// The model its command line names.
+    pub model: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ServerMessage {
     Ready { pid: u32, mode: AttachMode },
+    /// After `ready` and on every change in a shell: the agent in its foreground.
+    Agent { agent: Option<AgentState> },
     Exit { code: i64, signal: i64 },
     Error { message: String },
     /// The first message on a remote window's status stream: the local
@@ -255,6 +295,8 @@ pub struct AttachRequest {
     pub lang: Lang,
     /// The page that asks. One window at a time owns every session.
     pub window: Option<String>,
+    /// A restored shell resumes the AI agent it ran (`resume=off` turns it off).
+    pub resume: bool,
 }
 
 impl AttachRequest {
@@ -294,7 +336,8 @@ impl AttachRequest {
             Some(_) => return None,
             None => None,
         };
-        Some(Self { id, kind, url, target, cwd_from, size, lang, window })
+        let resume = query.get("resume").map(String::as_str) != Some("off");
+        Some(Self { id, kind, url, target, cwd_from, size, lang, window, resume })
     }
 
     /// The same request as a query string, from validated fields only.
@@ -319,6 +362,9 @@ impl AttachRequest {
         }
         if let Some(window) = &self.window {
             pairs.push(("window", window.clone()));
+        }
+        if !self.resume {
+            pairs.push(("resume", "off".to_owned()));
         }
         pairs
             .into_iter()
@@ -405,6 +451,11 @@ mod tests {
         assert!(request.to_query().contains("lang=ja"));
         assert_eq!(request.window.as_deref(), Some("wabc1"));
         assert!(request.to_query().contains("window=wabc1"));
+        assert!(request.resume && !request.to_query().contains("resume"), "on unless turned off");
+        let mut off = query.clone();
+        off.insert("resume".into(), "off".into());
+        let off = AttachRequest::from_query(&off).unwrap();
+        assert!(!off.resume && off.to_query().ends_with("&resume=off"));
         let mut bad_window = query.clone();
         bad_window.insert("window".into(), "../x".into());
         assert!(AttachRequest::from_query(&bad_window).is_none(), "window ids are checked");
@@ -444,6 +495,22 @@ mod tests {
         assert_eq!(json(RemoteStage::Installing { version: "0.2.0".into() }), r#"{"type":"remote","stage":"installing","version":"0.2.0"}"#);
         assert_eq!(json(RemoteStage::Confirm { sessions: 3 }), r#"{"type":"remote","stage":"confirm","sessions":3}"#);
         assert_eq!(json(RemoteStage::Checking), r#"{"type":"remote","stage":"checking"}"#);
+        let agent = AgentState {
+            kind: AgentKind::Claude,
+            status: AgentStatus::Waiting,
+            since: 2,
+            started: 1,
+            conversation: None,
+            resume: "claude --continue".into(),
+            cwd: Some("/work".into()),
+            version: None,
+            model: None,
+        };
+        assert_eq!(
+            ServerMessage::Agent { agent: Some(agent) }.to_json(),
+            r#"{"type":"agent","agent":{"kind":"claude","status":"waiting","since":2,"started":1,"conversation":null,"resume":"claude --continue","cwd":"/work","version":null,"model":null}}"#
+        );
+        assert_eq!(ServerMessage::Agent { agent: None }.to_json(), r#"{"type":"agent","agent":null}"#);
         let hello = ServerMessage::Hello { version: "westerm 0.3.0 (host rs-a)".into() }.to_json();
         assert_eq!(hello, r#"{"type":"hello","version":"westerm 0.3.0 (host rs-a)"}"#);
     }

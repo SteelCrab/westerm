@@ -7,6 +7,9 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 ### Added
 
 - Docs pane: a new pane that lists a folder's Markdown files as a tree and shows them in View, Edit, or Split mode. It opens in the focused shell's folder and can follow that shell's `cd`. ⌘S saves; a file changed on disk since editing started asks before it is overwritten. Unsaved changes are kept per file across reloads. In a remote window it shows the server's files.
+- AI agents in shells: while Claude Code or Codex runs, the pane header and the sidebar show an AI mark with a ring for its state (working, needs input, done out of view, idle), and the tab shows a dot. macOS and Linux.
+- A shell that comes back as "restored" (a reboot, a logout, `westerm stop`, a host update) resumes the agent it ran: `claude --resume <id>` with the flags it had, or `codex resume --last`. Settings ▸ Terminal ▸ Resume AI agents turns it off.
+- The AI mark in a pane header opens the agent's card: its state and for how long, the conversation id, the folder, the model, the command a reboot runs (with Copy buttons), and a choice to keep this pane from resuming.
 
 ## [0.2.1] - 2026-11-05
 

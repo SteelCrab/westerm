@@ -44,10 +44,15 @@ async fn connect(state: &Path) -> Stream {
 }
 
 fn start_host(state: &Path) -> Spawned {
+    start_host_with(state, &[])
+}
+
+fn start_host_with(state: &Path, env: &[(&str, std::ffi::OsString)]) -> Spawned {
     let child = Command::new(BIN)
         .arg("host")
         .env("WESTERM_STATE_DIR", state)
         .env("SHELL", "/bin/sh")
+        .envs(env.iter().map(|(key, value)| (*key, value)))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -255,5 +260,79 @@ async fn health_reports_the_protocol() {
     let health: serde_json::Value = serde_json::from_str(body).expect("health is JSON");
     assert_eq!(health["protocol"], 1);
     assert!(health["build"].as_str().is_some_and(|build| build.starts_with("rs-")));
+    stop_host(state.path(), host).await;
+}
+
+/// A fake Claude Code: it reports its conversation where Claude Code does,
+/// prints its arguments, and keeps running in the foreground.
+#[cfg(unix)]
+const FAKE_CLAUDE: &str = r#"#!/bin/sh
+mkdir -p "$CLAUDE_CONFIG_DIR/sessions"
+printf '{"pid":%s,"sessionId":"11111111-2222-3333-4444-555555555555","status":"busy"}' "$$" > "$CLAUDE_CONFIG_DIR/sessions/$$.json"
+echo "FAKE_CLAUDE $*"
+while :; do sleep 1; done
+"#;
+
+/// The next "agent" message, skipping output.
+#[cfg(unix)]
+async fn agent_message(viewer: &mut Viewer<Stream>, wanted: &str) -> serde_json::Value {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let message = tokio::time::timeout(left, viewer.next_json()).await.expect("an agent message in time");
+        if message["type"] == "agent" && message["agent"]["status"] == wanted {
+            return message;
+        }
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_restored_shell_resumes_its_agent() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let state = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let claude = bin.path().join("claude");
+    std::fs::write(&claude, FAKE_CLAUDE).unwrap();
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let env = [("CLAUDE_CONFIG_DIR", state.path().join("claude").into_os_string())];
+    let host = start_host_with(state.path(), &env);
+    let query = QUERY.replace("stest1", "sagent1");
+
+    let (mut pane, ready) = attach_query(state.path(), &query).await;
+    assert_eq!(ready["mode"], "new");
+    assert_eq!(pane.next_json().await, serde_json::json!({ "type": "agent", "agent": null }), "no agent at first");
+    // The path keeps a real `claude` on PATH out of the test.
+    let line = format!("{} --model opus fix-it", claude.display());
+    pane.send(&serde_json::json!({ "type": "input", "data": format!("{line}\r") }).to_string()).await;
+    pane.wait_for("FAKE_CLAUDE --model opus fix-it").await;
+    let message = agent_message(&mut pane, "working").await;
+    assert_eq!(message["agent"]["kind"], "claude");
+
+    let meta: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(state.path().join("sessions/sagent1.json")).unwrap()).unwrap();
+    assert_eq!(meta["agent"]["session"], "11111111-2222-3333-4444-555555555555");
+    assert_eq!(meta["agent"]["args"], serde_json::json!(["--model", "opus"]), "the prompt is not kept");
+    pane.detach().await;
+
+    // As after a reboot: the host saves and stops, and everything in the shell ends.
+    stop_host(state.path(), host).await;
+    let host = start_host_with(state.path(), &env);
+    let (mut pane, ready) = attach_query(state.path(), &query).await;
+    assert_eq!(ready["mode"], "revived");
+    pane.wait_for("에이전트 이어가기 · Claude Code · 11111111").await;
+    pane.wait_for("FAKE_CLAUDE --resume 11111111-2222-3333-4444-555555555555 --model opus").await;
+    pane.detach().await;
+
+    // resume=off: the shell comes back without its agent.
+    stop_host(state.path(), host).await;
+    let host = start_host_with(state.path(), &env);
+    let (mut pane, ready) = attach_query(state.path(), &format!("{query}&resume=off")).await;
+    assert_eq!(ready["mode"], "revived");
+    pane.send(MARK_INPUT).await;
+    pane.wait_for("MARK_42").await;
+    assert_eq!(pane.output.matches("FAKE_CLAUDE --resume").count(), 1, "only the old screen has it");
+    pane.detach().await;
     stop_host(state.path(), host).await;
 }

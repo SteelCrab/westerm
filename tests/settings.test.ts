@@ -7,7 +7,7 @@ test("saved settings are checked field by field", () => {
   assert.deepEqual(parseSettings("not json"), DEFAULT_SETTINGS);
   assert.deepEqual(
     parseSettings('{"theme":"dark","fontFamily":"D2Coding","autoUpdate":false,"layout":"sidebar","colorTheme":"gruvbox"}'),
-    { theme: "dark", fontFamily: "D2Coding", autoUpdate: false, layout: "sidebar", colorTheme: "gruvbox" },
+    { theme: "dark", fontFamily: "D2Coding", autoUpdate: false, layout: "sidebar", colorTheme: "gruvbox", resumeAgents: true },
   );
   const odd = parseSettings('{"theme":"purple","fontFamily":42,"autoUpdate":"yes","layout":"left","colorTheme":"neon"}');
   assert.deepEqual(odd, DEFAULT_SETTINGS, "unknown values fall back one by one");

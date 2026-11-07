@@ -18,15 +18,16 @@ use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use portable_pty::{ChildKiller, ExitStatus, MasterPty};
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::{sleep_until, Instant};
+use tokio::time::{sleep_until, Instant, MissedTickBehavior};
 
+use super::agent::{self, AgentRecord, Tracker};
 use super::store::{SessionMeta, SessionStore};
 use crate::cwd::process_cwd;
 use crate::i18n::Lang;
 use crate::protocol::{
     AttachMode, ClientMessage, PtySize, ServerMessage, SessionKind, CLOSE_TAKEN_OVER, FLOW_HIGH_WATER, FLOW_LOW_WATER,
 };
-use crate::screen::{restored_notice, Screen};
+use crate::screen::{agent_notice, restored_notice, Screen};
 use crate::spawn::{pty_size, spawn, LaunchSpec};
 
 const SAVE_DELAY: Duration = Duration::from_secs(3);
@@ -34,6 +35,15 @@ const SAVE_DELAY: Duration = Duration::from_secs(3);
 const RESIZE_WAIT: Duration = Duration::from_millis(400);
 const READ_CHUNK: usize = 64 * 1024;
 const REPLAY_CHUNK: usize = 64 * 1024;
+/// How often a shell looks for an AI agent in its foreground.
+const AGENT_POLL: Duration = Duration::from_secs(1);
+/// Rows above the last text where agents show their status line and questions.
+const AGENT_ROWS: usize = 16;
+/// A restored shell gets its agent's resume command once it printed and then
+/// stayed quiet this long (its prompt is up)…
+const RESUME_QUIET: Duration = Duration::from_millis(300);
+/// …or this long after it started, whichever comes first.
+const RESUME_LATEST: Duration = Duration::from_secs(5);
 
 pub enum Command {
     /// `window`: the page the viewer is in.
@@ -66,6 +76,31 @@ pub struct Restored {
     pub saved_at: String,
     /// Language of the restore notice.
     pub lang: Lang,
+}
+
+/// A revived shell that ran an AI agent: it resumes the agent's conversation.
+pub struct Resuming {
+    pub record: AgentRecord,
+    /// Language of the notice line.
+    pub lang: Lang,
+}
+
+/// The program last seen in the foreground, and the agent it is. Its command
+/// line is read until it reads the same a few times: right after a fork the
+/// child still shows the shell's, until it execs the program.
+struct Foreground {
+    pid: u32,
+    record: Option<AgentRecord>,
+    reads: u8,
+}
+
+const SETTLED_READS: u8 = 3;
+
+/// The resume command, waiting for the new shell's prompt.
+struct Resume {
+    input: Vec<u8>,
+    at: Instant,
+    latest: Instant,
 }
 
 enum ViewerEvent {
@@ -122,6 +157,10 @@ struct Session {
     alive: Arc<AtomicBool>,
     serial: u64,
     ended: mpsc::UnboundedSender<(String, u64)>,
+    /// The AI agent in a shell's foreground (macOS and Linux).
+    agent: Tracker,
+    foreground: Option<Foreground>,
+    resume: Option<Resume>,
 }
 
 pub struct Spec {
@@ -134,6 +173,7 @@ pub fn start(
     size: PtySize,
     store: Arc<SessionStore>,
     restored: Option<Restored>,
+    resuming: Option<Resuming>,
     serial: u64,
     ended: mpsc::UnboundedSender<(String, u64)>,
 ) -> Result<Handle, String> {
@@ -145,8 +185,18 @@ pub fn start(
             screen.process(restored.screen.as_bytes());
             screen.process(restored_notice(&restored.saved_at, restored.lang).as_bytes());
         }
+        if let Some(Resuming { record, lang }) = &resuming {
+            screen.process(agent_notice(record.kind.label(), record.session.as_deref(), *lang).as_bytes());
+        }
         screen
     });
+    let latest = Instant::now() + RESUME_LATEST;
+    let resume = resuming.as_ref().map(|resuming| Resume {
+        input: format!("{}\r", resuming.record.resume_command()).into_bytes(),
+        at: latest,
+        latest,
+    });
+    let agent = resuming.map(|resuming| Tracker::resuming(resuming.record)).unwrap_or_default();
 
     let mut pty = spawn(&spec.launch, size)?;
     let mut reader = pty.master.try_clone_reader().map_err(|e| e.to_string())?;
@@ -207,6 +257,9 @@ pub fn start(
         alive: alive.clone(),
         serial,
         ended,
+        agent,
+        foreground: None,
+        resume,
     };
     session.write_meta();
     tokio::spawn(session.run(rx, events_rx, out_rx, exit_rx));
@@ -222,9 +275,13 @@ impl Session {
         mut exit: oneshot::Receiver<ExitStatus>,
     ) {
         let mut output_open = true;
+        let watches_agents = self.kind == SessionKind::Shell && cfg!(unix);
+        let mut agent_poll = tokio::time::interval(AGENT_POLL);
+        agent_poll.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
             let save_at = self.save_at;
             let replay_at = self.awaiting.map(|(_, at)| at);
+            let resume_at = self.resume.as_ref().map(|resume| resume.at);
             tokio::select! {
                 command = commands.recv() => {
                     let Some(command) = command else {
@@ -260,6 +317,12 @@ impl Session {
                     let size = self.awaiting.map(|(size, _)| size).unwrap();
                     self.replay(size);
                 }
+                () = async { sleep_until(resume_at.unwrap()).await }, if resume_at.is_some() => {
+                    if let Some(resume) = self.resume.take() {
+                        let _ = self.input.send(resume.input);
+                    }
+                }
+                _ = agent_poll.tick(), if watches_agents => self.poll_agent(),
             }
         }
     }
@@ -328,6 +391,9 @@ impl Session {
         self.in_flight = 0;
         self.paused = false;
         self.send_json(&ServerMessage::Ready { pid: self.pid, mode });
+        if self.kind == SessionKind::Shell {
+            self.send_agent();
+        }
         if mode != AttachMode::New && self.screen.is_some() {
             self.held = Some(Vec::new());
             self.awaiting = Some((size, Instant::now() + RESIZE_WAIT));
@@ -387,6 +453,9 @@ impl Session {
         if let Some(screen) = &mut self.screen {
             screen.process(&bytes);
             self.save_at.get_or_insert_with(|| Instant::now() + SAVE_DELAY);
+        }
+        if let Some(resume) = &mut self.resume {
+            resume.at = (Instant::now() + RESUME_QUIET).min(resume.latest);
         }
         let Some(viewer) = &self.viewer else { return };
         self.in_flight += bytes.len() as u64;
@@ -459,6 +528,60 @@ impl Session {
         let _ = self.killer.kill();
     }
 
+    fn poll_agent(&mut self) {
+        let seen = self.foreground_agent();
+        let changes = self.agent.observe(seen, crate::time::now_millis());
+        if changes.record {
+            self.write_meta();
+        }
+        if changes.state {
+            self.send_agent();
+        }
+    }
+
+    /// The program in the foreground of the shell's terminal, when it is an
+    /// AI agent.
+    fn foreground_agent(&mut self) -> Option<agent::Seen> {
+        let Some(leader) = self.foreground_program() else {
+            self.foreground = None;
+            return None;
+        };
+        let settled = self.foreground.as_ref().is_some_and(|seen| seen.pid == leader && seen.reads >= SETTLED_READS);
+        if !settled {
+            let record = crate::process::process_args(leader).and_then(|argv| agent::identify(&argv));
+            let reads = match &self.foreground {
+                Some(seen) if seen.pid == leader && seen.record == record => seen.reads + 1,
+                _ => 1,
+            };
+            self.foreground = Some(Foreground { pid: leader, record, reads });
+        }
+        let record = self.foreground.as_ref()?.record.clone()?;
+        let report = (record.kind == crate::protocol::AgentKind::Claude)
+            .then(|| agent::read_claude_report(agent::claude_home(), leader))
+            .flatten();
+        let last = self.screen.as_ref().map(|screen| screen.last_text(AGENT_ROWS)).unwrap_or_default();
+        let cwd = process_cwd(leader).map(|cwd| cwd.to_string_lossy().into_owned());
+        Some(agent::look(record, leader, cwd, report, &last))
+    }
+
+    /// The leader of the terminal's foreground process group, unless that is
+    /// the shell itself.
+    #[cfg(unix)]
+    fn foreground_program(&self) -> Option<u32> {
+        let leader = u32::try_from(self.master.process_group_leader()?).ok()?;
+        (leader != self.pid).then_some(leader)
+    }
+
+    /// ConPTY has no foreground process group.
+    #[cfg(not(unix))]
+    fn foreground_program(&self) -> Option<u32> {
+        None
+    }
+
+    fn send_agent(&self) {
+        self.send_json(&ServerMessage::Agent { agent: self.agent.state().cloned() });
+    }
+
     fn refresh_cwd(&mut self) {
         if let Some(cwd) = process_cwd(self.pid) {
             self.cwd = cwd;
@@ -484,6 +607,7 @@ impl Session {
             target: self.target.clone(),
             cwd: self.cwd.clone(),
             saved_at: crate::time::now_iso(),
+            agent: self.agent.record().cloned(),
         };
         if let Err(error) = self.store.write_meta(&meta) {
             eprintln!("session {}: save failed: {error}", self.id);

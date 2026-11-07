@@ -19,6 +19,8 @@ export interface Settings {
   layout: Layout;
   /** Terminal colors; each theme has a dark and a light set that follow `theme`. */
   colorTheme: ColorThemeId;
+  /** A shell that comes back as "restored" resumes the AI agent it ran. */
+  resumeAgents: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -27,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoUpdate: true,
   layout: "top",
   colorTheme: "default",
+  resumeAgents: true,
 };
 
 const KEY = "westerm.settings";
@@ -47,6 +50,7 @@ export function parseSettings(raw: string | null): Settings {
     autoUpdate: typeof saved.autoUpdate === "boolean" ? saved.autoUpdate : DEFAULT_SETTINGS.autoUpdate,
     layout: saved.layout === "sidebar" ? "sidebar" : DEFAULT_SETTINGS.layout,
     colorTheme: isColorTheme(saved.colorTheme) ? saved.colorTheme : DEFAULT_SETTINGS.colorTheme,
+    resumeAgents: typeof saved.resumeAgents === "boolean" ? saved.resumeAgents : DEFAULT_SETTINGS.resumeAgents,
   };
 }
 

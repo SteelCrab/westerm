@@ -17,6 +17,7 @@ mod cwd;
 mod host;
 mod i18n;
 mod ipc;
+mod process;
 // Windows leaves out the server side of remote westerm (the gate and
 // remote-setup run on Unix only), so the code only it uses is unused there.
 // Unix builds still report unused code.

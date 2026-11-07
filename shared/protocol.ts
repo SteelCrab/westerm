@@ -75,8 +75,55 @@ export function isPermanentFailure(reason: RemoteFailure): boolean {
   return reason !== "unreachable" && reason !== "transport";
 }
 
+/** An AI agent in a shell pane, found by the PTY host (native/src/host/agent.rs). */
+export type AgentKind = "claude" | "codex";
+/** waiting: the agent asks the user, such as a permission or approval question. */
+export type AgentStatus = "working" | "waiting" | "idle";
+
+/** The agent, its state, and what its info card shows; null for what the host does not know. */
+export interface AgentState {
+  kind: AgentKind;
+  status: AgentStatus;
+  /** When this status began, in milliseconds since the epoch. */
+  since: number | null;
+  /** When the host first saw this agent, in milliseconds since the epoch. */
+  started: number | null;
+  conversation: string | null;
+  /** The command a restored shell types to resume it. */
+  resume: string | null;
+  cwd: string | null;
+  version: string | null;
+  /** The model its command line names. */
+  model: string | null;
+}
+
+/** The host's agent field, or null for anything this page does not know (a newer host). */
+export function parseAgentState(value: unknown): AgentState | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const kinds: unknown[] = ["claude", "codex"];
+  const statuses: unknown[] = ["working", "waiting", "idle"];
+  if (!kinds.includes(raw.kind) || !statuses.includes(raw.status)) return null;
+  // The details only fill the info card: a wrong one is left out, not the agent.
+  const time = (field: unknown) => (typeof field === "number" && Number.isFinite(field) && field > 0 ? field : null);
+  const text = (field: unknown) => (typeof field === "string" && field.length > 0 && field.length <= 4096 ? field : null);
+  return {
+    kind: raw.kind as AgentKind,
+    status: raw.status as AgentStatus,
+    since: time(raw.since),
+    started: time(raw.started),
+    conversation: text(raw.conversation),
+    resume: text(raw.resume),
+    cwd: text(raw.cwd),
+    version: text(raw.version),
+    model: text(raw.model),
+  };
+}
+
 export type ServerMessage =
   | { type: "ready"; pid: number; mode: AttachMode }
+  /** After "ready" and on every change in a shell: the agent in its foreground, or null. */
+  | { type: "agent"; agent: AgentState | null }
   | { type: "exit"; code: number; signal: number }
   | { type: "error"; message: string }
   /** First on a remote window's status stream: the local westerm's version line. */

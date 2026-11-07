@@ -3,6 +3,8 @@ import {
   CLOSE_TAKEN_OVER,
   REMOTE_CLOSE_PATH,
   WS_PATH,
+  parseAgentState,
+  type AgentState,
   type AttachMode,
   type ClientMessage,
   type PtySize,
@@ -15,6 +17,8 @@ import { REMOTE_TARGET, serverPath, shouldPostRemoteClose } from "../remoteWindo
 
 export type ConnectionEvent =
   | { type: "ready"; pid: number; mode: AttachMode }
+  /** The AI agent in a shell's foreground, or null. */
+  | { type: "agent"; agent: AgentState | null }
   | { type: "exit"; code: number; signal: number }
   | { type: "error"; message: string }
   /** The socket closed without an exit. `takenOver`: another window has the sessions. */
@@ -31,6 +35,8 @@ export interface ConnectionOptions {
   target: string | null;
   /** Language of text the server writes: the restore notice and errors. */
   lang: Locale;
+  /** A shell that comes back as "restored" resumes its AI agent. */
+  resumeAgents: boolean;
   size: PtySize;
   /** Parse output synchronously; bytes are acknowledged after this returns. */
   onOutput: (bytes: Uint8Array) => void;
@@ -69,6 +75,7 @@ export class PtyConnection {
     if (options.url) query.set("url", options.url);
     if (options.cwdFrom) query.set("cwdFrom", options.cwdFrom);
     if (options.target) query.set("target", options.target);
+    if (!options.resumeAgents) query.set("resume", "off");
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     this.ws = new WebSocket(`${scheme}//${location.host}${serverPath(WS_PATH)}?${query}`);
     this.ws.binaryType = "arraybuffer";
@@ -140,6 +147,7 @@ export class PtyConnection {
     }
     if (message.type === "exit" || message.type === "error") this.finish(message);
     else if (message.type === "ready") this.options.onEvent(message);
+    else if (message.type === "agent") this.options.onEvent({ type: "agent", agent: parseAgentState(message.agent) });
   }
 
   /** Acknowledge parsed bytes in batches so the server can keep the PTY flowing. */

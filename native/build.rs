@@ -15,12 +15,14 @@ const HOST_SOURCES: &[&str] = &[
     "src/time.rs",
     "src/spawn.rs",
     "src/cwd.rs",
+    "src/process.rs",
     "src/state_dir.rs",
     "src/screen.rs",
     "src/host/mod.rs",
     "src/host/store.rs",
     "src/host/session.rs",
     "src/host/registry.rs",
+    "src/host/agent.rs",
 ];
 
 fn main() {

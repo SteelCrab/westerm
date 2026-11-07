@@ -4,9 +4,12 @@ import type { WorkspaceColor, WorkspaceIcon } from "../../shared/workspace-file.
 import { afterMidpoint, carries, insertionIndex, PANE_MIME, startDrag, TAB_MIME } from "../dnd.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KindIcon } from "../kinds.tsx";
+import { AgentMark, TabAgentMark } from "./AgentMark.tsx";
 import {
   activeTab,
+  agentDisplay,
   sessionLabel,
+  tabAgentDisplay,
   tabLabel,
   tabSessions,
   visibleTabs,
@@ -152,6 +155,7 @@ function TabNode(props: TabNodeProps) {
   const { state, tab, index, active, expanded, renaming } = props;
   const { t } = useI18n();
   const sessions = tabSessions(state, tab.id);
+  const agents = tabAgentDisplay(state, tab.id);
   const label = tabLabel(state, tab, t.tabs.untitled);
   const editing = renaming?.kind === "tab" && renaming.id === tab.id && renaming.where === "sidebar";
   const startRename = () => props.onRename({ kind: "tab", id: tab.id, where: "sidebar" });
@@ -231,6 +235,7 @@ function TabNode(props: TabNodeProps) {
                 <span className={`tree-label${tab.name ? " custom" : ""}`}>{label}</span>
               </button>
             )}
+            {agents && <TabAgentMark display={agents} />}
             <span className="tree-count" title={t.sidebar.sessionCount(sessions.length)}>
               {sessions.length}
             </span>
@@ -313,12 +318,12 @@ function SessionNode(props: SessionNodeProps) {
             aria-label={label}
             onClick={() => onFocus(session.id)}
           >
-            <KindIcon kind={session.kind} size={15} />
+            <SessionIcon session={session} size={15} />
             <StatusDot status={session.status} />
           </button>
         ) : (
           <>
-            <KindIcon kind={session.kind} size={14} />
+            <SessionIcon session={session} size={14} />
             {editing ? (
               <InlineRename
                 value={session.name ?? ""}
@@ -356,5 +361,14 @@ function SessionNode(props: SessionNodeProps) {
         )}
       </div>
     </li>
+  );
+}
+
+/** The AI mark while an agent runs in the session, else its kind icon. */
+function SessionIcon({ session, size }: { session: Session; size: number }) {
+  return session.agent ? (
+    <AgentMark agent={session.agent} display={agentDisplay(session) ?? "idle"} size={size} detail={session.title} />
+  ) : (
+    <KindIcon kind={session.kind} size={size} />
   );
 }

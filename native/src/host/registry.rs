@@ -14,9 +14,9 @@ use std::time::Duration;
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use tokio::sync::{mpsc, oneshot};
 
-use super::session::{self, Command, Handle, Restored, Spec};
+use super::session::{self, Command, Handle, Restored, Resuming, Spec};
 use super::store::SessionStore;
-use crate::protocol::{AttachMode, AttachRequest, ServerMessage};
+use crate::protocol::{AttachMode, AttachRequest, ServerMessage, SessionKind};
 use crate::spawn::LaunchSpec;
 use crate::state_dir::home_dir;
 
@@ -112,6 +112,12 @@ impl Registry {
                 lang: request.lang,
             })
         });
+        // A shell that ran an AI agent resumes it, unless the window turned that off.
+        let resuming = meta
+            .as_ref()
+            .filter(|_| request.resume && request.kind == SessionKind::Shell)
+            .and_then(|meta| meta.agent.clone())
+            .map(|record| Resuming { record, lang: request.lang });
         let launch = LaunchSpec {
             kind: request.kind,
             url: request.url.clone().or_else(|| meta.as_ref().and_then(|m| m.url.clone())),
@@ -121,7 +127,7 @@ impl Registry {
         let mode = if meta.is_some() { AttachMode::Revived } else { AttachMode::New };
         self.serial += 1;
         let spec = Spec { id: request.id.clone(), launch };
-        match session::start(spec, request.size, self.store.clone(), restored, self.serial, ended.clone()) {
+        match session::start(spec, request.size, self.store.clone(), restored, resuming, self.serial, ended.clone()) {
             Ok(handle) => {
                 let _ = handle.tx.send(Command::Attach { ws, size: request.size, mode, window });
                 self.live.insert(request.id, handle);

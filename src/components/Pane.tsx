@@ -1,22 +1,27 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, GripVertical, Maximize2, Minimize2, RotateCcw, X } from "lucide-react";
 import { carries, dropZone, PANE_MIME, startDrag, type DropZone } from "../dnd.ts";
 import { DocsView } from "../docs/DocsView.tsx";
 import { useI18n } from "../i18n/index.tsx";
 import { installHint, type InstallHint } from "../installHints.ts";
 import { KindIcon } from "../kinds.tsx";
+import { AgentCard } from "./AgentCard.tsx";
+import { AgentMark } from "./AgentMark.tsx";
 import { REMOTE_TARGET } from "../remoteWindow.ts";
 import type { TerminalThemeColors } from "@wterm/core";
 import type { ConnectionEvent } from "../terminal/connection.ts";
 import type { TerminalFont } from "../terminal/fonts.ts";
 import { TerminalView } from "../terminal/TerminalView.tsx";
-import { sessionLabel, type Session, type DashboardAction } from "../workspace.ts";
+import { useCopy } from "../useCopy.ts";
+import { agentDisplay, sessionLabel, type Session, type DashboardAction } from "../workspace.ts";
 import { InlineRename, type RenameTarget } from "./InlineRename.tsx";
 import { StatusDot } from "./StatusDot.tsx";
 
 interface PaneProps {
   session: Session;
   font: TerminalFont;
+  /** A restored shell resumes its AI agent (Settings ▸ Terminal). */
+  resumeAgents: boolean;
   colors: TerminalThemeColors;
   focused: boolean;
   maximized: boolean;
@@ -52,27 +57,11 @@ function exitDetail(event: Extract<ConnectionEvent, { type: "exit" }>): string {
 function InstallCommand({ command }: { command: string }) {
   const { t } = useI18n();
   // The label goes back to "Copy" after a moment. A failed copy asks the user to select the text.
-  const [result, setResult] = useState<"copied" | "failed" | null>(null);
-  useEffect(() => {
-    if (!result) return;
-    const timer = setTimeout(() => setResult(null), 1500);
-    return () => clearTimeout(timer);
-  }, [result]);
-  const copy = () => {
-    // `navigator.clipboard` is missing outside secure contexts, and writeText can throw.
-    try {
-      void navigator.clipboard.writeText(command).then(
-        () => setResult("copied"),
-        () => setResult("failed"),
-      );
-    } catch {
-      setResult("failed");
-    }
-  };
+  const [result, copy] = useCopy();
   return (
     <div className="pane-install">
       <code>{command}</code>
-      <button type="button" className="button" onClick={copy}>
+      <button type="button" className="button" onClick={() => copy(command)}>
         {result === "copied" ? <Check size={14} /> : <Copy size={14} />} {result === "copied" ? t.pane.hint.copied : t.pane.hint.copy}
       </button>
       {result === "failed" && <span role="alert">{t.pane.hint.copyFailed}</span>}
@@ -102,11 +91,22 @@ export function Pane(props: PaneProps) {
   const [zone, setZone] = useState<DropZone | null>(null);
   const label = sessionLabel(session);
   const editing = renaming?.kind === "session" && renaming.id === id && renaming.where === "pane";
+  // The AI mark opens the agent's info card; the card goes with the agent.
+  const [cardOpen, setCardOpen] = useState(false);
+  const mark = useRef<HTMLButtonElement>(null);
+  const closeCard = useCallback(() => setCardOpen(false), []);
+  const hasAgent = session.agent !== null;
+  useEffect(() => {
+    if (!hasAgent) setCardOpen(false);
+  }, [hasAgent]);
 
   const handleEvent = (event: ConnectionEvent) => {
     switch (event.type) {
       case "ready":
         dispatch({ type: "ready", id, pid: event.pid, mode: event.mode });
+        break;
+      case "agent":
+        dispatch({ type: "agent", id, agent: event.agent });
         break;
       case "exit":
         dispatch({ type: "status", id, status: "exited", detail: exitDetail(event), exitCode: event.signal ? null : event.code });
@@ -194,7 +194,23 @@ export function Pane(props: PaneProps) {
         onDoubleClick={() => dispatch({ type: "toggleMaximize", id })}
       >
         <GripVertical size={13} className="pane-grip" aria-hidden="true" />
-        <KindIcon kind={session.kind} size={14} />
+        {session.agent ? (
+          <button
+            type="button"
+            ref={mark}
+            className="agent-button"
+            aria-label={t.agent.card.open(t.agent.names[session.agent.kind])}
+            aria-haspopup="dialog"
+            aria-expanded={cardOpen}
+            onClick={() => setCardOpen((open) => !open)}
+            // The header's double-click maximizes; two presses here only toggle the card.
+            onDoubleClick={(event) => event.stopPropagation()}
+          >
+            <AgentMark agent={session.agent} display={agentDisplay(session) ?? "idle"} size={14} detail={session.title} />
+          </button>
+        ) : (
+          <KindIcon kind={session.kind} size={14} />
+        )}
         {editing ? (
           <InlineRename
             value={session.name ?? ""}
@@ -242,6 +258,17 @@ export function Pane(props: PaneProps) {
           <X size={14} />
         </button>
       </header>
+      {cardOpen && session.agent && (
+        <AgentCard
+          agent={session.agent}
+          display={agentDisplay(session) ?? "idle"}
+          resumeAllowed={props.resumeAgents}
+          autoResume={session.autoResume}
+          onAutoResume={(on) => dispatch({ type: "autoResume", id, on })}
+          onClose={closeCard}
+          anchor={mark}
+        />
+      )}
       <div className="pane-body">
         {session.kind === "docs" ? (
           <DocsView
@@ -266,6 +293,7 @@ export function Pane(props: PaneProps) {
           label={label}
           font={font}
           colors={colors}
+          resumeAgents={props.resumeAgents && session.autoResume}
           focusNonce={focusNonce}
           focused={focused && !covered}
           visible={!covered}

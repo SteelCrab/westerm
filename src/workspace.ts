@@ -1,4 +1,4 @@
-import type { AttachMode, PaneKind } from "../shared/protocol.ts";
+import type { AgentState, AgentStatus, AttachMode, PaneKind } from "../shared/protocol.ts";
 import {
   DEFAULT_WORKSPACE_ICON,
   positionColor,
@@ -69,7 +69,18 @@ export interface Session {
   generation: number;
   /** A docs pane's state; null for every other kind. */
   docs: DocsPane | null;
+  /** The AI agent in a shell's foreground, as the PTY host reports it. */
+  agent: AgentState | null;
+  /** The agent finished while this pane was not in view. */
+  agentUnseen: boolean;
+  /** A restored shell here resumes its agent, when Settings allow it. Saved with the layout. */
+  autoResume: boolean;
 }
+
+/** What an agent's mark shows: its status, or "done" until its pane is seen. */
+export type AgentDisplay = AgentStatus | "done";
+/** What a tab shows for its agents; an idle agent shows nothing there. */
+export type TabAgentDisplay = Exclude<AgentDisplay, "idle">;
 
 /** A tab owns a split layout of panes. Focus and maximize are remembered per tab. */
 export interface Tab {
@@ -141,6 +152,9 @@ export type DashboardAction =
   | { type: "toggleMaximize"; id: string }
   | { type: "status"; id: string; status: SessionStatus; detail?: string | null; notice?: Notice | null; exitCode?: number | null }
   | { type: "title"; id: string; title: string }
+  | { type: "agent"; id: string; agent: AgentState | null }
+  /** The pane's own choice to resume its agent after a restore (the agent's info card). */
+  | { type: "autoResume"; id: string; on: boolean }
   /** An empty name returns the session to the program's title. */
   | { type: "renameSession"; id: string; name: string }
   /** `manual`: the user pressed restart, so the reconnect budget starts over. */
@@ -221,6 +235,30 @@ export const NAME_MAX = 60;
 /** Collapses whitespace and bounds length; empty means "no custom name". */
 export function cleanName(name: string): string | null {
   return name.replace(/\s+/g, " ").trim().slice(0, NAME_MAX) || null;
+}
+
+export function agentDisplay(session: Session): AgentDisplay | null {
+  if (!session.agent) return null;
+  return session.agent.status === "idle" && session.agentUnseen ? "done" : session.agent.status;
+}
+
+/** The most urgent agent state among a tab's panes. */
+export function tabAgentDisplay(state: Dashboard, tabId: string): TabAgentDisplay | null {
+  const shown = tabSessions(state, tabId).map(agentDisplay);
+  const order: TabAgentDisplay[] = ["waiting", "done", "working"];
+  return order.find((display) => shown.includes(display)) ?? null;
+}
+
+/** The pane the user looks at: the focused pane of the tab in view. */
+function inView(state: Dashboard, sessionId: string): boolean {
+  return activeTab(state).focusedId === sessionId;
+}
+
+/** A finished agent stops showing "done" once its pane is in view. */
+function markSeen(state: Dashboard): Dashboard {
+  const seen = activeTab(state).focusedId;
+  const session = seen ? state.sessions.find((item) => item.id === seen) : undefined;
+  return session?.agentUnseen ? patch(state, session.id, { agentUnseen: false }) : state;
 }
 
 export function sessionLabel(session: Session): string {
@@ -367,6 +405,9 @@ function newSession(
     retries: 0,
     generation: 0,
     docs: kind === "docs" ? (docs ?? NO_DOCS) : null,
+    agent: null,
+    agentUnseen: false,
+    autoResume: true,
   };
 }
 
@@ -394,8 +435,8 @@ export function toSaved(state: Dashboard): SavedDashboard {
       focusedId,
       maximizedId,
     })),
-    sessions: state.sessions.flatMap(({ id, kind, title, name, url, target }) =>
-      kind === "docs" ? [] : [{ id, kind, title, name, url, target }],
+    sessions: state.sessions.flatMap(({ id, kind, title, name, url, target, autoResume }) =>
+      kind === "docs" ? [] : [{ id, kind, title, name, url, target, ...(!autoResume && { autoResume: false as const }) }],
     ),
     docs,
     workspaces: state.workspaces.map(({ id, name, activeTabId, icon, color }) => ({ id, name, activeTabId, icon, color })),
@@ -534,6 +575,11 @@ function dropLegacyRemotes(state: Dashboard, ids: readonly string[]): Dashboard 
 }
 
 export function dashboardReducer(state: Dashboard, action: DashboardAction): Dashboard {
+  const next = reduce(state, action);
+  return next === state ? state : markSeen(next);
+}
+
+function reduce(state: Dashboard, action: DashboardAction): Dashboard {
   switch (action.type) {
     case "open": {
       const tab = activeTab(state);
@@ -596,6 +642,7 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
           ...saved.sessions.map((item) => ({
             ...newSession(item.id, item.kind, item.title, item.url, item.target ?? null),
             name: item.name,
+            autoResume: item.autoResume !== false,
           })),
           ...(saved.docs ?? []).map(({ id, title, name, ...docs }) => ({
             ...newSession(id, "docs", title, null, null, docs),
@@ -615,17 +662,32 @@ export function dashboardReducer(state: Dashboard, action: DashboardAction): Das
       // Nothing is attached yet, so closing a legacy remote pane ends no session.
       return dropLegacyRemotes(loaded, saved.legacyRemoteIds ?? []);
     }
-    case "status":
+    case "status": {
+      // A shell that ended took its agent with it.
+      const ended = action.status === "exited" || action.status === "error";
       return patch(state, action.id, {
         status: action.status,
         detail: action.detail ?? null,
         notice: action.notice ?? null,
         exitCode: action.exitCode ?? null,
+        ...(ended && { agent: null, agentUnseen: false }),
       });
+    }
+    case "agent": {
+      const session = state.sessions.find((item) => item.id === action.id);
+      if (!session) return state;
+      const busy = session.agent?.status === "working" || session.agent?.status === "waiting";
+      const idle = action.agent?.status === "idle";
+      // Unseen from the moment it finishes out of view until its pane is seen.
+      const agentUnseen = idle && (session.agentUnseen || (busy && !inView(state, action.id)));
+      return patch(state, action.id, { agent: action.agent, agentUnseen });
+    }
     case "title": {
       const title = action.title.trim();
       return title ? patch(state, action.id, { title }) : state;
     }
+    case "autoResume":
+      return patch(state, action.id, { autoResume: action.on });
     case "renameSession":
       return patch(state, action.id, { name: cleanName(action.name) });
     case "restart": {

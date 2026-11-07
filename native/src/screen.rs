@@ -65,6 +65,16 @@ impl Screen {
         out.into_bytes()
     }
 
+    /// Up to `count` rows in view as plain text, ending at the last row with
+    /// text: where an agent shows its status line and its questions, also
+    /// before its output reaches the bottom of the screen.
+    pub fn last_text(&self, count: usize) -> String {
+        let screen = self.parser.screen();
+        let rows: Vec<String> = screen.rows(0, screen.size().1.get()).collect();
+        let end = rows.iter().rposition(|row| !row.trim().is_empty()).map_or(0, |last| last + 1);
+        rows[end.saturating_sub(count)..end].join("\n")
+    }
+
     /// Plain colored lines for disk, without modes. None while a full-screen
     /// program runs: the previous snapshot of the normal screen stays.
     pub fn snapshot(&self) -> Option<String> {
@@ -85,6 +95,15 @@ impl Screen {
 /// Shown between a saved screen and the new process that replaces it.
 pub fn restored_notice(saved_at: &str, lang: Lang) -> String {
     format!("\x1b[0m\r\n\x1b[2m── {} ──\x1b[0m\r\n", lang.restored(&crate::time::local_label(saved_at)))
+}
+
+/// Shown under the restore notice when the shell resumes an AI agent.
+pub fn agent_notice(agent: &str, conversation: Option<&str>, lang: Lang) -> String {
+    let what = match conversation {
+        Some(id) => format!("{agent} · {}", id.get(..8).unwrap_or(id)),
+        None => agent.to_owned(),
+    };
+    format!("\x1b[2m── {} ──\x1b[0m\r\n", lang.resuming(&what))
 }
 
 #[cfg(test)]
@@ -122,6 +141,18 @@ mod tests {
         assert!(rebuilt.screen().alternate_screen());
         assert!(rebuilt.screen().contents().contains("vim buffer"));
         assert!(screen.snapshot().is_none(), "no snapshot of a full-screen program");
+    }
+
+    #[test]
+    fn last_text_ends_at_the_last_row_with_text() {
+        let mut screen = Screen::new(SIZE);
+        screen.process(b"one\r\ntwo\r\n* esc to interrupt");
+        assert_eq!(screen.last_text(2), "two\n* esc to interrupt", "the empty bottom row is skipped");
+        assert_eq!(screen.last_text(99).lines().count(), 3);
+        screen.process(b"\x1b[2J");
+        assert_eq!(screen.last_text(5), "");
+        assert!(agent_notice("Codex", None, Lang::En).contains("Resuming Codex"));
+        assert!(agent_notice("Claude Code", Some("9f00f957-d4e0"), Lang::Ko).contains("Claude Code · 9f00f957"));
     }
 
     #[test]
