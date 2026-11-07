@@ -1,6 +1,6 @@
 [package]
 name = "westerm-app"
-version = "0.2.1"
+version = "0.3.0"
 description = "The westerm desktop app: a window around the westerm dashboard"
 license = "MIT"
 repository = "https://github.com/SteelCrab/westerm"

@@ -4,6 +4,8 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-07
+
 ### Added
 
 - Desktop app for Windows and Linux, from the same code as the macOS app (Tauri 2, in `desktop/`). Windows: `westerm-windows-app-setup.exe`. Linux: `.deb` and `.rpm` for x64 and arm64. Like the macOS app, it opens the westerm on port 4317 or starts the one it ships, and quitting it keeps your shells running. A second launch brings the open window forward. On Linux an update opens the release page; install the new package from there.
@@ -106,7 +108,8 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/SteelCrab/westerm/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/SteelCrab/westerm/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/SteelCrab/westerm/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SteelCrab/westerm/releases/tag/v0.1.0
