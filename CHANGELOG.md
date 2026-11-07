@@ -4,6 +4,11 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Agents sidebar: the Agents button in the activity bar opens a list of the workspace's shells grouped by the folder they run in, with the git branch, each agent's state and time, and past conversations. **Start here** opens a new shell in that folder and starts Claude Code, Codex, or Gemini CLI; **Resume** continues a past conversation. It opens as a drawer on phone-wide windows, and in a remote window it shows the server's shells.
+- Gemini CLI: detected like Claude Code and Codex (AI mark, state, card), and resumed after a restore with `gemini --resume <id>` or `gemini --resume latest`. Its past conversations show in the agents sidebar.
+
 ## [0.3.0] - 2026-11-07
 
 ### Added
