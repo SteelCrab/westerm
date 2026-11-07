@@ -1,8 +1,8 @@
 name: Release
 
 # Push a version tag such as v0.2.0. Each platform is tested and built, the
-# macOS app is bundled, and a GitHub release is published with the archives
-# and their SHA-256 sums.
+# desktop app is bundled for macOS, Windows, and Linux (app.yml), and a GitHub
+# release is published with the archives and their SHA-256 sums.
 # install.sh and install.ps1 download from that release.
 on:
   push:
@@ -20,9 +20,10 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' native/Cargo.toml | head -n 1)
+          app=$(sed -n 's/^version = "\(.*\)"/\1/p' desktop/Cargo.toml | head -n 1)
           npm=$(node -p "require('./package.json').version")
-          if [ "$tag" != "$cargo" ] || [ "$tag" != "$npm" ]; then
-            echo "::error::tag v$tag does not match native/Cargo.toml ($cargo) and package.json ($npm)"
+          if [ "$tag" != "$cargo" ] || [ "$tag" != "$app" ] || [ "$tag" != "$npm" ]; then
+            echo "::error::tag v$tag does not match native/Cargo.toml ($cargo), desktop/Cargo.toml ($app), and package.json ($npm)"
             exit 1
           fi
       - name: CHANGELOG.md has notes for this version
@@ -98,33 +99,11 @@ jobs:
           path: westerm-${{ matrix.target }}.*
           if-no-files-found: error
 
+  # The desktop app for macOS, Windows, and Linux. app.yml builds it, the
+  # same way it does for pull requests; the release job publishes its files.
   app:
     needs: check
-    name: build (macOS app)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - run: npm ci
-      - name: Build westerm.app (universal)
-        run: sh macos/build-app.sh
-      - name: Checksum
-        run: |
-          for file in westerm-macos-app.zip westerm-macos-app.dmg; do
-            mv "dist-app/$file" .
-            shasum -a 256 "$file" > "$file.sha256"
-          done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-app
-          path: westerm-macos-app.*
-          if-no-files-found: error
+    uses: ./.github/workflows/app.yml
 
   release:
     needs: [build, app]

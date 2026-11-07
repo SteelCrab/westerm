@@ -2,10 +2,11 @@
 // the Applications folder and one line of instructions. Finder shows the
 // window at 640 × 400 points; this writes that size and a 2x copy.
 //
-//   swift macos/make-dmg-background.swift <out.png> <out@2x.png>
+//   swift desktop/assets/make-dmg-background.swift bg.png bg@2x.png
+//   tiffutil -cathidpicheck bg.png bg@2x.png -out desktop/assets/dmg-background.tiff
 //
-// The icon centers in macos/build-dmg.sh (160, 190 and 480, 190) match the
-// arrow here.
+// The icon centers in desktop/tauri.conf.json (bundle.macOS.dmg: 160, 190
+// and 480, 190) match the arrow here.
 
 import AppKit
 

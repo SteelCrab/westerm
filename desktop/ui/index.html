@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- The app's own page, shown until the dashboard opens and when westerm
+     cannot start or stops: index.html?state=cannot-start|stopped&log=<path>.
+     Text in the dashboard's four languages (src/i18n). -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>westerm</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        font: 14px -apple-system, "Segoe UI", system-ui, sans-serif;
+        color: #8b8f98;
+        background: #f6f7f9;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #16181d;
+        }
+      }
+      p {
+        max-width: 36em;
+        padding: 0 24px;
+        text-align: center;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <p id="message"></p>
+    <script>
+      const text = {
+        en: {
+          starting: () => "Starting westerm…",
+          "cannot-start": (log) => `westerm could not start. See ${log}.`,
+          stopped: (log) => `westerm stopped. See ${log}.`,
+        },
+        ko: {
+          starting: () => "westerm을 시작하는 중…",
+          "cannot-start": (log) => `westerm을 시작하지 못했습니다. ${log}를 확인하세요.`,
+          stopped: (log) => `westerm이 멈췄습니다. ${log}를 확인하세요.`,
+        },
+        ja: {
+          starting: () => "westerm を起動中…",
+          "cannot-start": (log) => `westerm を起動できませんでした。${log} を確認してください。`,
+          stopped: (log) => `westerm が停止しました。${log} を確認してください。`,
+        },
+        zh: {
+          starting: () => "正在启动 westerm…",
+          "cannot-start": (log) => `westerm 无法启动。请查看 ${log}。`,
+          stopped: (log) => `westerm 已停止。请查看 ${log}。`,
+        },
+      };
+      const code = (navigator.language || "en").slice(0, 2).toLowerCase();
+      const lines = text[code] || text.en;
+      const query = new URLSearchParams(location.search);
+      const say = lines[query.get("state")] || lines.starting;
+      document.getElementById("message").textContent = say(query.get("log") || "westerm.log");
+    </script>
+  </body>
+</html>
