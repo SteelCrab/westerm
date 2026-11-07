@@ -66,6 +66,7 @@ const en = {
     lines: (count: number) => `${count} lines`,
     keys: (mod: string) => `${mod}E view/edit · ${mod}S save`,
     elsewhere: (count: number) => `${count} unsaved in other folders`,
+    unkept: "Storage full: this draft is lost on close",
     error: {
       missing: "The file is not there anymore.",
       tooLarge: "The file is larger than 2 MiB.",
@@ -419,6 +420,7 @@ const ko: Messages = {
     lines: (count) => `${count}줄`,
     keys: (mod) => `${mod}E 보기/편집 · ${mod}S 저장`,
     elsewhere: (count) => `다른 폴더에 저장 안 한 문서 ${count}개`,
+    unkept: "저장 공간 부족: 닫으면 초안이 사라집니다",
     error: {
       missing: "파일이 더 이상 없습니다.",
       tooLarge: "파일이 2 MiB보다 큽니다.",
@@ -746,6 +748,7 @@ const ja: Messages = {
     lines: (count) => `${count} 行`,
     keys: (mod) => `${mod}E 表示/編集 · ${mod}S 保存`,
     elsewhere: (count) => `他のフォルダに未保存のドキュメント ${count} 件`,
+    unkept: "保存領域不足：閉じると下書きは失われます",
     error: {
       missing: "ファイルがもうありません。",
       tooLarge: "ファイルが 2 MiB より大きいです。",
@@ -1073,6 +1076,7 @@ const zh: Messages = {
     lines: (count) => `${count} 行`,
     keys: (mod) => `${mod}E 查看/编辑 · ${mod}S 保存`,
     elsewhere: (count) => `其他文件夹中有 ${count} 个未保存的文档`,
+    unkept: "存储空间不足：关闭后草稿将丢失",
     error: {
       missing: "文件已不存在。",
       tooLarge: "文件大于 2 MiB。",
