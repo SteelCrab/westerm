@@ -3188,6 +3188,28 @@ body.resizing-rows .pane {
   font-size: 11px;
 }
 
+.docs-status > span {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* When the bar is short, the warning and then the key hints give way. */
+.docs-status > .docs-unkept,
+.docs-status > .docs-keys {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docs-status > .docs-keys {
+  flex-shrink: 100;
+}
+
+.docs-unkept {
+  color: var(--warn);
+}
+
 /* Rendered Markdown. */
 .md {
   max-width: 820px;

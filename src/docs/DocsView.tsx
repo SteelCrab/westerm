@@ -602,8 +602,13 @@ export function DocsView(props: DocsViewProps) {
           <div className="docs-status">
             {file && <span>{t.docs.lines(lineCount)}</span>}
             {file && <span>{draft?.crlf ?? current?.crlf ? "CRLF" : "LF"}</span>}
+            {key && drafts.unkept(key) && (
+              <span className="docs-unkept" role="status" title={t.docs.unkept}>
+                {t.docs.unkept}
+              </span>
+            )}
             <span className="pane-spacer" />
-            <span>{t.docs.keys(modKey)}</span>
+            <span className="docs-keys">{t.docs.keys(modKey)}</span>
           </div>
         </section>
       </div>
