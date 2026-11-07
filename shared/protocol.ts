@@ -33,8 +33,26 @@ export type ClientMessage =
   | { type: "input"; data: string }
   | ({ type: "resize" } & PtySize)
   | { type: "ack"; bytes: number }
+  /** One pixel update is drawn; the host may send the next. */
+  | { type: "painted" }
   /** The user closed the pane: end the process and forget the session. */
   | { type: "close" };
+
+/**
+ * How a pixel app's pane takes its pictures (WebSocket ?pixels=): raw
+ * rectangles locally, deflated ones in a remote window. Without it the host
+ * passes the app's Kitty images through, base64 and all.
+ */
+export type PixelCodec = "raw" | "deflate";
+
+/**
+ * After a "ready" with `pixels: true`, every binary message starts with a
+ * kind byte: terminal output, or a pixel update (native/src/pixels/mod.rs).
+ */
+export const KIND_TEXT = 0;
+export const KIND_PIXELS = 1;
+/** Pixel update flag: rectangle data is raw deflate. */
+export const PIXEL_FLAG_DEFLATE = 1;
 
 /**
  * new: a fresh process. reattached: the same live process, screen replayed.
@@ -121,7 +139,8 @@ export function parseAgentState(value: unknown): AgentState | null {
 }
 
 export type ServerMessage =
-  | { type: "ready"; pid: number; mode: AttachMode }
+  /** `pixels`: the host sends pixel updates (see KIND_TEXT). */
+  | { type: "ready"; pid: number; mode: AttachMode; pixels?: boolean }
   /** After "ready" and on every change in a shell: the agent in its foreground, or null. */
   | { type: "agent"; agent: AgentState | null }
   | { type: "exit"; code: number; signal: number }

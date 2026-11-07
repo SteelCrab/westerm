@@ -17,6 +17,11 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 - The macOS app is now the same Tauri app as on Windows and Linux; the Swift app (`macos/`) is gone. It keeps the window, the remote windows, the menu, and the update from `westerm-macos-app.zip`, so the old app updates to it as before. Its log moves to `~/Library/Logs/io.github.steelcrab.westerm/westerm.log`. Check for Updates now opens the dashboard's update panel.
 - `GET /api/update` reports the channel `app` instead of `mac-app` for a westerm inside the desktop app.
 - ⌘ terminal keys (⌘1–9, ⌘] and so on) work in the macOS app only. On Windows and Linux the app uses the Ctrl+Shift keys.
+- terminal-browser and terminal-code panes are much faster. The PTY host now takes their pictures through shared memory instead of base64 text, keeps them, and sends the page only the changed rectangles, which a Worker draws off the main thread. In a 1700 × 1000 pane, scrolling went from 8 to 107 frames a second and video from 5 to 107, and the page's main thread no longer stalls (long tasks: 160–220 ms a second → 0). A remote window gets the rectangles compressed. Set `localStorage["westerm.pixels"] = "off"` in the page to get the old way back. This changes the PTY host, so shells restart once when this version starts (their screens are restored).
+
+### Fixed
+
+- A Kitty image that changes no longer makes wterm repaint every other image on screen. In a terminal-browser pane on the old path, a blinking caret repainted 1.8 million pixels; now it repaints the 40 that changed.
 
 ## [0.2.1] - 2026-11-05
 

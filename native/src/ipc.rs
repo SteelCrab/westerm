@@ -28,7 +28,33 @@ mod unix {
     }
 
     pub async fn connect(dir: &Path) -> io::Result<Stream> {
-        UnixStream::connect(socket(dir)).await
+        let stream = UnixStream::connect(socket(dir)).await?;
+        tune(&stream);
+        Ok(stream)
+    }
+
+    /// Socket buffers of a few MiB, for both ends of a dashboard connection.
+    ///
+    /// macOS gives a Unix socket 8 KiB, so a pixel update of several MiB is
+    /// written 8 KiB at a time, and after each write tungstenite moves the
+    /// rest of its buffer forward (`out_buffer.drain`): quadratic copying
+    /// that cost the host a whole CPU core. The kernel caps the size at
+    /// kern.ipc.maxsockbuf; a refused size keeps the default.
+    pub fn tune(stream: &Stream) {
+        use std::os::fd::AsRawFd;
+        let size: libc::c_int = 4 << 20;
+        for option in [libc::SO_SNDBUF, libc::SO_RCVBUF] {
+            // SAFETY: setsockopt on an open socket with a c_int value.
+            unsafe {
+                libc::setsockopt(
+                    stream.as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    option,
+                    (&raw const size).cast(),
+                    std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+                );
+            }
+        }
     }
 
     /// True once a stopped host has removed its endpoint.
@@ -63,6 +89,35 @@ mod unix {
 
     pub fn unbind(dir: &Path) {
         let _ = fs::remove_file(socket(dir));
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::os::fd::AsRawFd;
+
+        fn buffer(stream: &super::Stream, option: libc::c_int) -> libc::c_int {
+            let mut value: libc::c_int = 0;
+            let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+            let result = unsafe {
+                libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, option, (&raw mut value).cast(), &mut len)
+            };
+            assert_eq!(result, 0);
+            value
+        }
+
+        #[tokio::test]
+        async fn both_ends_have_room_for_a_whole_pixel_update() {
+            let dir = tempfile::tempdir().unwrap();
+            let listener = super::bind(dir.path()).unwrap();
+            let client = super::connect(dir.path()).await.unwrap();
+            let (server, _) = listener.accept().await.unwrap();
+            super::tune(&server);
+            for stream in [&client, &server] {
+                for option in [libc::SO_SNDBUF, libc::SO_RCVBUF] {
+                    assert!(buffer(stream, option) >= 1 << 20, "option {option}: {}", buffer(stream, option));
+                }
+            }
+        }
     }
 }
 

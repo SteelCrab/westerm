@@ -126,7 +126,7 @@ impl Registry {
         };
         let mode = if meta.is_some() { AttachMode::Revived } else { AttachMode::New };
         self.serial += 1;
-        let spec = Spec { id: request.id.clone(), launch };
+        let spec = Spec { id: request.id.clone(), launch, pixels: request.pixels };
         match session::start(spec, request.size, self.store.clone(), restored, resuming, self.serial, ended.clone()) {
             Ok(handle) => {
                 let _ = handle.tx.send(Command::Attach { ws, size: request.size, mode, window });

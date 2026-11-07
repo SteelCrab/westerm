@@ -969,6 +969,16 @@ button {
   padding: 6px 8px;
 }
 
+/* A pixel app's picture (src/terminal/pixel-surface.ts), over wterm's own
+   images (.term-images, z-index 1). Its size is set per frame. */
+.pixel-surface {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
 .pane-message {
   display: grid;
   height: 100%;

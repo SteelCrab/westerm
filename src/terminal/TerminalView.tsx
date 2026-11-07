@@ -7,8 +7,13 @@ import ghosttyWasmUrl from "@wterm/ghostty/ghostty-vt.wasm?url";
 import type { PtySize, SessionKind } from "../../shared/protocol.ts";
 import { KINDS } from "../kinds.tsx";
 import { installAltScreenImages } from "./alt-screen-images.ts";
+import { installImageRepaintCache } from "./image-repaint.ts";
 import { installCommandKeys } from "./command-keys.ts";
 import { PtyConnection, type ConnectionEvent } from "./connection.ts";
+import { PIXELS_SETTING, pixelCodecFor } from "./pixel-update.ts";
+import { PixelSurface } from "./pixel-surface.ts";
+import { paneStats } from "./pane-stats.ts";
+import { REMOTE_TARGET } from "../remoteWindow.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { takeEnding } from "./ending.ts";
 import { keyboardFree } from "./keyboard.ts";
@@ -53,6 +58,15 @@ function ptySize(wt: WTerm): PtySize {
   };
 }
 
+/** The pixel update setting; storage can be blocked. */
+function pixelsSetting(): string | null {
+  try {
+    return localStorage.getItem(PIXELS_SETTING);
+  } catch {
+    return null;
+  }
+}
+
 function useGhosttyCore(kind: SessionKind): { core: GhosttyCore | null; error: string | null } {
   const [core, setCore] = useState<GhosttyCore | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +94,12 @@ function useGhosttyCore(kind: SessionKind): { core: GhosttyCore | null; error: s
 export function TerminalView(props: TerminalViewProps) {
   const { sessionId, kind, url, cwdFrom, target, label, font, colors, focused, focusNonce, visible } = props;
   const { core, error } = useGhosttyCore(kind);
+  // For pane-stats: frames that came as Kitty images.
+  const coreRef = useRef(core);
+  coreRef.current = core;
+  const syncedRef = useRef(0);
+  const pixelChannelRef = useRef(false);
+  const pixelApp = kind === "browser" || kind === "editor";
   const { t, locale } = useI18n();
   // Read at connect time only: switching language must not reconnect.
   const localeRef = useRef(locale);
@@ -90,6 +110,10 @@ export function TerminalView(props: TerminalViewProps) {
   const connectionRef = useRef<PtyConnection | null>(null);
   const wtermRef = useRef<WTerm | null>(null);
   const uninstallKeysRef = useRef<(() => void) | null>(null);
+  // A pixel app's picture, made on its first pixel update.
+  const pixelsRef = useRef<PixelSurface | null>(null);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   // Callbacks change every render; the connection must always call the latest.
   const callbacks = useRef(props);
   callbacks.current = props;
@@ -98,6 +122,8 @@ export function TerminalView(props: TerminalViewProps) {
     () => () => {
       uninstallKeysRef.current?.();
       connectionRef.current?.close({ end: takeEnding(sessionId) });
+      pixelsRef.current?.dispose();
+      pixelsRef.current = null;
     },
     [sessionId],
   );
@@ -121,11 +147,17 @@ export function TerminalView(props: TerminalViewProps) {
       if (!installAltScreenImages(wt)) {
         console.warn("[westerm] alternate-screen image patch unavailable; full-screen Kitty apps may scroll");
       }
+      if (!installImageRepaintCache(wt)) {
+        console.warn("[westerm] image repaint patch unavailable; every image repaints on each change");
+      }
       uninstallKeysRef.current?.();
       uninstallKeysRef.current = installCommandKeys(wt, (sequence) =>
         connectionRef.current?.sendInput(sequence),
       );
       connectionRef.current?.close({ end: false });
+      // A new connection starts the pixel app again, with a new picture.
+      pixelsRef.current?.dispose();
+      pixelsRef.current = null;
       connectionRef.current = new PtyConnection({
         session: sessionId,
         kind,
@@ -135,13 +167,42 @@ export function TerminalView(props: TerminalViewProps) {
         lang: localeRef.current,
         resumeAgents: resumeRef.current,
         size: ptySize(wt),
-        onOutput: (bytes) => wt.write(bytes),
-        onEvent: (event) => callbacks.current.onEvent(event),
+        pixels: pixelCodecFor(kind, REMOTE_TARGET !== null, pixelsSetting()),
+        onOutput: (bytes) => {
+          wt.write(bytes);
+          paneStats.textBytes += bytes.length;
+          // With pixel updates, frames are counted when drawn instead.
+          const generation = coreRef.current?.synchronizedOutputGeneration() ?? 0;
+          if (pixelApp && !pixelChannelRef.current) paneStats.frames += Math.max(0, generation - syncedRef.current);
+          syncedRef.current = generation;
+        },
+        onPixels: (buffer) => {
+          if (!pixelsRef.current) {
+            // Over the grid, whose top left is cell 0, 0.
+            const grid = wt.element.querySelector<HTMLElement>(".term-grid") ?? wt.element;
+            pixelsRef.current = new PixelSurface(grid, () => {
+              paneStats.frames++;
+              connectionRef.current?.sendPainted();
+            });
+            pixelsRef.current.setVisible(visibleRef.current);
+          }
+          paneStats.pixelBytes += buffer.byteLength;
+          paneStats.pixelUpdates++;
+          pixelsRef.current.push(buffer);
+        },
+        onEvent: (event) => {
+          if (event.type === "ready") pixelChannelRef.current = event.pixels === true;
+          callbacks.current.onEvent(event);
+        },
       });
       if (callbacks.current.focused && keyboardFree()) wt.focus();
     },
     [sessionId, kind, url, cwdFrom, target],
   );
+
+  useEffect(() => {
+    pixelsRef.current?.setVisible(visible);
+  }, [visible]);
 
   const handleResize = useCallback(() => {
     const wt = wtermRef.current;

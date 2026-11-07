@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>scroll</title>
+<style>
+  body { margin: 0; font: 16px/1.6 system-ui, sans-serif; background: #fff; color: #222; }
+  main { padding: 24px; max-width: 900px; }
+</style>
+<main id="text"></main>
+<script>
+  // Text that scrolls 4 px every animation frame, then wraps to the top.
+  const words = "terminal browser frame patch pixel kitty image base64 deflate shared memory canvas worker".split(" ");
+  const main = document.getElementById("text");
+  let seed = 7;
+  const next = () => (seed = (seed * 16807) % 2147483647);
+  for (let p = 0; p < 400; p++) {
+    const para = document.createElement("p");
+    para.textContent = Array.from({ length: 40 }, () => words[next() % words.length]).join(" ");
+    main.appendChild(para);
+  }
+  const step = () => {
+    window.scrollBy(0, 4);
+    if (window.scrollY + window.innerHeight >= document.body.scrollHeight - 4) window.scrollTo(0, 0);
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+</script>

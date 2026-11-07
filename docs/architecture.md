@@ -41,6 +41,7 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
 | `native/src/process.rs` | Command line of another process: `KERN_PROCARGS2` on macOS, `/proc` on Linux |
 | `native/src/protocol.rs` | Message format and validation: session id, size, URL, SSH target, language |
 | `native/src/ipc.rs` | Dashboard ↔ host channel: Unix socket, or a named pipe on Windows |
+| `native/src/pixels/` | Pixel updates: the host takes Kitty graphics out of a pixel app's output, keeps the picture, and sends the changed rectangles (see below) |
 | `native/src/spawn.rs` | What a session runs: a login shell on macOS and Linux; PowerShell and argument lists on Windows |
 | `native/src/update.rs` | `westerm update`: finds, downloads, checks, and installs releases |
 | `native/src/i18n.rs` | Text the host writes into terminals (restore notice, errors) in four languages |
@@ -85,6 +86,32 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
   - The executable sent to a server is the release archive of this version, checked against its published SHA-256 sum. A source build sends a file the developer names (`WESTERM_REMOTE_BINARY_DIR`).
 - **Known gap**: any program on the same computer can reach port 4317 and send the dashboard's own Origin; the Origin check stops web pages, not local programs. Through the `/remote/…` routes such a program can also open shells on the servers this dashboard has a link to. Access tokens are planned. Until then, do not run westerm on a computer shared with other users.
 
+## Pixel updates
+
+terminal-browser and terminal-code (pixel apps) draw everything as Kitty images. A browser page cannot read shared memory, so before this they sent every frame as zlib and base64 text through the PTY, and the pane decoded it with the Ghostty WASM core on the page's main thread.
+
+```
+pixel app ── shared memory (t=s), only the command goes through the PTY
+   │
+PTY host   native/src/pixels/: splits the output, answers queries, keeps
+   │       images and placements, composes changed areas
+   │       binary WebSocket messages: kind byte 0 = terminal output, 1 = pixel update
+Dashboard  relays the messages unchanged
+   │
+Page       src/terminal/pixel-surface.ts: a Worker draws the rectangles on an
+           OffscreenCanvas over the terminal grid
+```
+
+- **Asking for it.** A browser or editor pane opens its socket with `?pixels=raw` (a remote window: `pixels=deflate`). The host answers `"ready"` with `pixels: true`. A host or page without this keeps the old path, so either side can be older.
+- **Shared memory.** The host answers the app's `a=q,t=s` probe with OK only after it has read and unlinked the probe's segment, as Kitty does. The app then sends each image as a segment name. The host maps the segment, copies it, and unlinks it. File transfer (`t=f`) is refused. Inline images (`t=d`, with or without zlib) still work.
+- **Frames.** Commands inside a synchronized update (`CSI ? 2026 h` … `l`) belong to one frame. At its end the changed areas are composed, so an update never shows half a frame. An update that stays open longer than one second is shown anyway.
+- **Kitty rules.** A placement sits at the cursor cell plus `X`/`Y` pixels. A higher `z` covers a lower one; among equal `z` the newer one is on top. Sending an image again under the same id deletes the old one and its placements. `a=d` with `d=a/A/i/I` deletes. Leaving the alternate screen clears the picture. Images are kept up to 96 MiB per session; the oldest images that nothing shows go first.
+- **Update format** (little endian): kind `1`, flags (bit 0: deflate), frame width and height (u16), rectangle count (u16); then per rectangle x, y, w, h (u16), byte length (u32), and RGBA rows (raw deflate with the flag). At most 16 rectangles; more are merged.
+- **The canvas stays.** wterm empties `.term-grid` whenever its rows or columns change and puts back only its own layers, so the pixel canvas puts itself back (a `MutationObserver`). Without that, a pane or window resize leaves the pane blank.
+- **Flow control.** The page answers `{"type":"painted"}` after drawing an update. The host keeps at most 2 updates unanswered; later frames merge into the next one, so a slow page gets fewer, newer frames and the PTY never waits. A hidden pane holds its answers until it is shown again.
+- **Socket buffers** (`native/src/ipc.rs`). macOS gives a Unix socket 8 KiB. tungstenite moves the rest of its buffer forward after every partial write, so a 7 MB update cost quadratic copying, a whole CPU core in the host. Both ends of the dashboard ↔ host socket ask for 4 MiB.
+- `localStorage["westerm.pixels"] = "off"` in the page brings back the Kitty images, for comparison (`bench/pixel/`).
+
 ## wterm and terminal-browser patches
 
 - **Alternate-screen images** (`src/terminal/alt-screen-images.ts`)
@@ -95,15 +122,21 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
   - terminal-browser and terminal-code draw with the pixel library. In a terminal that pixel does not know, such as westerm, it sends the whole picture for every change, even a blinking caret.
   - Every pane gets `TERMINAL_BROWSER_PRESENT=patched`. pixel then sends only the changed tiles, as small Kitty images over the last whole picture, and a whole picture again when the layout changes.
   - A value set before westerm starts or in a shell startup file wins, and so does terminal-browser's own `render.presenter` setting.
+  - With pixel updates the host keeps these images, so the browser never sees them.
+- **Image repaints** (`src/terminal/image-repaint.ts`)
+  - `@wterm/dom` 0.5.9 repaints every visible image canvas when any image changes. With patches, one blinking caret repainted the whole frame and every tile: 1.8 million pixels for 40 that changed.
+  - A canvas's key already names its image and version, so the patch paints a canvas again only when its size or source area changes, and otherwise only moves it.
+  - This matters where wterm still draws Kitty images: `kitten icat` in a shell, or a pixel app on a host without pixel updates.
 - **Cmd keys** (`src/terminal/command-keys.ts`)
   - `@wterm/dom` leaves every Cmd+key to the browser.
   - When a program turns on Kitty "report all keys" (flag 8), Cmd combinations go to the program instead.
   - Cmd+V stays with the browser for pasting. Cmd+Q, Cmd+H, and Cmd+M stay with the macOS app. Chrome keeps Cmd+T, Cmd+W, Cmd+N, and Cmd+Q for itself.
-- Both use wterm internals. If those change, the patches turn themselves off and log a warning in the console.
+- These patches use wterm internals. If those change, the patches turn themselves off and log a warning in the console.
 
 ## Known limits
 
-- **Choppy video**: browsers cannot read shared memory, so terminal-browser sends frames as base64 text through the PTY. When most of the picture changes, as in video or scrolling, a patch is the whole picture: about 300 KB for scrolled text and 4.5 MB for video in a 1350 × 780 pane. Such pictures stutter, most of all in a remote window.
+- **Pixel updates are large.** A changed rectangle travels as raw RGBA to the local page: scrolling or video in a 1700 × 1000 pane moves 0.4 to 0.7 GB/s through local sockets. A remote window gets deflated rectangles, which cost the server's host CPU (zlib level 1).
+- **Retina sharpness**: a pixel app draws one pixel per CSS pixel, as before, so its picture is not sharp on a high-density screen.
 - **terminal-browser and terminal-code on Windows**: both draw with Kitty graphics, which Windows ConPTY does not pass through. Shells and SSH work.
 - **Korean in the terminal-browser address bar**: terminal-browser's own UI font (JetBrains Mono) has no Hangul, so it shows boxes. Page content is fine.
 
@@ -123,8 +156,11 @@ The Rust integration tests (`native/tests/integration.rs`) start the real execut
 - When a pane from another window attaches, every pane of the first window gets close code 4001, also in sessions the new window did not open. The shells keep running.
 - The dashboard accepts WebSockets only from its own origin.
 - A second host refuses to start while one is running.
+- A pixel app (a fake `tode`) reaches a pane that asks for pixels as a pixel update, with no Kitty image in the terminal output; a pane that does not ask still gets the Kitty images (macOS and Linux).
 - Processes a test starts are cleaned up even when the test fails.
 - A fake `claude` in a shell is found, its conversation and flags are saved, and after a host restart the shell resumes it; with `resume=off` it does not (macOS and Linux).
+
+Pixel updates have unit tests in `native/src/pixels/` (splitting, Kitty rules, shared memory, frames, encoding) and `tests/pixels.test.ts` (the page side). `tests/pixel-surface.test.ts` runs wterm's real renderer in happy-dom and checks that the pixel canvas survives the renderer emptying the grid on a resize. `bench/pixel/README.md` describes how to measure them.
 
 `native/tests/remote.rs` (macOS and Linux) covers remote windows with the real executable:
 

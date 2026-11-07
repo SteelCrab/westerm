@@ -286,6 +286,61 @@ async fn agent_message(viewer: &mut Viewer<Stream>, wanted: &str) -> serde_json:
     }
 }
 
+/// A host whose pixel app is a fake terminal-code (`tode`) that draws one
+/// red 2 x 2 image at row 2, column 3 inside a synchronized update.
+#[cfg(unix)]
+fn start_pixel_host(state: &Path) -> Spawned {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = state.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let app = bin.join("tode");
+    std::fs::write(
+        &app,
+        "#!/bin/sh\nsleep 1\nprintf '\\033[?1049h\\033[?2026h\\033[2;3H\\033_Ga=T,f=32,s=2,v=2,i=1,p=1,C=1,q=2;/wAA//8AAP//AAD//wAA/w==\\033\\\\\\033[?2026lDRAWN'\nexec sleep 30\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&app, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let home = state.join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let child = Command::new(BIN)
+        .arg("host")
+        .env("WESTERM_STATE_DIR", state)
+        .env("SHELL", "/bin/sh")
+        .env("HOME", &home)
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !endpoint(state).exists() {
+        assert!(Instant::now() < deadline, "host endpoint appears");
+        std::thread::sleep(Duration::from_millis(30));
+    }
+    Spawned(child)
+}
+
+/// Binary messages until one satisfies `done`, acknowledging each as wterm does.
+#[cfg(unix)]
+async fn binary_until(viewer: &mut Viewer<Stream>, mut done: impl FnMut(&[u8]) -> bool) -> Vec<Vec<u8>> {
+    use futures_util::SinkExt;
+    let mut seen = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        assert!(!left.is_zero(), "the expected message arrives; got {} binary messages", seen.len());
+        let Ok(Some(Ok(message))) = tokio::time::timeout(left, viewer.ws.next()).await else { continue };
+        let Message::Binary(bytes) = message else { continue };
+        let ack = format!(r#"{{"type":"ack","bytes":{}}}"#, bytes.len());
+        let _ = viewer.ws.send(Message::text(ack)).await;
+        let finished = done(&bytes);
+        seen.push(bytes.to_vec());
+        if finished {
+            return seen;
+        }
+    }
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_restored_shell_resumes_its_agent() {
@@ -334,5 +389,43 @@ async fn a_restored_shell_resumes_its_agent() {
     pane.wait_for("MARK_42").await;
     assert_eq!(pane.output.matches("FAKE_CLAUDE --resume").count(), 1, "only the old screen has it");
     pane.detach().await;
+    stop_host(state.path(), host).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_pixel_app_reaches_a_pixel_pane_as_rectangles_not_kitty_images() {
+    let state = tempfile::tempdir().unwrap();
+    let _stop = StopHostOnDrop(state.path());
+    let host = start_pixel_host(state.path());
+    let query = "session=spix1&kind=editor&cols=80&rows=24&width=640&height=408&lang=en&pixels=raw";
+    let (mut viewer, ready) = attach_query(state.path(), query).await;
+    assert_eq!(ready["pixels"], true);
+    let messages = binary_until(&mut viewer, |bytes| bytes.first() == Some(&1)).await;
+    let update = messages.last().unwrap();
+    // Kind, flags, a 640 x 408 frame (8 x 17 cells), one rectangle.
+    assert_eq!(&update[..8], &[1, 0, 0x80, 0x02, 0x98, 0x01, 1, 0]);
+    // At column 3 and row 2: x 16, y 17, 2 x 2, 16 bytes of red.
+    assert_eq!(&update[8..20], &[16, 0, 17, 0, 2, 0, 2, 0, 16, 0, 0, 0]);
+    assert_eq!(&update[20..], [255, 0, 0, 255].repeat(4));
+    for text in messages.iter().filter(|bytes| bytes.first() == Some(&0)) {
+        assert!(!String::from_utf8_lossy(text).contains("\x1b_G"), "no Kitty image reaches the page");
+    }
+    viewer.detach().await;
+    stop_host(state.path(), host).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_page_that_does_not_ask_for_pixels_still_gets_kitty_images() {
+    let state = tempfile::tempdir().unwrap();
+    let _stop = StopHostOnDrop(state.path());
+    let host = start_pixel_host(state.path());
+    let query = "session=spix2&kind=editor&cols=80&rows=24&width=640&height=408&lang=en";
+    let (mut viewer, ready) = attach_query(state.path(), query).await;
+    assert!(ready.get("pixels").is_none());
+    viewer.wait_for("DRAWN").await;
+    assert!(viewer.output.contains("\x1b_Ga=T,f=32"));
+    viewer.detach().await;
     stop_host(state.path(), host).await;
 }

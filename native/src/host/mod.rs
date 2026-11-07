@@ -61,6 +61,11 @@ pub async fn run() -> std::io::Result<()> {
         ));
     }
     let listener = ipc::bind(&dir)?;
+    #[cfg(unix)]
+    let listener = {
+        use axum::serve::ListenerExt;
+        listener.tap_io(|stream| ipc::tune(stream))
+    };
     println!("pty host {HOST_BUILD} listening on {} (pid {})", ipc::describe(&dir), std::process::id());
 
     let reason = tokio::select! {
