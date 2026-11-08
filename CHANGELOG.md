@@ -4,6 +4,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- The Agents button moves to the top of the activity bar, below the launchers, so the agents panel is one glance away. The command palette now leads the bottom group.
+
 ## [0.4.1] - 2026-11-09
 
 ### Added

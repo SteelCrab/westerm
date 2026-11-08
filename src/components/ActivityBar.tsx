@@ -24,9 +24,9 @@ interface ActivityBarProps {
 }
 
 /**
- * The icon bar on the far left: launchers at the top; the agents panel, the
- * command palette, settings (language, theme, font, updates), and the sidebar
- * switch at the bottom.
+ * The icon bar on the far left: launchers and the agents panel at the top;
+ * the command palette, settings (language, theme, font, updates), and the
+ * sidebar switch at the bottom.
  */
 export function ActivityBar(props: ActivityBarProps) {
   const { sidebarOpen, counts, onLaunch, onToggleSidebar, onOpenSettings } = props;
@@ -69,8 +69,6 @@ export function ActivityBar(props: ActivityBarProps) {
             <RemoteWindowIcon size={20} />
           </BarButton>
         )}
-      </div>
-      <div className="activity-group">
         <BarButton
           className="activity-agents"
           label={props.agentsWaiting ? `${t.agents.title} · ${t.agent.tab.waiting}` : t.agents.title}
@@ -82,6 +80,8 @@ export function ActivityBar(props: ActivityBarProps) {
           <Bot size={19} strokeWidth={1.75} />
           {props.agentsWaiting && <span className="activity-dot" aria-hidden="true" />}
         </BarButton>
+      </div>
+      <div className="activity-group">
         <BarButton label={t.palette.open} tooltip={`${t.palette.open} · ${props.paletteShortcut}`} onClick={props.onOpenPalette}>
           <Command size={17} strokeWidth={1.75} />
         </BarButton>

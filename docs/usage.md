@@ -4,7 +4,7 @@
 
 | Area | What it does |
 |---|---|
-| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top; a badge shows how many are open. The Agents button, the command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. See [Agents sidebar](#agents-sidebar). |
+| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top, then the Agents button; a badge shows how many panes are open. The command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. See [Agents sidebar](#agents-sidebar). |
 | Layout | Settings ▸ General ▸ Workspaces and tabs picks one. **Top** (the default): the workspace menu and the tab bar across the top, and no sidebar. **Sidebar**: the workspace menu and the tabs in the sidebar, and no tab bar. |
 | Tab bar (top layout) | The workspace menu at the left, then the tabs. `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Sidebar (sidebar layout) | The workspace menu, then the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: the workspace icon, tab numbers, and the session icons of the tab in view. |
@@ -143,7 +143,7 @@ A list of the AI agents in the workspace in view, grouped by the folder they run
 
 ### Open it
 
-- Press **Agents** in the activity bar. Point at it for "AI agents in this workspace, by folder". A yellow dot on the button means an agent in any workspace needs your input.
+- Press **Agents** at the top of the activity bar, below the launchers. Point at it for "AI agents in this workspace, by folder". A yellow dot on the button means an agent in any workspace needs your input.
 - Top layout: the button opens and closes the panel.
 - Sidebar layout: the button switches the sidebar between the sessions list and the agents panel. The sidebar switch still opens and closes the sidebar.
 - Windows 640px wide or less: the panel opens as a drawer, like the sidebar. A pick in it, a tap outside it, or Escape closes it.
