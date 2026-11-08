@@ -69,7 +69,7 @@ npm start          # http://127.0.0.1:4317
 |---|---|---|
 | Shell | your login shell (`$SHELL`) | PowerShell 7 (`pwsh`), else Windows PowerShell |
 | SSH | `ssh` and `~/.ssh/config` | the built-in OpenSSH client and `%USERPROFILE%\.ssh\config` |
-| terminal-browser, terminal-code | when installed (see below) | not yet: Windows ConPTY does not pass their Kitty graphics through |
+| terminal-browser, terminal-code | when installed (see below) | in WSL, when installed there (see below) |
 
 The launcher programs must be on your PATH (on macOS and Linux, your login shell's PATH):
 
@@ -77,3 +77,21 @@ The launcher programs must be on your PATH (on macOS and Linux, your login shell
 |---|---|
 | terminal-browser | `brew install --cask terminal-browser` |
 | terminal-code | `curl -fsSL https://tode.sh/install \| bash` (the command is `tode`) |
+
+### terminal-browser and terminal-code on Windows
+
+Both have Linux builds only, so westerm starts them in WSL: `wsl.exe` runs your login shell in the default distribution, and the shell runs the program. Install them inside WSL. From PowerShell:
+
+```powershell
+wsl --install    # once, when WSL is not set up; then restart Windows
+wsl --exec bash -c "curl -fsSL https://terminal-browser.sh/install | bash"
+wsl --exec bash -c "curl -fsSL https://tode.sh/install | bash"
+```
+
+When a program is missing, its pane shows the command for it.
+
+The ConPTY built into Windows drops the Kitty graphics both programs draw with. The Windows release, the install script, the update, and the desktop app put Microsoft's ConPTY (`conpty.dll` and `OpenConsole.exe`, MIT) next to `westerm.exe`, and westerm uses it for every session. A source build needs the two files too:
+
+```powershell
+node scripts/conpty.mjs native/target/release
+```

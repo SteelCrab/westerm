@@ -13,6 +13,7 @@ test("terminal-browser with exit 127 is missing, with its install command", () =
     program: "terminal-browser",
     command: BROWSER_COMMAND,
     remote: false,
+    wsl: false,
   });
 });
 
@@ -22,14 +23,15 @@ test("terminal-code with exit 127 is missing, with the tode install command", ()
     program: "terminal-code",
     command: EDITOR_COMMAND,
     remote: false,
+    wsl: false,
   });
 });
 
 test("another non-zero exit of a program is a failed start, without a command", () => {
   const hint = installHint("browser", 1, false);
-  assert.deepEqual(hint, { type: "failed", program: "terminal-browser", remote: false });
+  assert.deepEqual(hint, { type: "failed", program: "terminal-browser", remote: false, wsl: false });
   assert.ok(hint && !("command" in hint));
-  assert.deepEqual(installHint("editor", 2, true), { type: "failed", program: "terminal-code", remote: true });
+  assert.deepEqual(installHint("editor", 2, true), { type: "failed", program: "terminal-code", remote: true, wsl: false });
 });
 
 test("no hint for a clean exit, a signal, no code, or the other kinds", () => {
@@ -53,6 +55,24 @@ test("the remote flag changes only where the program runs", () => {
   }
 });
 
+test("on Windows the programs run in WSL, so the command installs them there", () => {
+  assert.deepEqual(installHint("browser", 127, false, true), {
+    type: "missing",
+    program: "terminal-browser",
+    command: `wsl --exec bash -c "${BROWSER_COMMAND}"`,
+    remote: false,
+    wsl: true,
+  });
+  const editor = installHint("editor", 127, false, true);
+  assert.equal(editor?.type === "missing" ? editor.command : null, `wsl --exec bash -c "${EDITOR_COMMAND}"`);
+  assert.deepEqual(installHint("browser", 1, false, true), { type: "failed", program: "terminal-browser", remote: false, wsl: true });
+});
+
+test("a remote window runs the programs on the server, also from Windows", () => {
+  assert.deepEqual(installHint("browser", 127, true, true), installHint("browser", 127, true, false));
+  assert.equal(installHint("editor", 1, true, true)?.wsl, false);
+});
+
 test("every language words both hints, local and remote", () => {
   for (const [locale, text] of Object.entries(MESSAGES)) {
     const hint = text.pane.hint;
@@ -60,6 +80,8 @@ test("every language words both hints, local and remote", () => {
       assert.ok(hint.missing("terminal-browser", remote).includes("terminal-browser"), `${locale} missing names the program`);
     }
     assert.ok(hint.failed("terminal-browser").includes("terminal-browser"), `${locale} failed names the program`);
+    assert.ok(hint.missingWsl("terminal-browser").includes("WSL") && hint.missingWsl("terminal-browser").includes("terminal-browser"), `${locale} missing in WSL`);
+    assert.ok(hint.wslSetup.includes("wsl --install"), `${locale} says how to set up WSL`);
     assert.notEqual(hint.missing("x", true), hint.missing("x", false), `${locale} says where`);
     assert.ok(hint.installThenRestart && hint.runOnServer && hint.copy && hint.copied && hint.copyFailed, `${locale} has the other strings`);
   }

@@ -50,6 +50,7 @@ import {
 } from "./workspace.ts";
 
 export const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+export const IS_WINDOWS = typeof navigator !== "undefined" && /^Win/.test(navigator.platform);
 export const PALETTE_SHORTCUT = IS_MAC ? "⌘K" : "Ctrl+Shift+K";
 
 /** Cmd+K on macOS; Ctrl+Shift+K elsewhere, since Ctrl+K belongs to the shell. */
