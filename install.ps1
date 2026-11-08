@@ -46,13 +46,20 @@ try {
   New-Item -ItemType Directory -Force $installDir | Out-Null
   $dest = Join-Path $installDir 'westerm.exe'
   $updating = Test-Path $dest
-  # A running westerm.exe cannot be overwritten, but it can be renamed.
-  if ($updating) {
-    Remove-Item -Force "$dest.old" -ErrorAction SilentlyContinue
-    Move-Item -Force $dest "$dest.old"
+  # Microsoft's ConPTY goes next to westerm.exe: it passes the Kitty graphics
+  # of terminal-browser and terminal-code through. A running westerm keeps
+  # these files open; they cannot be overwritten, but they can be renamed.
+  foreach ($name in 'westerm.exe', 'conpty.dll', 'OpenConsole.exe', 'conpty-LICENSE.txt') {
+    $from = Join-Path $tmp "westerm-$target\$name"
+    if (-not (Test-Path $from)) { continue }
+    $to = Join-Path $installDir $name
+    if (Test-Path $to) {
+      Remove-Item -Force "$to.old" -ErrorAction SilentlyContinue
+      Move-Item -Force $to "$to.old"
+    }
+    Copy-Item $from $to
+    Remove-Item -Force "$to.old" -ErrorAction SilentlyContinue
   }
-  Copy-Item $binary $dest
-  Remove-Item -Force "$dest.old" -ErrorAction SilentlyContinue
 
   Write-Host "westerm: installed $(& $dest --version)"
   Write-Host "westerm: location: $dest"
