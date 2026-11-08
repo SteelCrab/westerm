@@ -89,6 +89,9 @@ jobs:
           New-Item -ItemType Directory -Force "release/$name" | Out-Null
           Copy-Item "native/target/${{ matrix.target }}/release/westerm.exe", README.md, CHANGELOG.md "release/$name/"
           if (Test-Path LICENSE) { Copy-Item LICENSE "release/$name/" }
+          # Microsoft's ConPTY, next to westerm.exe, passes Kitty graphics through.
+          node scripts/conpty.mjs "release/$name"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           Compress-Archive -Path "release/$name" -DestinationPath "$name.zip"
           $hash = (Get-FileHash -Algorithm SHA256 "$name.zip").Hash.ToLower()
           Set-Content -Path "$name.zip.sha256" -Value "$hash  $name.zip" -NoNewline
@@ -157,3 +160,6 @@ jobs:
           Get-Content install.ps1 -Raw | Invoke-Expression
           $version = & (Join-Path $env:WESTERM_INSTALL_DIR 'westerm.exe') --version
           if ($version -notlike "westerm $($env:GITHUB_REF_NAME.TrimStart('v')) *") { throw "unexpected version: $version" }
+          foreach ($name in 'conpty.dll', 'OpenConsole.exe') {
+            if (-not (Test-Path (Join-Path $env:WESTERM_INSTALL_DIR $name))) { throw "install.ps1 did not install $name" }
+          }

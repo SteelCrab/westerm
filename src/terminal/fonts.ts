@@ -55,15 +55,21 @@ export function cssFamily(name: string): string {
   return `"${name.replace(/["\\]/g, "\\$&")}"`;
 }
 
-/** CSS font-family list: user fonts, Nerd Font icons, CJK, defaults, emoji. */
+/**
+ * CSS font-family list: user fonts, Nerd Font icons, defaults, CJK, emoji.
+ * The monospace defaults come before the CJK fonts: Malgun Gothic, Apple SD
+ * Gothic Neo, and others are proportional for Latin, and WTerm sizes the grid
+ * from "W", so Latin in them leaves gaps. The defaults have no CJK glyphs,
+ * which still come from the CJK fonts.
+ */
 export function fontStack(primary: string[], locale: Locale = "en"): string {
   const seen = new Set<string>();
   const names: string[] = [];
   for (const name of [
     ...primary,
     ...NERD_FONT_FALLBACKS,
-    ...cjkFallbacks(locale),
     ...DEFAULT_FAMILIES,
+    ...cjkFallbacks(locale),
     ...EMOJI_FALLBACKS,
     "monospace",
   ]) {

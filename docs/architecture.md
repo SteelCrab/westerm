@@ -65,7 +65,7 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
 - WebSocket connections, layout writes (PUT), and update installs (POST) accept only the dashboard's own Origin. Other sites cannot open shells, change the layout, or trigger an update.
 - The server and the host each validate the session id, kind, size, URL, SSH target, and language.
 - SSH targets are passed as arguments, never inside a shell string. Values that start with `-` or contain spaces or shell characters are refused.
-- On Windows, programs installed as `.cmd` shims pass their arguments through cmd.exe, so a URL for terminal-browser that contains `" & | < > ^ % !` is refused.
+- On Windows, terminal-browser and terminal-code run in WSL. `wsl.exe --exec` hands every argument over unchanged, and the login shell there gets the URL and SSH target as positional parameters, as on macOS and Linux. cmd.exe is never involved.
 - The Windows host channel replaces Unix socket permissions with:
   - a random 128-bit pipe name, written only to `host.pipe` in the user's private state folder;
   - a first instance created with `first_pipe_instance`, so the host does not start when someone else created the name first;
@@ -141,7 +141,7 @@ Page       src/terminal/pixel-surface.ts: a Worker draws the rectangles on an
 
 - **Pixel updates are large.** A changed rectangle travels as raw RGBA to the local page: scrolling or video in a 1700 × 1000 pane moves 0.4 to 0.7 GB/s through local sockets. A remote window gets deflated rectangles, which cost the server's host CPU (zlib level 1).
 - **Retina sharpness**: a pixel app draws one pixel per CSS pixel, as before, so its picture is not sharp on a high-density screen.
-- **terminal-browser and terminal-code on Windows**: both draw with Kitty graphics, which Windows ConPTY does not pass through. Shells and SSH work.
+- **terminal-browser and terminal-code on Windows** run in WSL. Their Kitty graphics need Microsoft's ConPTY next to `westerm.exe` (the ConPTY built into Windows drops them), and WSL and Windows share no memory, so every frame travels inline as base64.
 - **Korean in the terminal-browser address bar**: terminal-browser's own UI font (JetBrains Mono) has no Hangul, so it shows boxes. Page content is fine.
 
 ## Tests

@@ -8,6 +8,21 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 - Settings ▸ Terminal ▸ Font picks from the fonts installed on this computer. The fonts form an ordered list (up to 8): search to add one, drag or Alt+↑/↓ to reorder, and see a preview in the stack the terminals use. Fonts with your language's script or Nerd Font icons are tagged, and names that are not installed can still be typed in.
 
+## [0.4.1] - 2026-11-09
+
+### Added
+
+- Windows: terminal-browser and terminal-code run in WSL. They have Linux builds only, so a pane starts them with `wsl.exe` through your login shell in the default distribution. When one is missing there, the pane shows the PowerShell command that installs it in WSL. URLs with `& | < > ^ % !` now open too.
+- Windows: the release archive, the install script, the update, and the desktop app put Microsoft's ConPTY (`conpty.dll`, `OpenConsole.exe`) next to `westerm.exe`. The ConPTY built into Windows drops Kitty graphics; this one passes them through.
+
+### Changed
+
+- This version changes the PTY host, so open shells restart once when it starts (their screens are restored).
+
+### Fixed
+
+- Wide gaps between letters in the terminal when no font is set, as on Windows without a Ghostty config: Latin text took a Korean font (Malgun Gothic), which is proportional. Monospace fonts now come before the Korean, Japanese, and Chinese fonts.
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
@@ -124,6 +139,7 @@ The first release.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
 [Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.0...HEAD
+[0.4.1]: https://github.com/SteelCrab/westerm/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SteelCrab/westerm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SteelCrab/westerm/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/SteelCrab/westerm/compare/v0.2.0...v0.2.1

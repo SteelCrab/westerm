@@ -163,6 +163,8 @@ const en = {
       missing: (program: string, remote: boolean) =>
         `${program} is not installed on ${remote ? "this server" : "this computer"}`,
       failed: (program: string) => `${program} could not start. Read the message above.`,
+      missingWsl: (program: string) => `${program} is not installed in WSL, where it runs on Windows`,
+      wslSetup: "On Windows it runs in WSL. Without WSL, run wsl --install in PowerShell, then restart Windows.",
       installThenRestart: "Install it, then press Restart.",
       runOnServer: "The command runs on the server, for example in a shell pane of this window.",
       copy: "Copy",
@@ -548,6 +550,8 @@ const ko: Messages = {
     hint: {
       missing: (program, remote) => `${remote ? "이 서버" : "이 컴퓨터"}에 ${program} 프로그램이 설치되어 있지 않습니다`,
       failed: (program) => `${program} 프로그램을 시작하지 못했습니다. 위의 메시지를 읽어 주세요.`,
+      missingWsl: (program) => `WSL에 ${program} 프로그램이 설치되어 있지 않습니다. Windows에서는 WSL 안에서 실행됩니다`,
+      wslSetup: "Windows에서는 WSL 안에서 실행됩니다. WSL이 없으면 PowerShell에서 wsl --install을 실행하고 Windows를 다시 시작하세요.",
       installThenRestart: "설치한 뒤 다시 시작을 눌러 주세요.",
       runOnServer: "이 명령은 서버에서 실행해야 합니다. 예를 들어 이 창의 셸 패널에서 실행하세요.",
       copy: "복사",
@@ -917,6 +921,8 @@ const ja: Messages = {
     hint: {
       missing: (program, remote) => `${program} は${remote ? "このサーバー" : "このコンピューター"}にインストールされていません`,
       failed: (program) => `${program} を起動できませんでした。上のメッセージを確認してください。`,
+      missingWsl: (program) => `${program} は WSL にインストールされていません。Windows では WSL の中で動きます`,
+      wslSetup: "Windows では WSL の中で動きます。WSL がない場合は、PowerShell で wsl --install を実行し、Windows を再起動してください。",
       installThenRestart: "インストールしてから「再起動」を押してください。",
       runOnServer: "このコマンドはサーバーで実行します。たとえば、このウィンドウのシェルペインで実行してください。",
       copy: "コピー",
@@ -1286,6 +1292,8 @@ const zh: Messages = {
     hint: {
       missing: (program, remote) => `${remote ? "此服务器" : "此电脑"}上未安装 ${program}`,
       failed: (program) => `${program} 无法启动。请阅读上方的信息。`,
+      missingWsl: (program) => `WSL 中未安装 ${program}。在 Windows 上它在 WSL 中运行`,
+      wslSetup: "在 Windows 上它在 WSL 中运行。如果还没有 WSL，请在 PowerShell 中运行 wsl --install，然后重新启动 Windows。",
       installThenRestart: "安装后，请点击“重新启动”。",
       runOnServer: "此命令需在服务器上运行，例如在此窗口的 Shell 面板中运行。",
       copy: "复制",

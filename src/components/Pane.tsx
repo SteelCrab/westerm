@@ -4,6 +4,7 @@ import { carries, dropZone, PANE_MIME, startDrag, type DropZone } from "../dnd.t
 import { DocsView } from "../docs/DocsView.tsx";
 import { useI18n } from "../i18n/index.tsx";
 import { installHint, type InstallHint } from "../installHints.ts";
+import { IS_WINDOWS } from "../paletteCommands.tsx";
 import { KindIcon } from "../kinds.tsx";
 import { AgentCard } from "./AgentCard.tsx";
 import { AgentMark } from "./AgentMark.tsx";
@@ -71,10 +72,17 @@ function InstallCommand({ command }: { command: string }) {
 
 function InstallHintView({ hint }: { hint: InstallHint }) {
   const { t } = useI18n();
-  if (hint.type === "failed") return <p>{t.pane.hint.failed(hint.program)}</p>;
+  if (hint.type === "failed") {
+    return (
+      <>
+        <p>{t.pane.hint.failed(hint.program)}</p>
+        {hint.wsl && <p>{t.pane.hint.wslSetup}</p>}
+      </>
+    );
+  }
   return (
     <div className="pane-hint">
-      <p>{t.pane.hint.missing(hint.program, hint.remote)}</p>
+      <p>{hint.wsl ? t.pane.hint.missingWsl(hint.program) : t.pane.hint.missing(hint.program, hint.remote)}</p>
       <InstallCommand command={hint.command} />
       <p>{t.pane.hint.installThenRestart}</p>
       {hint.remote && <p>{t.pane.hint.runOnServer}</p>}
@@ -140,7 +148,9 @@ export function Pane(props: PaneProps) {
 
   const ended = session.status === "exited" || session.status === "error";
   const hint =
-    session.status === "exited" && session.kind !== "docs" ? installHint(session.kind, session.exitCode, REMOTE_TARGET !== null) : null;
+    session.status === "exited" && session.kind !== "docs"
+      ? installHint(session.kind, session.exitCode, REMOTE_TARGET !== null, IS_WINDOWS)
+      : null;
   // "pid 7 · reconnected", "exit 1", or a server message, in the UI language.
   const detail = [session.detail, session.notice && t.notice[session.notice]].filter(Boolean).join(" · ") || null;
   const classes = [

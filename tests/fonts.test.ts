@@ -10,6 +10,18 @@ test("font stack puts the user font first, then Nerd Font icons and Hangul", () 
   assert.equal(fontStack(['Evil" ; x']).split(",")[0], '"Evil\\" ; x"');
 });
 
+test("monospace defaults come before CJK fonts, which are proportional for Latin", () => {
+  // Without a Ghostty config (Windows), Latin text took Malgun Gothic: the
+  // grid measures "W", so every other letter left a gap.
+  for (const locale of ["en", "ko", "ja", "zh"] as const) {
+    const stack = fontStack([], locale);
+    for (const cjk of ["Malgun Gothic", "Apple SD Gothic Neo", "Hiragino Sans", "PingFang SC", "Microsoft YaHei"]) {
+      assert.ok(stack.indexOf('"Consolas"') < stack.indexOf(`"${cjk}"`), `${locale}: Consolas before ${cjk}`);
+      assert.ok(stack.indexOf('"Menlo"') < stack.indexOf(`"${cjk}"`), `${locale}: Menlo before ${cjk}`);
+    }
+  }
+});
+
 test("terminal font sizes are clamped and fall back to the Ghostty size", () => {
   assert.equal(clampFontSize(3), 10);
   assert.equal(clampFontSize(99), 28);

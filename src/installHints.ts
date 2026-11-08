@@ -14,15 +14,28 @@ const PROGRAMS: Partial<Record<SessionKind, { program: string; command: string }
   editor: { program: "terminal-code", command: "curl -fsSL https://tode.sh/install | bash" },
 };
 
-/** `remote`: the program runs on a server (remote window), not on this computer. */
+/**
+ * `remote`: the program runs on a server (remote window), not on this computer.
+ * `wsl`: this computer is Windows, where the programs run in WSL: they have
+ * Linux builds only.
+ */
 export type InstallHint =
-  | { type: "missing"; program: string; command: string; remote: boolean }
-  | { type: "failed"; program: string; remote: boolean };
+  | { type: "missing"; program: string; command: string; remote: boolean; wsl: boolean }
+  | { type: "failed"; program: string; remote: boolean; wsl: boolean };
 
-/** The hint for a pane that ended with `code`, or null when there is nothing to add. */
-export function installHint(kind: SessionKind, code: number | null, remote: boolean): InstallHint | null {
+/**
+ * The hint for a pane that ended with `code`, or null when there is nothing
+ * to add. `windows`: this computer runs Windows.
+ */
+export function installHint(kind: SessionKind, code: number | null, remote: boolean, windows = false): InstallHint | null {
   const entry = PROGRAMS[kind];
   if (!entry || code === null || code === 0) return null;
-  if (code === COMMAND_NOT_FOUND) return { type: "missing", ...entry, remote };
-  return { type: "failed", program: entry.program, remote };
+  // A remote server is never Windows.
+  const wsl = windows && !remote;
+  if (code === COMMAND_NOT_FOUND) {
+    // Run from PowerShell. --exec hands bash the script as one argument.
+    const command = wsl ? `wsl --exec bash -c "${entry.command}"` : entry.command;
+    return { type: "missing", program: entry.program, command, remote, wsl };
+  }
+  return { type: "failed", program: entry.program, remote, wsl };
 }

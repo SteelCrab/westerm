@@ -104,6 +104,7 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 | `native/tests/` | Rust integration tests against the real executable |
 | `desktop/` | Desktop app (Tauri 2) for macOS, Windows, and Linux: `src/` (Rust), `tauri.conf.json`, icons |
 | `scripts/desktop.mjs` | `npm run app:dev` and `npm run build:app` |
+| `scripts/conpty.mjs` | Microsoft's ConPTY for Windows builds (Kitty graphics pass through it) |
 | `scripts/start.mjs` | `npm start` on every OS |
 | `docs/` | Usage, sessions, architecture |
 
@@ -208,7 +209,7 @@ To add a language:
 westerm runs on macOS, Linux, and Windows. CI tests every pull request on all three.
 
 - Put OS-specific code behind `#[cfg(unix)]` and `#[cfg(windows)]`, and give every OS a path. Keep the differences in small modules: `ipc.rs` (host channel), `spawn.rs` (what a session runs), `state_dir.rs` (folders and file permissions), `cwd.rs`, `time.rs`.
-- macOS and Linux start sessions through the login shell. Windows starts programs directly with an argument list, so check arguments that a `.cmd` shim would pass through cmd.exe.
+- macOS and Linux start sessions through the login shell. Windows starts PowerShell and ssh directly with an argument list, and terminal-browser and terminal-code with `wsl.exe --exec` through the login shell in WSL.
 - Check Windows from macOS or Linux before you push:
 
   ```bash
@@ -216,7 +217,7 @@ westerm runs on macOS, Linux, and Windows. CI tests every pull request on all th
   cargo check --target x86_64-pc-windows-msvc --all-targets --manifest-path native/Cargo.toml
   ```
 
-  The desktop app's check also needs `llvm-rc` on PATH for the Windows resources (on macOS: `brew install llvm`, then `PATH="$(brew --prefix llvm)/bin:$PATH"`), and a placeholder for the westerm it ships: `touch desktop/binaries/westerm-x86_64-pc-windows-msvc.exe`.
+  The desktop app's check also needs `llvm-rc` on PATH for the Windows resources (on macOS: `brew install llvm`, then `PATH="$(brew --prefix llvm)/bin:$PATH"`), a placeholder for the westerm it ships: `touch desktop/binaries/westerm-x86_64-pc-windows-msvc.exe`, and the ConPTY files: `node scripts/conpty.mjs desktop/binaries/conpty`.
 
 - Run the Linux tests from macOS with Docker:
 
