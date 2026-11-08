@@ -4,6 +4,8 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-09
+
 ### Added
 
 - Windows: terminal-browser and terminal-code run in WSL. They have Linux builds only, so a pane starts them with `wsl.exe` through your login shell in the default distribution. When one is missing there, the pane shows the PowerShell command that installs it in WSL. URLs with `& | < > ^ % !` now open too.
@@ -133,6 +135,7 @@ The first release.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
 [Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.0...HEAD
+[0.4.1]: https://github.com/SteelCrab/westerm/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SteelCrab/westerm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SteelCrab/westerm/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/SteelCrab/westerm/compare/v0.2.0...v0.2.1
