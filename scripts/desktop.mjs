@@ -6,8 +6,10 @@
 //   node scripts/desktop.mjs sidecar [--release] [--target T]   # only desktop/binaries/
 //
 // The app ships the westerm executable next to its own (Tauri externalBin):
-// desktop/binaries/westerm-<target triple>[.exe]. `build` puts the release
-// files in dist-app/ under the names the release and the app's updater use:
+// desktop/binaries/westerm-<target triple>[.exe]. On Windows, Microsoft's
+// ConPTY goes with it (scripts/conpty.mjs puts it in desktop/binaries/conpty/).
+// `build` puts the release files in dist-app/ under the names the release and
+// the app's updater use:
 //   westerm-macos-app.zip, westerm-macos-app.dmg     (macOS, Apple silicon and Intel)
 //   westerm-windows-app-setup.exe                    (Windows x64)
 //   westerm-linux-app-<arch>.deb, westerm-linux-app-<arch>.rpm
@@ -60,6 +62,9 @@ function sidecar(target, release) {
   });
   const binaries = join(desktop, "binaries");
   mkdirSync(binaries, { recursive: true });
+  // tauri.windows.conf.json installs these next to westerm.exe.
+  // Relative: run() goes through a shell on Windows, which splits paths with spaces.
+  if (target.includes("-windows-")) run("node", ["scripts/conpty.mjs", "desktop/binaries/conpty"]);
   const place = (from, triple) => {
     const to = join(binaries, `westerm-${triple}${exe}`);
     copyFileSync(from, to);

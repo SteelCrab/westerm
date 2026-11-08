@@ -103,8 +103,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev libdbus-1-dev
-      # tauri-build checks that the westerm executable the app ships exists.
-      # Linting and tests never run it, so an empty file will do.
+      # tauri-build checks that the westerm executable the app ships exists,
+      # and on Windows the ConPTY files (tauri.windows.conf.json). Linting and
+      # tests never run them, so empty files will do.
       - name: Placeholder westerm
         shell: bash
         run: |
@@ -113,5 +114,9 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then extension=".exe"; fi
           mkdir -p desktop/binaries
           : > "desktop/binaries/westerm-$triple$extension"
+          if [ "$RUNNER_OS" = Windows ]; then
+            mkdir -p desktop/binaries/conpty
+            for name in conpty.dll OpenConsole.exe conpty-LICENSE.txt; do : > "desktop/binaries/conpty/$name"; done
+          fi
       - run: cargo clippy --locked --all-targets --manifest-path desktop/Cargo.toml -- -D warnings
       - run: cargo test --locked --manifest-path desktop/Cargo.toml
