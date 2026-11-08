@@ -286,4 +286,5 @@ The remote westerm pane of v0.2.0 is gone. A saved layout drops those panes when
 
 - The server reads `font-family` and `font-size` from your Ghostty config (`/api/terminal-config`).
 - Ghostty has the Nerd Font icons built in; browsers do not. So the font stack adds the Nerd Fonts you have installed after your font.
+- Then come monospace defaults (Menlo, Cascadia Mono, Consolas, …), and after them fonts for Korean, Japanese, and Chinese. Those fonts are proportional for Latin, so they only fill in the glyphs the fonts before them lack.
 - Light and dark follow the OS unless Settings picks one. Terminal colors switch with it, in the color theme picked in Settings (`src/terminalThemes.ts`, `WTerm.setThemeColors`).

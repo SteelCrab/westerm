@@ -13,6 +13,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 - This version changes the PTY host, so open shells restart once when it starts (their screens are restored).
 
+### Fixed
+
+- Wide gaps between letters in the terminal when no font is set, as on Windows without a Ghostty config: Latin text took a Korean font (Malgun Gothic), which is proportional. Monospace fonts now come before the Korean, Japanese, and Chinese fonts.
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
