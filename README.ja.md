@@ -22,13 +22,7 @@ Windows(PowerShell):
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS、Windows、Linux 用のデスクトップアプリは [Releases](https://github.com/SteelCrab/westerm/releases/latest) から取得します。
-
-- macOS: `westerm-macos-app.dmg` を開き、**westerm** をアプリケーションフォルダへドラッグします。
-- Windows: `westerm-windows-app-setup.exe` を実行します。
-- Linux: `westerm-linux-app-<arch>.deb` または `.rpm` をインストールします。
-
-ほかのインストール方法と、macOS でアプリの初回起動を許可する方法: [docs/install.md](docs/install.md)(英語)
+ほかのインストール方法: [docs/install.md](docs/install.md)(英語)
 
 ## 実行
 
@@ -43,6 +37,43 @@ westerm
 - `westerm --port 4318`: 別のポートを使います。
 
 画面の使い方: [docs/usage.md](docs/usage.md)(英語)
+
+## デスクトップアプリ
+
+デスクトップアプリは同じ画面を専用のウィンドウで表示します。macOS、Windows、Linux で使えます。
+
+### インストール
+
+[Releases](https://github.com/SteelCrab/westerm/releases/latest) から取得します。
+
+- macOS: `westerm-macos-app.dmg` を開き、**westerm** をアプリケーションフォルダへドラッグします。
+- Windows: `westerm-windows-app-setup.exe` を実行します。
+- Linux: `westerm-linux-app-<arch>.deb` または `.rpm` をインストールします。
+
+macOS でアプリの初回起動を許可する方法: [docs/install.md](docs/install.md#desktop-app)(英語)
+
+### 実行
+
+- macOS: アプリケーションフォルダの **westerm** を開きます。
+- Windows: スタートメニューから **westerm** を開きます。
+- Linux: アプリメニューから **westerm** を開くか、ターミナルで `westerm-app` を実行します。
+
+## ソースからビルド
+
+ビルドには Node.js 24 以降と Rust が必要です。
+
+```bash
+git clone https://github.com/SteelCrab/westerm.git
+cd westerm
+npm install
+npm run build
+npm start
+```
+
+- `npm start` はビルドした `native/target/release/westerm` を実行します。次に http://127.0.0.1:4317 を開きます。
+- `npm run build:app` はデスクトップアプリを `dist-app/` にビルドします。
+
+詳細: [docs/install.md](docs/install.md#build-from-source)(英語)
 
 ## コントリビュート
 

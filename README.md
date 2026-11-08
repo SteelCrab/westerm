@@ -22,13 +22,7 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-Desktop app for macOS, Windows, and Linux, from [Releases](https://github.com/SteelCrab/westerm/releases/latest):
-
-- macOS: open `westerm-macos-app.dmg` and drag **westerm** onto the Applications folder.
-- Windows: run `westerm-windows-app-setup.exe`.
-- Linux: install `westerm-linux-app-<arch>.deb` or `.rpm`.
-
-Other ways, and how to allow the app's first open on macOS: [docs/install.md](docs/install.md).
+Other ways: [docs/install.md](docs/install.md).
 
 ## Run
 
@@ -43,6 +37,43 @@ Then open http://127.0.0.1:4317.
 - `westerm --port 4318`: use another port.
 
 How to use the screen: [docs/usage.md](docs/usage.md).
+
+## Desktop app
+
+The desktop app shows the same screen in its own window, on macOS, Windows, and Linux.
+
+### Install
+
+Download it from [Releases](https://github.com/SteelCrab/westerm/releases/latest):
+
+- macOS: open `westerm-macos-app.dmg` and drag **westerm** onto the Applications folder.
+- Windows: run `westerm-windows-app-setup.exe`.
+- Linux: install `westerm-linux-app-<arch>.deb` or `.rpm`.
+
+How to allow the first open on macOS: [docs/install.md](docs/install.md#desktop-app).
+
+### Run
+
+- macOS: open **westerm** in the Applications folder.
+- Windows: open **westerm** from the Start menu.
+- Linux: open **westerm** from the app menu, or run `westerm-app` in a terminal.
+
+## Build from source
+
+Building needs Node.js 24 or later and Rust.
+
+```bash
+git clone https://github.com/SteelCrab/westerm.git
+cd westerm
+npm install
+npm run build
+npm start
+```
+
+- `npm start` runs the built `native/target/release/westerm`. Then open http://127.0.0.1:4317.
+- `npm run build:app` builds the desktop app into `dist-app/`.
+
+Details: [docs/install.md](docs/install.md#build-from-source).
 
 ## Contribute
 
