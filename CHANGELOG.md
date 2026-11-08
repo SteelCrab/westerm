@@ -4,10 +4,16 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-08
+
 ### Added
 
 - Agents sidebar: the Agents button in the activity bar opens a list of the workspace's shells grouped by the folder they run in, with the git branch, each agent's state and time, and past conversations. **Start here** opens a new shell in that folder and starts Claude Code, Codex, or Gemini CLI; **Resume** continues a past conversation. It opens as a drawer on phone-wide windows, and in a remote window it shows the server's shells.
 - Gemini CLI: detected like Claude Code and Codex (AI mark, state, card), and resumed after a restore with `gemini --resume <id>` or `gemini --resume latest`. Its past conversations show in the agents sidebar.
+
+### Changed
+
+- This version changes the PTY host, so open shells restart once when it starts (their screens are restored).
 
 ## [0.3.0] - 2026-11-07
 
@@ -113,7 +119,8 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/SteelCrab/westerm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SteelCrab/westerm/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/SteelCrab/westerm/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/SteelCrab/westerm/compare/v0.1.0...v0.2.0
