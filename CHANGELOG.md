@@ -4,6 +4,15 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Windows: terminal-browser and terminal-code run in WSL. They have Linux builds only, so a pane starts them with `wsl.exe` through your login shell in the default distribution. When one is missing there, the pane shows the PowerShell command that installs it in WSL. URLs with `& | < > ^ % !` now open too.
+- Windows: the release archive, the install script, the update, and the desktop app put Microsoft's ConPTY (`conpty.dll`, `OpenConsole.exe`) next to `westerm.exe`. The ConPTY built into Windows drops Kitty graphics; this one passes them through.
+
+### Changed
+
+- This version changes the PTY host, so open shells restart once when it starts (their screens are restored).
+
 ## [0.4.0] - 2026-11-08
 
 ### Added

@@ -208,7 +208,7 @@ cargo clippy --all-targets --manifest-path native/Cargo.toml -- -D warnings
 westerm은 macOS, Linux, Windows에서 동작합니다. CI가 모든 PR을 세 곳에서 시험합니다.
 
 - OS별 코드는 `#[cfg(unix)]`와 `#[cfg(windows)]`로 나누고, 모든 OS에 동작을 마련합니다. 차이는 작은 모듈에 모읍니다: `ipc.rs`(호스트 통로), `spawn.rs`(세션이 실행하는 것), `state_dir.rs`(폴더와 파일 권한), `cwd.rs`, `time.rs`.
-- macOS와 Linux는 로그인 셸을 거쳐 세션을 시작합니다. Windows는 인자 목록으로 프로그램을 바로 실행합니다. `.cmd` 실행 파일은 인자를 cmd.exe로 넘기므로, 인자에 cmd.exe 문법 문자가 없는지 확인합니다.
+- macOS와 Linux는 로그인 셸을 거쳐 세션을 시작합니다. Windows는 PowerShell과 ssh를 인자 목록으로 바로 실행합니다. terminal-browser와 terminal-code는 `wsl.exe --exec`로 WSL의 로그인 셸을 거쳐 실행합니다.
 - push 전에 macOS나 Linux에서 Windows 빌드를 확인합니다.
 
   ```bash
@@ -216,7 +216,7 @@ westerm은 macOS, Linux, Windows에서 동작합니다. CI가 모든 PR을 세 �
   cargo check --target x86_64-pc-windows-msvc --all-targets --manifest-path native/Cargo.toml
   ```
 
-  데스크톱 앱을 확인할 때는 Windows 리소스용 `llvm-rc`가 PATH에 있어야 합니다(macOS: `brew install llvm` 후 `PATH="$(brew --prefix llvm)/bin:$PATH"`). 앱에 넣을 westerm 자리도 만듭니다: `touch desktop/binaries/westerm-x86_64-pc-windows-msvc.exe`.
+  데스크톱 앱을 확인할 때는 Windows 리소스용 `llvm-rc`가 PATH에 있어야 합니다(macOS: `brew install llvm` 후 `PATH="$(brew --prefix llvm)/bin:$PATH"`). 앱에 넣을 westerm 자리도 만듭니다: `touch desktop/binaries/westerm-x86_64-pc-windows-msvc.exe`. ConPTY 파일도 받습니다: `node scripts/conpty.mjs desktop/binaries/conpty`.
 
 - macOS에서 Docker로 Linux 테스트를 돌립니다.
 
