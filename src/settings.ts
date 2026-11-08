@@ -34,6 +34,8 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const KEY = "westerm.settings";
 export const FONT_FAMILY_MAX = 200;
+/** Fonts in the list, the first one first; later ones fill in missing glyphs. */
+export const MAX_FONT_FAMILIES = 8;
 
 /** Saved settings with every field checked; anything unusable falls back to the default. */
 export function parseSettings(raw: string | null): Settings {
@@ -60,7 +62,7 @@ export function parseFamilies(text: string): string[] {
     .split(",")
     .map((name) => name.trim().replace(/^["']+|["']+$/g, "").trim())
     .filter(Boolean)
-    .slice(0, 8);
+    .slice(0, MAX_FONT_FAMILIES);
 }
 
 export function useSettings(): [Settings, (change: Partial<Settings>) => void] {

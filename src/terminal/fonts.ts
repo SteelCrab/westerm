@@ -44,8 +44,14 @@ export const DEFAULT_FONT_SIZE = 14;
 export const MIN_FONT_SIZE = 10;
 export const MAX_FONT_SIZE = 28;
 
-function cssFamily(name: string): string {
-  if (GENERIC.has(name)) return name;
+/** A CSS keyword such as `monospace`, not the name of an installed font. */
+export function isGenericFamily(name: string): boolean {
+  return GENERIC.has(name.trim().toLowerCase());
+}
+
+/** One name for a CSS font-family list: quoted, unless it is a generic keyword. */
+export function cssFamily(name: string): string {
+  if (isGenericFamily(name)) return name.trim().toLowerCase();
   return `"${name.replace(/["\\]/g, "\\$&")}"`;
 }
 

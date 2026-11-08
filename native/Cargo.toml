@@ -16,6 +16,9 @@ bytes = "1.12.1"
 # remote windows. The default backend is pure Rust.
 flate2 = "1.1.11"
 futures-util = "0.3.34"
+# Settings lists the fonts installed on this computer. Both are pure Rust:
+# fontdb finds the font files and names, ttf-parser reads widths and glyphs.
+fontdb = "0.24.0"
 # The docs pane lists Markdown files the way git sees them (.gitignore).
 ignore = "0.4"
 libc = "0.2.191"
@@ -32,7 +35,12 @@ serde_json = "1.0.154"
 sha2 = "0.11.1"
 tokio = { version = "1.54.1", features = ["full"] }
 tokio-tungstenite = "0.30.0"
+ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }
 vt100 = "0.18.1"
+
+# macOS: CoreText names the fonts apps may use, as Font Book shows them.
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10.1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes"] }

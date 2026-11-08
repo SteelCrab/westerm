@@ -87,7 +87,7 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 | Appearance | Mode | System (follows the OS, live), Light, or Dark. Terminal colors follow it, and programs that ask for the background color (OSC 11) pick a matching theme. |
 | Appearance | Color theme | Default, One, GitHub, Solarized, Gruvbox, Catppuccin, Tokyo Night, Rosé Pine, Everforest, or Kanagawa. Colors the window and the terminals; each theme has a light and a dark set, which follow Mode. Default keeps the window's own colors. Programs that ask for the background color (OSC 11) get the theme's. |
 | Terminal | Font size | Overrides the Ghostty `font-size`. "Use the Ghostty size" goes back. |
-| Terminal | Font | Overrides the Ghostty `font-family`; separate fallbacks with commas. Leave it empty for the Ghostty font. Applies on Enter or when the field loses focus. |
+| Terminal | Font | Overrides the Ghostty `font-family` with a list of up to 8 fonts, the first one first; glyphs a font lacks come from the next. **Add font** searches the fonts installed on this computer (monospaced only, unless unticked) and tags those with your language's script or Nerd Font icons; a name that is not installed can be typed in. Drag a font, or press Alt+↑/↓, to reorder; Delete or × removes it. Each change applies at once. "Use the Ghostty setting" empties the list. |
 | Terminal | Resume AI agents | On (the default): a shell that comes back as "restored" runs the Claude Code, Codex, or Gemini CLI conversation it had again. See [Sessions ▸ AI agents](sessions.md#ai-agents). |
 | Updates | Check for updates automatically | Asks GitHub for the newest release when the dashboard opens and every 6 hours. With it off, westerm contacts GitHub only when you press Check now. A remote window has no Updates page. |
 
@@ -285,5 +285,6 @@ The remote westerm pane of v0.2.0 is gone. A saved layout drops those panes when
 ## Fonts and themes
 
 - The server reads `font-family` and `font-size` from your Ghostty config (`/api/terminal-config`).
+- Settings lists the installed font families from `/api/system-fonts`: on macOS the families CoreText offers (as Font Book shows them), elsewhere the system font folders and fontconfig. The browser draws the fonts, so the list is right when the browser runs on the same computer as the server.
 - Ghostty has the Nerd Font icons built in; browsers do not. So the font stack adds the Nerd Fonts you have installed after your font.
 - Light and dark follow the OS unless Settings picks one. Terminal colors switch with it, in the color theme picked in Settings (`src/terminalThemes.ts`, `WTerm.setThemeColors`).
