@@ -265,7 +265,7 @@ For maintainers. A version tag builds and publishes everything.
    git push origin v0.2.0
    ```
 
-4. The [Release workflow](.github/workflows/release.yml) checks that the tag matches the three versions, tests and builds macOS (Apple silicon, Intel), Linux (x64, arm64, static), and Windows, bundles the desktop app (universal macOS, Windows x64, Linux x64 and arm64), and publishes a GitHub release with the archives and SHA-256 sums. A last job installs the release with `install.sh` and `install.ps1` on every system. `install.sh` and `install.ps1` install it as the latest release.
+4. The [Release workflow](.github/workflows/release.yml) checks that the tag matches the three versions, tests and builds macOS (Apple silicon, Intel), Linux (x64, arm64, static), and Windows, bundles the desktop app (universal macOS, Windows x64, Linux x64 and arm64), and publishes a GitHub release with the archives and SHA-256 sums. The workflow verifies `install.sh` and `install.ps1` against the published release, then packs, tests, and publishes the same version to npm.
 
 A new version with changed PTY host code restarts users' shells once, as "restored". Mention it in the release notes.
 
@@ -273,18 +273,27 @@ A new version with changed PTY host code restarts users' shells once, as "restor
 
 The root `package.json` stays private because it builds the web UI. `npm/` contains the public `@pistacrab/westerm` package template and launcher. The packaging script reads the root version and downloads that version's published GitHub release. It verifies each archive's SHA-256, then copies only the executables and required Windows files to `dist-npm/`. The generated package has no runtime dependencies or install scripts.
 
-After the GitHub release is published:
+The Release workflow publishes the tested tarball with [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/). Stable releases use npm's default `latest` tag. Prereleases use `next`. A rerun skips versions already published to npm.
+
+Before the first automated release, configure a trusted publisher for `@pistacrab/westerm` in npm with repository `SteelCrab/westerm`, workflow `release.yml`, and permission to run `npm publish`. Leave the environment field blank. You can also set this up with npm CLI 11.15 or later:
+
+```bash
+npm trust github @pistacrab/westerm --repo SteelCrab/westerm --file release.yml --allow-publish
+```
+
+Complete the first automated publication within two days of creating the trusted publisher. npm expires new configurations that have not been used within that window.
+
+To build and test the package locally after a matching GitHub release exists:
 
 ```bash
 npm run test:npm
 npm run pack:npm
 npm run test:npm-install
-npm publish ./pistacrab-westerm-0.4.1.tgz --access public  # use the version just packed
 ```
 
-Publish the exact tarball tested by `test:npm-install`. Authenticate with `npm login` first. The package includes all five release builds (about 20 MB compressed); it supports Node.js 22 or later. `release.json` records the release URLs and archive checksums.
+The package includes all five release builds (about 20 MB compressed). It supports Node.js 22 or later. `release.json` records the release URLs and archive checksums. Packaging on Linux requires `unzip` for the Windows archive.
 
-The npm workflow runs the launcher tests and installs the packed package on macOS, Linux, and Windows with install scripts disabled. It pins `WESTERM_NPM_VERSION` to an existing release so version-bump pull requests can pass before their GitHub release exists. For a normal publication, leave that variable unset to use the root package version. Packaging on Linux also requires `unzip` for the Windows archive.
+The separate npm workflow tests packaging and installation on macOS, Linux, and Windows. It pins `WESTERM_NPM_VERSION` to an existing release so version bumps can be tested before publishing the new GitHub release.
 
 ## Security issues
 
