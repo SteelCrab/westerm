@@ -27,7 +27,7 @@ try {
   // Check npm's actual command entrypoint, including its Windows .cmd shim.
   const launcher = process.platform === "win32" ? join(prefix, "westerm.cmd") : join(prefix, "bin/westerm");
   const result = process.platform === "win32"
-    ? execFileSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `""${launcher}" --version"`], { encoding: "utf8" })
+    ? execFileSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `""${launcher}" --version"`], { encoding: "utf8", windowsVerbatimArguments: true })
     : execFileSync(launcher, ["--version"], { encoding: "utf8" });
   assert.ok(result.startsWith(`westerm ${version} `), `unexpected version: ${result}`);
   console.log(`Installed package verified: ${result.trim()}`);
