@@ -7,14 +7,14 @@
 Requires Node.js 22 or later.
 
 ```bash
-npm install -g westerm
+npm install -g @pistacrab/westerm
 westerm
 ```
 
 Or run without a global installation:
 
 ```bash
-npx westerm
+npx @pistacrab/westerm
 ```
 
 Then open http://127.0.0.1:4317.
@@ -34,7 +34,7 @@ Installation needs no Rust compiler, install scripts, or separate binary downloa
 ## Update
 
 ```bash
-npm install -g westerm@latest
+npm install -g @pistacrab/westerm@latest
 ```
 
 Restart westerm after updating. Open shells may return once as restored sessions. The built-in `westerm update` command and dashboard updater replace the bundled executable directly; use npm to keep the npm package version in sync.

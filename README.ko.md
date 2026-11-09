@@ -13,10 +13,10 @@
 npm 설치에는 Node.js 22 이상을 사용한다.
 
 ```bash
-npm install -g westerm
+npm install -g @pistacrab/westerm
 ```
 
-`npx westerm`으로 바로 실행할 수도 있다. npm 설치본은 `npm install -g westerm@latest`로 업데이트한다.
+`npx @pistacrab/westerm`으로 바로 실행할 수도 있다. npm 설치본은 `npm install -g @pistacrab/westerm@latest`로 업데이트한다.
 
 macOS, Linux:
 

@@ -12,7 +12,7 @@ try {
   process.on("SIGINT", forward);
   process.on("SIGTERM", forward);
   child.on("error", (error) => {
-    console.error(`westerm: ${error.message}. Reinstall with "npm install -g westerm".`);
+    console.error(`westerm: ${error.message}. Reinstall with "npm install -g @pistacrab/westerm".`);
     process.exitCode = 1;
   });
   child.on("exit", (code, signal) => {

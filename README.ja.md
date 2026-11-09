@@ -13,10 +13,10 @@
 npm（Node.js 22 以降）：
 
 ```bash
-npm install -g westerm
+npm install -g @pistacrab/westerm
 ```
 
-`npx westerm` で直接実行することもできます。npm でインストールした場合は `npm install -g westerm@latest` で更新します。
+`npx @pistacrab/westerm` で直接実行することもできます。npm でインストールした場合は `npm install -g @pistacrab/westerm@latest` で更新します。
 
 macOS、Linux:
 

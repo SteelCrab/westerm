@@ -13,10 +13,10 @@
 With npm (Node.js 22 or later):
 
 ```bash
-npm install -g westerm
+npm install -g @pistacrab/westerm
 ```
 
-Or run `npx westerm`. Update the npm installation with `npm install -g westerm@latest`.
+Or run `npx @pistacrab/westerm`. Update the npm installation with `npm install -g @pistacrab/westerm@latest`.
 
 macOS and Linux:
 

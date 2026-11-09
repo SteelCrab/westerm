@@ -51,7 +51,7 @@ test("reports a missing binary with a reinstall instruction", (t) => {
   const { launcher } = fixture(t);
   const result = spawnSync(process.execPath, [launcher, "--version"], { encoding: "utf8" });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /Reinstall with "npm install -g westerm"/);
+  assert.match(result.stderr, /Reinstall with "npm install -g @pistacrab\/westerm"/);
 });
 
 test("preserves arguments, environment, working directory, and exit status", { skip: process.platform === "win32" }, (t) => {

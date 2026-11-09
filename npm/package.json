@@ -1,5 +1,5 @@
 {
-  "name": "westerm",
+  "name": "@pistacrab/westerm",
   "description": "Web Session Terminal: a web terminal whose sessions survive closed tabs, restarts, and reboots. Built on wterm.",
   "license": "MIT",
   "type": "module",

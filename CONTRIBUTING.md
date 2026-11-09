@@ -271,7 +271,7 @@ A new version with changed PTY host code restarts users' shells once, as "restor
 
 ### npm package
 
-The root `package.json` stays private because it builds the web UI. `npm/` contains the public package template and launcher. The packaging script reads the root version and downloads that version's published GitHub release. It verifies each archive's SHA-256, then copies only the executables and required Windows files to `dist-npm/`. The generated package has no runtime dependencies or install scripts.
+The root `package.json` stays private because it builds the web UI. `npm/` contains the public `@pistacrab/westerm` package template and launcher. The packaging script reads the root version and downloads that version's published GitHub release. It verifies each archive's SHA-256, then copies only the executables and required Windows files to `dist-npm/`. The generated package has no runtime dependencies or install scripts.
 
 After the GitHub release is published:
 
@@ -279,7 +279,7 @@ After the GitHub release is published:
 npm run test:npm
 npm run pack:npm
 npm run test:npm-install
-npm publish ./westerm-0.4.1.tgz --access public  # use the version just packed
+npm publish ./pistacrab-westerm-0.4.1.tgz --access public  # use the version just packed
 ```
 
 Publish the exact tarball tested by `test:npm-install`. Authenticate with `npm login` first. The package includes all five release builds (about 20 MB compressed); it supports Node.js 22 or later. `release.json` records the release URLs and archive checksums.

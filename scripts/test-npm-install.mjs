@@ -9,16 +9,18 @@ import { filesFor, targets } from "../npm/bin/platform.mjs";
 
 const { version: sourceVersion } = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"));
 const version = process.env.WESTERM_NPM_VERSION ?? sourceVersion;
-const tarball = resolve(process.argv[2] ?? `westerm-${version}.tgz`);
+const { name } = JSON.parse(readFileSync(fileURLToPath(new URL("../npm/package.json", import.meta.url)), "utf8"));
+const tarballName = name.replace(/^@/, "").replace("/", "-");
+const tarball = resolve(process.argv[2] ?? `${tarballName}-${version}.tgz`);
 const npm = process.env.npm_execpath;
 assert.ok(npm, "run this check with npm run test:npm-install");
 const prefix = mkdtempSync(join(tmpdir(), "westerm npm install "));
 try {
   execFileSync(process.execPath, [npm, "install", "--global", "--prefix", prefix, "--ignore-scripts", "--no-audit", "--no-fund", tarball], { stdio: "inherit" });
-  const installed = join(prefix, process.platform === "win32" ? "node_modules" : "lib/node_modules", "westerm");
+  const installed = join(prefix, process.platform === "win32" ? "node_modules" : "lib/node_modules", name);
   const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
   assert.equal(manifest.version, version);
-  assert.equal(manifest.name, "westerm");
+  assert.equal(manifest.name, name);
   assert.equal(manifest.scripts, undefined);
   assert.equal(manifest.dependencies, undefined);
   for (const target of targets) {
