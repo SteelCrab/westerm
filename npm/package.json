@@ -1,0 +1,29 @@
+{
+  "name": "westerm",
+  "description": "Web Session Terminal: a web terminal whose sessions survive closed tabs, restarts, and reboots. Built on wterm.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "westerm": "bin/westerm.mjs"
+  },
+  "files": ["bin", "vendor", "release.json"],
+  "engines": {
+    "node": ">=22"
+  },
+  "os": ["darwin", "linux", "win32"],
+  "cpu": ["x64", "arm64"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SteelCrab/westerm.git",
+    "directory": "npm"
+  },
+  "homepage": "https://github.com/SteelCrab/westerm#readme",
+  "bugs": {
+    "url": "https://github.com/SteelCrab/westerm/issues"
+  },
+  "keywords": ["terminal", "web-terminal", "persistent-sessions", "cli", "wterm"],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

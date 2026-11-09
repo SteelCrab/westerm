@@ -10,6 +10,14 @@
 
 ## Install
 
+With npm (Node.js 22 or later):
+
+```bash
+npm install -g westerm
+```
+
+Or run `npx westerm`. Update the npm installation with `npm install -g westerm@latest`.
+
 macOS and Linux:
 
 ```bash

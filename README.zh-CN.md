@@ -10,6 +10,14 @@
 
 ## 安装
 
+使用 npm（需要 Node.js 22 或更高版本）：
+
+```bash
+npm install -g westerm
+```
+
+也可以直接运行 `npx westerm`。通过 npm 安装后，使用 `npm install -g westerm@latest` 更新。
+
 macOS、Linux：
 
 ```bash

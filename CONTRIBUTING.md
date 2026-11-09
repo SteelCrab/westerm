@@ -269,6 +269,23 @@ For maintainers. A version tag builds and publishes everything.
 
 A new version with changed PTY host code restarts users' shells once, as "restored". Mention it in the release notes.
 
+### npm package
+
+The root `package.json` stays private because it builds the web UI. `npm/` contains the public package template and launcher. The packaging script reads the root version and downloads that version's published GitHub release. It verifies each archive's SHA-256, then copies only the executables and required Windows files to `dist-npm/`. The generated package has no runtime dependencies or install scripts.
+
+After the GitHub release is published:
+
+```bash
+npm run test:npm
+npm run pack:npm
+npm run test:npm-install
+npm publish ./westerm-0.4.1.tgz --access public  # use the version just packed
+```
+
+Publish the exact tarball tested by `test:npm-install`. Authenticate with `npm login` first. The package includes all five release builds (about 20 MB compressed); it supports Node.js 22 or later. `release.json` records the release URLs and archive checksums.
+
+The npm workflow runs the launcher tests and installs the packed package on macOS, Linux, and Windows with install scripts disabled. It pins `WESTERM_NPM_VERSION` to an existing release so version-bump pull requests can pass before their GitHub release exists. For a normal publication, leave that variable unset to use the root package version. Packaging on Linux also requires `unzip` for the Windows archive.
+
 ## Security issues
 
 Do not open a public issue. Use [private vulnerability reporting](https://github.com/SteelCrab/westerm/security/advisories/new).

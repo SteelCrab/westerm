@@ -5,6 +5,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "pack:npm": "node scripts/prepare-npm.mjs && npm pack ./dist-npm",
+    "test:npm": "node --test tests/npm-package.test.mjs",
+    "test:npm-install": "node scripts/test-npm-install.mjs",
     "build": "vite build && cargo build --release --manifest-path native/Cargo.toml",
     "start": "node scripts/start.mjs",
     "dev": "vite",

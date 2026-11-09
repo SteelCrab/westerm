@@ -1,5 +1,18 @@
 # Install
 
+## npm
+
+Requires Node.js 22 or later:
+
+```bash
+npm install -g westerm
+westerm
+```
+
+Or run `npx westerm` without a global installation. The package includes the release executables for all supported platforms and needs no Rust compiler or install scripts. Windows on Arm uses the x64 build through emulation.
+
+Update with `npm install -g westerm@latest`, then restart westerm. The built-in updater replaces the bundled executable directly; npm updates keep the package version in sync.
+
 ## Install script
 
 macOS and Linux:
