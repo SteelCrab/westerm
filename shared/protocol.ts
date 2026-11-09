@@ -190,6 +190,8 @@ export const REMOTE_CLOSE_PATH = "/api/remote/close";
 /** POST {target}: replace the server's westerm host now. */
 export const REMOTE_UPDATE_HOST_PATH = "/api/remote/update-host";
 export const CONFIG_PATH = "/api/terminal-config";
+/** Font families installed on the computer that runs the server (and the browser). */
+export const SYSTEM_FONTS_PATH = "/api/system-fonts";
 /** Concrete Host aliases from ~/.ssh/config. */
 export const SSH_HOSTS_PATH = "/api/ssh-hosts";
 /** GET: whether a newer release exists. POST (dashboard origin only): install it and restart. */
@@ -217,6 +219,22 @@ export interface TerminalConfig {
   fontFamilies: string[];
   /** Ghostty `font-size` in points; null when unset. */
   fontSize: number | null;
+}
+
+/** One installed font family, for Settings ▸ Terminal ▸ Font. */
+export interface SystemFont {
+  /** The family name CSS `font-family` takes. */
+  family: string;
+  /** Latin letters and digits have one width, as a terminal needs. */
+  mono: boolean;
+  /** Has Korean Hangul. */
+  hangul: boolean;
+  /** Has Japanese kana. */
+  kana: boolean;
+  /** Has Chinese characters. */
+  han: boolean;
+  /** Has the Nerd Font icons that shell prompts use. */
+  icons: boolean;
 }
 
 /** The browser acknowledges parsed output in batches of at least this many bytes. */

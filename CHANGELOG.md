@@ -4,6 +4,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Settings ▸ Terminal ▸ Font picks from the fonts installed on this computer. The fonts form an ordered list (up to 8): search to add one, drag or Alt+↑/↓ to reorder, and see a preview in the stack the terminals use. Fonts with your language's script or Nerd Font icons are tagged, and names that are not installed can still be typed in.
+
 ## [0.4.1] - 2026-11-09
 
 ### Added

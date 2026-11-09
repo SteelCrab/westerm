@@ -6,6 +6,7 @@
 mod agents;
 mod config;
 mod docs;
+mod fonts;
 pub(crate) mod host_client;
 mod http1;
 mod remote;
@@ -127,6 +128,7 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         .route("/ws/session", get(session))
         .merge(docs::routes())
         .merge(agents::routes())
+        .merge(fonts::routes())
         .merge(remote_window::routes())
         .fallback(asset)
         .with_state(state);
