@@ -27,3 +27,14 @@ test("long Git content scrolls within the viewport instead of expanding the grid
   assert.match(rule(".git-scroll") ?? "", /overflow-y:\s*auto/);
   assert.match(rule(".git-preview pre") ?? "", /max-height:/);
 });
+
+// The focused pane needs a ring that is easy to see. Draw it with box-shadow
+// outside the 1px border: a thicker border would shrink the terminal grid.
+test("the focused pane has a thick accent ring outside its 1px border", () => {
+  const body = rule(".pane.focused") ?? "";
+  assert.match(body, /border-color:\s*var\(--accent\)/);
+  assert.match(body, /box-shadow:\s*0 0 0 1px var\(--accent\),\s*0 0 0 4px var\(--accent-halo\)/);
+  assert.doesNotMatch(body, /border(-width)?:/);
+  // Dark, light (from the OS) and light (forced) themes each define it.
+  assert.equal(css.match(/--accent-halo:/g)?.length, 3);
+});
