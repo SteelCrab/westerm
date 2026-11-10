@@ -203,6 +203,7 @@ button {
   --sidebar-width: 240px;
   display: grid;
   grid-template-columns: 52px var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
 }
 
@@ -414,12 +415,553 @@ button {
   box-shadow: 0 0 0 2px var(--surface-2);
 }
 
+/* ---- Git sidebar --------------------------------------------- */
+
+.git-panel {
+  min-height: 0;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.git-panel svg {
+  flex: none;
+}
+
+.git-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.git-header > svg {
+  color: var(--text-muted);
+}
+
+.git-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.git-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.git-repository {
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.git-repo-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px 8px;
+  margin-bottom: 10px;
+}
+
+.git-repo-name strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.git-repo-name > span {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.git-branch-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+}
+
+.git-branch-row select {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
+  border: 0;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.git-sync {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.git-sync svg:nth-of-type(2) {
+  margin-left: 4px;
+}
+
+.git-remote-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  font-size: 10px;
+}
+
+.git-remote-row > span {
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-remote-row button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.git-remote-row button svg:nth-of-type(2) {
+  margin-left: 4px;
+}
+
+.git-commit-form {
+  display: grid;
+  gap: 7px;
+  padding: 12px 12px 10px;
+}
+
+.git-commit-form textarea {
+  display: block;
+  width: 100%;
+  min-height: 58px;
+  max-height: 160px;
+  padding: 9px 10px;
+  resize: vertical;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.git-commit-form textarea::placeholder {
+  color: var(--text-faint);
+}
+
+.git-commit-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.git-commit-button > span {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.git-commit-button:disabled {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.git-change-summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px 10px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.git-change-summary > span:first-child {
+  flex: 1;
+}
+
+.git-added {
+  color: var(--ok);
+}
+
+.git-deleted {
+  color: var(--danger);
+}
+
+.git-file-group {
+  padding: 0 6px 5px;
+}
+
+.git-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 3px;
+}
+
+.git-group-toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.git-group-toggle > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-count {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.git-file-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.git-file-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 29px;
+  padding-right: 3px;
+  border-radius: 4px;
+}
+
+.git-file-row.selected {
+  background: var(--accent-soft);
+}
+
+.git-file-select {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 2px 6px 9px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.git-file-select > svg {
+  color: var(--text-faint);
+}
+
+.git-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-file-dir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-file-status {
+  flex: none;
+  min-width: 10px;
+  margin-left: auto;
+  text-align: center;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.git-file-status.status-M {
+  color: var(--warn);
+}
+
+.git-file-status.status-A, .git-file-status.status-new {
+  color: var(--ok);
+}
+
+.git-panel .icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.git-group-empty {
+  margin: 0;
+  padding: 5px 14px 9px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.git-preview {
+  margin: 10px 12px 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.git-preview-heading {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 8px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.git-preview-heading > span:last-child {
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-preview pre {
+  margin: 0;
+  max-height: min(360px, 45vh);
+  padding: 5px 0;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.8;
+  tab-size: 2;
+}
+
+.git-diff-line {
+  display: block;
+  min-width: max-content;
+  padding: 0 8px;
+}
+
+
+
+.git-diff-line.added {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.git-diff-line.deleted {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.git-history {
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.git-history summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 38px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.git-history summary::-webkit-details-marker {
+  display: none;
+}
+
+.git-history summary .git-count {
+  margin-left: auto;
+}
+
+.git-history[open] .git-chevron {
+  transform: rotate(90deg);
+}
+
+.git-history ol {
+  margin: 0 0 0 7px;
+  padding: 0;
+  list-style: none;
+}
+
+.git-history li {
+  position: relative;
+  padding: 2px 0 13px 14px;
+  border-left: 1px solid var(--border-strong);
+}
+
+.git-history li:last-child {
+  padding-bottom: 2px;
+  border-color: transparent;
+}
+
+.git-history-dot {
+  position: absolute;
+  top: 6px;
+  left: -3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+
+.git-history li:first-child .git-history-dot {
+  background: var(--accent);
+}
+
+.git-history-message {
+  display: block;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-history-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.git-history-meta code {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.git-history-meta time {
+  margin-left: auto;
+}
+
+.git-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+
+
+.git-compact {
+  align-items: center;
+  gap: 14px;
+  padding: 16px 0;
+  color: var(--accent);
+}
+
+.git-panel button:focus-visible,
+.git-panel select:focus-visible,
+.git-panel textarea:focus-visible,
+.git-panel summary:focus-visible,
+.git-panel pre:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.git-panel button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .git-file-row:hover,
+  .git-group-toggle:hover {
+    background: var(--surface-2);
+  }
+
+  .git-file-row.selected:hover {
+    background: var(--accent-soft);
+  }
+
+  .git-remote-row button:hover {
+    color: var(--accent);
+  }
+
+  .git-commit-button:not(:disabled):hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+}
+
 /* ---- Session panel --------------------------------------------------- */
 
 .sidebar-slot {
   position: relative;
   display: flex;
   min-width: 0;
+  min-height: 0;
 }
 
 .session-panel {
@@ -3795,6 +4337,244 @@ body.resizing-sidebar .pane-layer {
   }
 }
 
+/* Settings ▸ Terminal ▸ Font: the ordered font list, the search for
+   installed fonts below it, and a preview in the stack the terminals use. */
+/* The panel scrolls; the list and the preview keep their height, or the
+   column would squash them (and the search inside) to fit. */
+.settings-panel > .settings-row,
+.font-picker,
+.font-preview {
+  flex-shrink: 0;
+}
+
+.font-picker {
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.font-stack {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.font-row,
+.font-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.font-row {
+  min-height: 34px;
+  padding: 3px 6px 3px 8px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+}
+
+.font-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.font-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.font-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.font-row.empty {
+  padding-left: 12px;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.font-grip {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.font-order {
+  flex: none;
+  min-width: 12px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.font-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-row .font-name {
+  font-weight: 500;
+}
+
+.font-tag {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.font-tag.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.font-sample {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.font-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.font-add:hover {
+  background: var(--accent-soft);
+}
+
+.font-add:disabled {
+  background: transparent;
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.font-add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.font-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.font-search-bar:focus-within {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Beats `.settings-row input[type="text"]`: no box and the UI font here. */
+.font-search-bar input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.font-search-bar input:focus-visible {
+  outline: none;
+}
+
+.font-search-bar .settings-check {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.font-options {
+  max-height: 196px;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.font-option {
+  height: 28px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.font-option .font-name {
+  flex: none;
+  max-width: 55%;
+}
+
+.font-option[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.font-option[aria-disabled="true"] {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.font-added {
+  flex: none;
+  color: var(--ok);
+}
+
+.font-search-note,
+.font-search-count {
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.font-search-count {
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.font-preview {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--pane-bg);
+  color: var(--text);
+  line-height: 1.35;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.font-preview-dir {
+  color: var(--ok);
+}
+
+.font-preview-branch {
+  color: var(--accent);
+}
+
 /* Settings ▸ Appearance ▸ Color theme: a preview in the theme's own
    colors, and its name below in the window's. */
 .color-themes {
@@ -4845,4 +5625,388 @@ body.resizing-rows .pane {
 
 .docs-view.narrow .docs-preview {
   padding: 14px 16px 32px;
+}
+
+.git-folder-form { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.git-folder-form input { min-width: 0; width: 100%; padding: 6px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg); color: var(--text); font: inherit; font-size: 11px; }
+.git-folder-select { width: 100%; margin-bottom: 12px; padding: 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text-muted); font: inherit; font-size: 10px; }
+.git-repo-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-error { margin: 10px 12px; color: var(--danger); overflow-wrap: anywhere; white-space: pre-wrap; }
+.git-panel button:disabled, .git-panel select:disabled { cursor: default; opacity: .5; }
+.git-file-status.status-D, .git-file-status.status-U { color: var(--danger); }
+.git-file-status.status-R, .git-file-status.status-C { color: var(--accent); }
+
+.git-history-select {
+  display: block;
+  width: 100%;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.git-history-select:hover, .git-history-select[aria-expanded="true"] { background: var(--accent-soft); }
+.git-history-select:focus-visible, .git-commit-files button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.git-history-meta > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-history-meta time { flex: none; }
+.git-commit-detail { margin: 8px 0 10px; padding: 10px 8px; border: 1px solid var(--border-strong); border-radius: 5px; }
+.git-commit-message {
+  margin: 0 0 12px;
+  max-height: min(240px, 30vh);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.6;
+  scroll-margin-block: 12px;
+  user-select: text;
+}
+.git-commit-metadata { margin: 0; color: var(--text-muted); font-size: 10px; }
+.git-commit-metadata dt { margin-top: 7px; color: var(--text-faint); }
+.git-commit-metadata dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.git-commit-detail h3 { display: flex; align-items: center; gap: 6px; margin: 14px 0 7px; font-size: 11px; font-weight: 600; }
+.git-merge-note { color: var(--text-muted); font-size: 10px; line-height: 1.5; }
+.git-commit-files .git-file-select { width: 100%; padding: 5px 3px; border-radius: 3px; text-align: left; }
+.git-commit-files .git-file-select[aria-pressed="true"] { background: var(--accent-soft); }
+.git-commit-file-path { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-commit-detail .git-preview { margin: 10px 0 0; }
+
+/* The tunnel button: a tunnel is on. */
+.activity-dot.on {
+  background: var(--ok);
+}
+
+.activity-tunnel[aria-pressed="true"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* The tunnel panel reuses the session panel's frame and the agents header. */
+.tunnel-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 4px 14px 16px;
+  overflow-y: auto;
+  font-size: 12.5px;
+}
+
+.tunnel-intro,
+.tunnel-muted,
+.tunnel-reason,
+.tunnel-state,
+.tunnel-code,
+.tunnel-warning {
+  margin: 0;
+}
+
+.tunnel-intro {
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.tunnel-muted {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.tunnel-reason {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.tunnel-action {
+  align-self: flex-start;
+}
+
+.tunnel-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tunnel-state.failed {
+  color: var(--danger);
+}
+
+.tunnel-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.tunnel-dot.reconnecting {
+  background: var(--warn);
+}
+
+.tunnel-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tunnel-spinner {
+    animation: none;
+  }
+}
+
+.tunnel-live {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tunnel-live.dim {
+  opacity: 0.45;
+}
+
+.tunnel-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tunnel-copy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.tunnel-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tunnel-text.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Black on white in both themes: scanners need the contrast. */
+.tunnel-qr {
+  align-self: flex-start;
+  width: 148px;
+  height: 148px;
+  padding: 4px;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.tunnel-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tunnel-code {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tunnel-devices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tunnel-device {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tunnel-device-state {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.tunnel-device-state.online {
+  color: var(--ok);
+}
+
+.tunnel-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--warn);
+  line-height: 1.45;
+}
+
+.tunnel-warning svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.tunnel-link {
+  align-self: flex-start;
+  color: var(--accent);
+}
+
+.tunnel-log summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tunnel-log pre {
+  max-height: 180px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tunnel-compact {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 40px;
+  color: var(--text-muted);
+}
+
+.tunnel-compact .tunnel-dot {
+  position: absolute;
+  top: 10px;
+  right: calc(50% - 12px);
+}
+
+/* A tunnel page before the app: the access code, or the end of the tunnel. */
+.tunnel-login {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.tunnel-login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(360px, 100%);
+  padding: 28px 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.tunnel-login-card h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.tunnel-login-logo {
+  border-radius: 9px;
+}
+
+.tunnel-login-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Six cells drawn behind one input, so paste and one-time-code autofill work. */
+.tunnel-login-code {
+  --cell: 2.1ch;
+  box-sizing: content-box;
+  width: calc(var(--cell) * 6);
+  padding: 8px 0 8px 0.65ch;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(var(--cell) - 1px),
+      var(--border) calc(var(--cell) - 1px) var(--cell)
+    ),
+    var(--bg);
+  color: var(--text);
+  font: 600 28px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 1.1ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.tunnel-login-code:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.tunnel-login-code:disabled {
+  opacity: 0.5;
+}
+
+.tunnel-login-code.shake {
+  animation: tunnel-shake 0.35s ease-in-out;
+}
+
+@keyframes tunnel-shake {
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tunnel-login-code.shake {
+    animation: none;
+  }
+}
+
+.tunnel-login-error {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--danger);
+  font-size: 12.5px;
 }

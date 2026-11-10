@@ -1,10 +1,25 @@
 # Usage
 
+## Git sidebar
+
+The folder-shaped Git button below Agents opens the repository of the focused terminal. It follows that terminal's folder. Choose another workspace folder from the list, or enter an absolute folder path to pin a repository. Choose **Follow focused terminal** to follow again.
+
+- The panel shows the current branch, changed files, the upstream's last known ahead/behind counts, and recent commits.
+- Select a recent commit to read its full message, author, timestamp, and changed files. Select a committed file to view its patch. Merge commits compare with their first parent; the comparison is labeled.
+- Select a file to read its staged or unstaged diff. A partially staged file appears in both groups.
+- Use `+` and `−` to stage or unstage a file. The section buttons apply to the listed files. Unstaging keeps working files intact.
+- Enter a message and choose **Commit** to commit the staged changes. Git hooks and Git's configured author identity still apply.
+- Select a local branch to switch branches. Git refuses a switch that would overwrite changes or use a branch checked out in another worktree.
+- **Pull** uses fast-forward only. **Push** uses the configured upstream. Both require an upstream branch. Neither runs automatically.
+- The refresh button reloads the repository. While open, the panel also refreshes every five seconds and when the window regains focus.
+- Git errors, such as missing identity, conflicts, authentication failure, and large diffs, appear in the panel. Interactive authentication is unavailable; configure credentials in the terminal first.
+- Linked Git worktrees are supported. In a remote window, the panel runs Git on that server. The panel uses the current theme and opens as a drawer on narrow windows.
+
 ## The screen
 
 | Area | What it does |
 |---|---|
-| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top; a badge shows how many are open. The plugin bar sits between them and the bottom group. The Agents button, the command palette, Settings, and (in the sidebar layout) the sidebar switch are at the bottom. See [Agents sidebar](#agents-sidebar) and [Plugins](#plugins). |
+| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top, then the Agents, Git, and Tunnel buttons; a badge shows how many panes are open. The plugin bar sits between them and the bottom group. The command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. See [Agents sidebar](#agents-sidebar) and [Plugins](#plugins). |
 | Layout | Settings ▸ General ▸ Workspaces and tabs picks one. **Top** (the default): the workspace menu and the tab bar across the top, and no sidebar. **Sidebar**: the workspace menu and the tabs in the sidebar, and no tab bar. |
 | Tab bar (top layout) | The workspace menu at the left, then the tabs. `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Sidebar (sidebar layout) | The workspace menu, then the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: the workspace icon, tab numbers, and the session icons of the tab in view. |
@@ -87,7 +102,7 @@ Open Settings from the gear at the bottom of the activity bar, from the palette,
 | Appearance | Mode | System (follows the OS, live), Light, or Dark. Terminal colors follow it, and programs that ask for the background color (OSC 11) pick a matching theme. |
 | Appearance | Color theme | Default, One, GitHub, Solarized, Gruvbox, Catppuccin, Tokyo Night, Rosé Pine, Everforest, or Kanagawa. Colors the window and the terminals; each theme has a light and a dark set, which follow Mode. Default keeps the window's own colors. Programs that ask for the background color (OSC 11) get the theme's. |
 | Terminal | Font size | Overrides the Ghostty `font-size`. "Use the Ghostty size" goes back. |
-| Terminal | Font | Overrides the Ghostty `font-family`; separate fallbacks with commas. Leave it empty for the Ghostty font. Applies on Enter or when the field loses focus. |
+| Terminal | Font | Overrides the Ghostty `font-family` with a list of up to 8 fonts, the first one first; glyphs a font lacks come from the next. **Add font** searches the fonts installed on this computer (monospaced only, unless unticked) and tags those with your language's script or Nerd Font icons; a name that is not installed can be typed in. Drag a font, or press Alt+↑/↓, to reorder; Delete or × removes it. Each change applies at once. "Use the Ghostty setting" empties the list. |
 | Terminal | Resume AI agents | On (the default): a shell that comes back as "restored" runs the Claude Code, Codex, or Gemini CLI conversation it had again. See [Sessions ▸ AI agents](sessions.md#ai-agents). |
 | Updates | Check for updates automatically | Asks GitHub for the newest release when the dashboard opens and every 6 hours. With it off, westerm contacts GitHub only when you press Check now. A remote window has no Updates page. |
 
@@ -143,7 +158,7 @@ A list of the AI agents in the workspace in view, grouped by the folder they run
 
 ### Open it
 
-- Press **Agents** in the activity bar. Point at it for "AI agents in this workspace, by folder". A yellow dot on the button means an agent in any workspace needs your input.
+- Press **Agents** at the top of the activity bar, below the launchers. Point at it for "AI agents in this workspace, by folder". A yellow dot on the button means an agent in any workspace needs your input.
 - Top layout: the button opens and closes the panel.
 - Sidebar layout: the button switches the sidebar between the sessions list and the agents panel. The sidebar switch still opens and closes the sidebar.
 - Windows 640px wide or less: the panel opens as a drawer, like the sidebar. A pick in it, a tap outside it, or Escape closes it.
@@ -216,7 +231,7 @@ A plugin adds a panel to westerm. Docker is built in: installing it turns it on,
   - Sidebar layout: the button switches the sidebar between the sessions list and the panel. Press it again to go back to the sessions list.
   - Windows 640px wide or less: the panel opens as a drawer.
 - This browser remembers which panel is open. A panel whose plugin is not installed is closed.
-- A remote window has no plugin bar. The server's dashboard has no plugin routes.
+- A remote window and a page opened through a [tunnel](#tunnel) have no plugin bar: neither has the plugin routes. A pane that a plugin started, such as Docker logs, still opens there.
 
 ### The plugin manager
 
@@ -277,7 +292,7 @@ A note on trust: westerm blocks the plugin's direct network requests, but a bad 
 - A plugin's shell pane types its command into your new shell. This works on macOS and Linux, in the sh family (`sh`, `bash`, `zsh`, `dash`, `ksh`) and `fish`. With another shell (`nu`, `pwsh`, `xonsh`, `elvish`, and also `ash`, `mksh`, `yash`, for example Alpine's default), and on Windows, the plugin's call fails with "Your shell is not supported for plugin panes" and no pane opens. See [Writing plugins](plugins.md#openshell).
 - A plugin that tries to leave its page is stopped: the bar shows "Plugin stopped: it tried to leave its page", and opening the panel again starts it fresh.
 - A plugin cannot open westerm's own address in a browser pane. Other local addresses, such as a dev server, open normally.
-- A remote window shows no plugins.
+- A remote window and a tunnel page show no plugins.
 - A plugin's programs run with the server's environment plus the whole environment of your login shell, so tools find `PATH`, `KUBECONFIG`, and similar settings as in your shells.
 
 ### Where the list is kept
@@ -362,6 +377,23 @@ A docs pane lists the Markdown files of a folder and shows, edits, and saves the
 - **Remote browser**: opens `terminal-browser --ssh <host>`. Pages load through the remote server, so `localhost:3000` is that server's dev server.
 - Authentication uses your SSH keys and agent. Type passwords into the terminal when a server asks; the dashboard never stores or sends them.
 
+## Tunnel
+
+Use this westerm from another device's browser, such as your phone, through a temporary Cloudflare address. Only you use it: the address and a 6-digit access code are for one person.
+
+- Open it from the activity bar (the cloud icon, under the remote window button) or the command palette ("Start tunnel"). The panel takes the sidebar's place, like the agents panel; on a phone-wide window it opens as a drawer.
+- westerm runs [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/) as a Quick Tunnel. It needs no Cloudflare account, no domain, and no open port. If cloudflared is missing, the panel shows the install command (macOS: `brew install cloudflared`, Windows: `winget install --id Cloudflare.cloudflared`, Linux: Cloudflare's downloads page). westerm does not install it. Press **Check again** after you install it.
+- **Start tunnel** gives an address like `https://<name>.trycloudflare.com`, its QR code, and an access code. The address changes every time you start a tunnel. The QR code holds the address only; type the code on the other device.
+- On the other device, open the address and enter the code. Then you see the same workspaces, tabs, and shells. One window at a time owns the sessions, as always: when the phone opens a session, the computer's window says "In use in another window"; click it to take them back.
+- Five wrong codes in a row lock logins for 30 seconds, then for twice as long after each wrong code, up to 15 minutes. Twenty wrong codes stop the tunnel.
+- The panel shows the devices that signed in and when each was last seen. **Stop tunnel** ends every device's access: their cookies stop working, and the page there says "The tunnel has ended". Shells keep running.
+- While the tunnel is on, the computer does not go to idle sleep. Closing the lid, quitting westerm, or quitting the desktop app ends the tunnel. On Linux, westerm uses `systemd-inhibit`; where that does not work, the panel says the computer cannot be kept awake.
+- With no device connected for 12 hours, the tunnel stops by itself.
+- If cloudflared loses Cloudflare (no network, the computer slept), the panel shows **Reconnecting** and the address works again once it reconnects. If cloudflared ends, the panel shows its last output and **Start again**; a new tunnel has a new address and code.
+- Settings kept in the browser (theme, font size, sidebar width, docs drafts) start over on the other device with each tunnel, because the address changes. The layout and the shells are on the computer and stay.
+- A tunnel page has no tunnel, remote window, or update controls.
+- Cloudflare ends TLS at its edge, so Cloudflare can see what passes through the tunnel, terminal output included.
+
 ## Remote windows
 
 A window for a Linux server: its tabs, workspaces, and shells live on the server and keep running when your network does not.
@@ -415,5 +447,7 @@ The remote westerm pane of v0.2.0 is gone. A saved layout drops those panes when
 ## Fonts and themes
 
 - The server reads `font-family` and `font-size` from your Ghostty config (`/api/terminal-config`).
+- Settings lists the installed font families from `/api/system-fonts`: on macOS the families CoreText offers (as Font Book shows them), elsewhere the system font folders and fontconfig. The browser draws the fonts, so the list is right when the browser runs on the same computer as the server.
 - Ghostty has the Nerd Font icons built in; browsers do not. So the font stack adds the Nerd Fonts you have installed after your font.
+- Then come monospace defaults (Menlo, Cascadia Mono, Consolas, …), and after them fonts for Korean, Japanese, and Chinese. Those fonts are proportional for Latin, so they only fill in the glyphs the fonts before them lack.
 - Light and dark follow the OS unless Settings picks one. Terminal colors switch with it, in the color theme picked in Settings (`src/terminalThemes.ts`, `WTerm.setThemeColors`).

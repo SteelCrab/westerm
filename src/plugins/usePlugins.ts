@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { REMOTE_TARGET } from "../remoteWindow.ts";
 import { parsePluginList, type ExternalInfo } from "./external/info.ts";
 import { externalPlugin } from "./external/plugin.tsx";
 import { instanceKey, parseInstalled, statusStore, syncInstances, withPlugin } from "./installed.ts";
@@ -38,13 +37,15 @@ const sameExternal = (a: readonly ExternalInfo[], b: readonly ExternalInfo[]) =>
 /**
  * The installed plugins and their running instances. The list is read when
  * the page opens, when it shows again or gets focus, and on `refresh()`; it
- * is the same for every window of this westerm. A remote window has no
- * plugins: its server's dashboard has no plugin routes.
+ * is the same for every window of this westerm.
  *
- * `contextFor` is called once per instance, when it starts.
+ * `contextFor` is called once per instance, when it starts. `allowed` is
+ * false in a remote window and on a tunnel page (tunnel.ts pageControls):
+ * neither has the plugin routes, so the list stays empty. It does not change
+ * while the page is open.
  */
-export function usePlugins(contextFor: (id: string) => PluginContext): Plugins {
-  const [list, setList] = useState<List>({ installed: REMOTE_TARGET === null ? null : [], external: [] });
+export function usePlugins(contextFor: (id: string) => PluginContext, allowed: boolean): Plugins {
+  const [list, setList] = useState<List>({ installed: allowed ? null : [], external: [] });
   const contextForRef = useRef(contextFor);
   contextForRef.current = contextFor;
   // Bumped by each request, so an older answer does not overwrite a newer one.
@@ -72,7 +73,7 @@ export function usePlugins(contextFor: (id: string) => PluginContext): Plugins {
   registryRef.current = registry;
 
   const refresh = useCallback(async () => {
-    if (REMOTE_TARGET !== null) return;
+    if (!allowed) return;
     const mine = ++sequence.current;
     try {
       const response = await fetch(PATH);
@@ -92,10 +93,10 @@ export function usePlugins(contextFor: (id: string) => PluginContext): Plugins {
     } catch {
       // Keep the list as it is; the next focus reads it again.
     }
-  }, []);
+  }, [allowed]);
 
   useEffect(() => {
-    if (REMOTE_TARGET !== null) return;
+    if (!allowed) return;
     const read = () => void refresh();
     read();
     const onVisible = () => {
@@ -107,10 +108,10 @@ export function usePlugins(contextFor: (id: string) => PluginContext): Plugins {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", read);
     };
-  }, [refresh]);
+  }, [allowed, refresh]);
 
   const setInstalled = useCallback(async (id: string, on: boolean) => {
-    if (REMOTE_TARGET !== null) return false;
+    if (!allowed) return false;
     // Every plugin of the registry counts, so the external ones stay in the list.
     const known = registryRef.current.map((plugin) => plugin.id);
     const next = withPlugin(listRef.current.installed ?? [], id, on, known);
@@ -127,7 +128,7 @@ export function usePlugins(contextFor: (id: string) => PluginContext): Plugins {
     }
     setList((previous) => ({ ...previous, installed: next }));
     return true;
-  }, []);
+  }, [allowed]);
 
   // Start and dispose before paint, so an installed plugin's panel shows at once.
   const instancesRef = useRef<ReadonlyMap<string, PluginInstance>>(new Map());

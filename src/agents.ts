@@ -67,8 +67,11 @@ export function agentFolders(state: Dashboard): AgentFolder[] {
   return [...folders.values()];
 }
 
-/** A panel the sidebar slot can show besides the sessions list: agents, or one plugin's. */
-export type SidebarPanel = "agents" | `plugin:${string}`;
+/**
+ * A panel that can take the sidebar slot instead of the sessions list:
+ * agents, Git, the tunnel, or one plugin's.
+ */
+export type SidebarPanel = "agents" | "git" | "tunnel" | `plugin:${string}`;
 
 export type SidebarView = "sessions" | SidebarPanel | null;
 
@@ -78,7 +81,7 @@ export interface SidebarFlags {
   narrow: boolean;
   sidebarOpen: boolean;
   drawerOpen: boolean;
-  /** Top layout: the open panel. Sidebar layout: the panel shown instead of the sessions list. */
+  /** The panel in the slot. Top layout: the slot opens only for one. Sidebar layout: null shows the sessions list. */
   panel: SidebarPanel | null;
 }
 
@@ -86,34 +89,29 @@ export interface SidebarFlags {
 export function sidebarView(o: SidebarFlags): SidebarView {
   const open = o.narrow ? o.drawerOpen : o.layout === "top" ? o.panel !== null : o.sidebarOpen;
   if (!open) return null;
-  return o.layout === "top" ? (o.panel ?? "agents") : (o.panel ?? "sessions");
+  return o.panel ?? "sessions";
 }
 
-/** The flags after the button of `panel` is pressed. */
-export function pressPanel(
-  o: SidebarFlags,
-  panel: SidebarPanel,
-): Pick<SidebarFlags, "panel" | "sidebarOpen" | "drawerOpen"> {
-  const { sidebarOpen, drawerOpen } = o;
-  if (sidebarView(o) === panel) {
+/** The flags after the button of panel `which` is pressed. The panels share the slot. */
+export function pressPanel(o: SidebarFlags, which: SidebarPanel): SidebarFlags {
+  if (sidebarView(o) === which) {
     // Close a drawer; in the sidebar layout go back to the sessions list, still open.
-    return o.narrow ? { panel: o.panel, sidebarOpen, drawerOpen: false } : { panel: null, sidebarOpen, drawerOpen };
+    return o.narrow ? { ...o, drawerOpen: false } : { ...o, panel: null };
   }
-  if (o.narrow) return { panel, sidebarOpen, drawerOpen: true };
-  return { panel, sidebarOpen: sidebarOpen || o.layout === "sidebar", drawerOpen };
+  return {
+    ...o,
+    panel: which,
+    sidebarOpen: o.sidebarOpen || o.layout === "sidebar",
+    drawerOpen: o.narrow || o.drawerOpen,
+  };
 }
 
 /** A built-in plugin's id (`docker`) or an external one's (`<author>.<name>`). */
 const PLUGIN_PANEL = /^plugin:[a-z0-9-]{1,32}(\.[a-z0-9-]{1,32})?$/;
 
-/**
- * The remembered panel. `legacyAgentsView` is the value of the old
- * `westerm.agentsView` key, used when nothing is stored under the new key.
- */
-export function readSidebarPanel(stored: string | null, legacyAgentsView: string | null): SidebarPanel | null {
-  if (stored === null) return legacyAgentsView === "true" ? "agents" : null;
-  if (stored === "agents") return stored;
-  return PLUGIN_PANEL.test(stored) ? (stored as SidebarPanel) : null;
+/** `saved` names a plugin panel that can exist. */
+export function isPluginPanel(saved: string): saved is `plugin:${string}` {
+  return PLUGIN_PANEL.test(saved);
 }
 
 /**

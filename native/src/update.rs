@@ -301,8 +301,22 @@ pub fn install(release: &Release, exe: &Path) -> Result<(), String> {
     if !String::from_utf8_lossy(&reported.stdout).starts_with(&format!("westerm {} ", release.version)) {
         return Err(format!("the downloaded westerm is not version {}", release.version));
     }
-    replace(exe, &binary)
+    replace(exe, &binary)?;
+    // Without these westerm still runs, on Windows' own ConPTY.
+    for name in BESIDE {
+        let new = work.0.join(folder).join(name);
+        if new.is_file()
+            && let Err(error) = replace(&exe.with_file_name(name), &new)
+        {
+            eprintln!("> update: {error}");
+        }
+    }
+    Ok(())
 }
+
+/// Files a release puts next to the executable: on Windows, Microsoft's
+/// ConPTY (scripts/conpty.mjs), which passes Kitty graphics through.
+const BESIDE: &[&str] = if cfg!(windows) { &["conpty.dll", "OpenConsole.exe", "conpty-LICENSE.txt"] } else { &[] };
 
 fn cannot_write(exe: &Path, error: std::io::Error) -> String {
     let folder = exe.parent().unwrap_or(exe).display();
@@ -326,15 +340,20 @@ fn replace(exe: &Path, new: &Path) -> Result<(), String> {
     })
 }
 
-/// A running .exe cannot be overwritten, but it can be renamed. The old copy
-/// is deleted the next time westerm starts.
+/// A running .exe (or a loaded DLL) cannot be overwritten, but it can be
+/// renamed. The old copy is deleted the next time westerm starts.
 #[cfg(windows)]
 fn replace(exe: &Path, new: &Path) -> Result<(), String> {
     let old = old_copy(exe);
     let _ = fs::remove_file(&old);
-    fs::rename(exe, &old).map_err(|e| cannot_write(exe, e))?;
+    let existed = exe.exists();
+    if existed {
+        fs::rename(exe, &old).map_err(|e| cannot_write(exe, e))?;
+    }
     if let Err(error) = fs::copy(new, exe) {
-        let _ = fs::rename(&old, exe);
+        if existed {
+            let _ = fs::rename(&old, exe);
+        }
         return Err(cannot_write(exe, error));
     }
     Ok(())
@@ -351,6 +370,9 @@ pub fn clean_up() {
     #[cfg(windows)]
     if let Ok(exe) = executable() {
         let _ = fs::remove_file(old_copy(&exe));
+        for name in BESIDE {
+            let _ = fs::remove_file(old_copy(&exe.with_file_name(name)));
+        }
     }
 }
 

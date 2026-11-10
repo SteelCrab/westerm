@@ -340,7 +340,7 @@ mod tests {
 
     fn shared(dir: &Path) -> Shared {
         let mut state = test_state(&["http://127.0.0.1:4317"]);
-        state.plugins = PluginState::load(dir);
+        state.plugins = std::sync::Arc::new(PluginState::load(dir));
         Arc::new(state)
     }
 

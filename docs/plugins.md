@@ -10,7 +10,7 @@ To install a plugin, see [Plugins in Usage](usage.md#plugins). This page is for 
 - It can open shell panes and browser panes, keep a badge and a red dot on its button, and keep one small JSON value.
 - By itself it cannot read other sessions, terminal output, the layout, other plugins, or any file, unless it runs a program it is allowed to run (see `run` below). It cannot make network requests itself.
 - It cannot run in the background unless it asks for `background`. Without it, westerm removes the frame when the panel closes.
-- It does not work in a remote window. Remote windows show no plugins.
+- It does not work in a remote window or on a page opened through a tunnel. Those pages show no plugins.
 
 ## Package layout
 

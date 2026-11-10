@@ -6,7 +6,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ### Added
 
-- Plugin bar: a group of buttons in the activity bar between the launchers and the bottom group. Each installed plugin has a button, which can show a number badge and a red dot, and opens the plugin's panel in the sidebar's place. The puzzle-piece button (also **Plugins…** in the command palette) opens the plugin manager, where you pick a plugin and press **Install** or **Uninstall**. The installed list is kept on the server (`plugins.json` in the state folder) and shared by all windows; a window reads it again when it gets focus. A remote window has no plugin bar. With nothing installed, the page makes no plugin request except `GET /api/plugins`, and westerm runs no `docker` process.
+- Git sidebar: inspect the current repository, review diffs and recent commits (full messages, changed files, and per-file patches), stage or unstage files, and commit staged changes.
+- Cargo packaging for `westerm`: the crate includes the built web UI and license, and can be installed without Node.js. A separate CI check installs the packaged crate and verifies its embedded web files on macOS, Linux, and Windows. Windows Cargo installs use the system ConPTY; the bundled ConPTY files remain available through npm and the GitHub releases.
+- Tunnel: the cloud button in the activity bar starts a Cloudflare Quick Tunnel and shows its `https://<name>.trycloudflare.com` address, a QR code, and a 6-digit access code. Another device's browser opens the address, enters the code, and uses the same workspaces, tabs, and shells. Wrong codes lock logins and 20 stop the tunnel; **Stop tunnel** ends every device's access. The computer stays awake while the tunnel is on, and a tunnel with no device for 12 hours stops by itself. It needs `cloudflared`; the panel shows the install command when it is missing.
+- Plugin bar: a group of buttons in the activity bar between the top group (launchers, Agents, Git, Tunnel) and the bottom group. Each installed plugin has a button, which can show a number badge and a red dot, and opens the plugin's panel in the sidebar's place. The puzzle-piece button (also **Plugins…** in the command palette) opens the plugin manager, where you pick a plugin and press **Install** or **Uninstall**. The installed list is kept on the server (`plugins.json` in the state folder) and shared by all windows; a window reads it again when it gets focus. A remote window and a tunnel page have no plugin bar; a pane that a plugin started still opens there. With nothing installed, the page makes no plugin request except `GET /api/plugins`, and westerm runs no `docker` process.
 - Docker plugin: the first plugin. It lists the computer's containers by compose project, with a filter, a running count, and a chip for each published port. A row click opens `docker logs -f` in a shell pane, and the row's buttons and menu open a container shell, open a port in terminal-browser, and start, stop, restart, or remove (stopped containers only, after one confirmation) a container; a group row has Start all and Stop all. The Docker button shows the number of running containers and a red dot when a running container exits with a code other than 0 or becomes unhealthy. When Docker is missing or off, the panel says so (with the install command and a Copy button when the CLI is missing, and Retry when the engine is off) and recovers by itself. The server finds `docker` the way your login shell does, so a desktop app started from Finder sees the same Docker as your shells.
 - New session query keys `plugin`, `action`, and `target` for `/ws/session`. They start a plugin's command in a new shell. The browser sends only the key and the container id, and the host builds the command.
 - External plugins: install plugins that other people wrote, from the plugin list (**Browse**; the list will be `index.json` in `SteelCrab/westerm-plugins`, a repository that does not exist yet, so Browse shows "Could not load the plugin list" until it does, and URL and folder installs work regardless), a GitHub repository (its latest release's `westerm-plugin.tar.gz`), an `https://` link to a `.tar.gz`, or a folder on your computer (for developing, with **Reload**). A plugin is a folder with a `plugin.json` and a panel page. The panel runs in a sandboxed frame (`sandbox="allow-scripts"`, an opaque origin, no direct network requests) and talks to westerm only through messages, which the server checks against the permissions you confirmed: `run` (named programs, with any arguments, as you), `panes`, and `background`. Plugins show a badge (`built-in`, `verified`, `unverified`, `local`); an unverified or local plugin needs an "I trust …" check before **Install**. westerm looks for new versions when you open the plugin manager and once a day, never updates by itself, and asks again when an update asks for more. Package checks: `https://` only, 5 MiB packed, 10 MiB unpacked, 300 entries, regular files and folders only. A plugin that navigates away from its page is stopped. See [Writing plugins](docs/plugins.md).
@@ -18,6 +21,33 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 - Desktop app: a window no longer opens an outside address in the default browser when the page or a frame in it navigates there. It refuses the navigation. Links that open a new window (`target="_blank"`) still open in the default browser.
 - Shell commands that westerm types for you (resuming an AI agent, a plugin's command) are now quoted for your shell: single quotes for the sh family, and fish's own rules for fish. Before, a fish shell could read a quoted `\'` differently.
+- This version changes the PTY host, so open shells restart once when it starts (their screens are restored).
+
+## [0.4.2] - 2026-11-10
+
+### Added
+
+- Install with `npm install -g @pistacrab/westerm` or run `npx @pistacrab/westerm` (Node.js 22 or later). The npm package includes the verified release executables for macOS, Linux, and Windows, with no install scripts or compiler required.
+- Settings ▸ Terminal ▸ Font picks from the fonts installed on this computer. The fonts form an ordered list (up to 8): search to add one, drag or Alt+↑/↓ to reorder, and see a preview in the stack the terminals use. Fonts with your language's script or Nerd Font icons are tagged, and names that are not installed can still be typed in.
+
+### Changed
+
+- The Agents button moves to the top of the activity bar, below the launchers, so the agents panel is one glance away. The command palette now leads the bottom group.
+
+## [0.4.1] - 2026-11-09
+
+### Added
+
+- Windows: terminal-browser and terminal-code run in WSL. They have Linux builds only, so a pane starts them with `wsl.exe` through your login shell in the default distribution. When one is missing there, the pane shows the PowerShell command that installs it in WSL. URLs with `& | < > ^ % !` now open too.
+- Windows: the release archive, the install script, the update, and the desktop app put Microsoft's ConPTY (`conpty.dll`, `OpenConsole.exe`) next to `westerm.exe`. The ConPTY built into Windows drops Kitty graphics; this one passes them through.
+
+### Changed
+
+- This version changes the PTY host, so open shells restart once when it starts (their screens are restored).
+
+### Fixed
+
+- Wide gaps between letters in the terminal when no font is set, as on Windows without a Ghostty config: Latin text took a Korean font (Malgun Gothic), which is proportional. Monospace fonts now come before the Korean, Japanese, and Chinese fonts.
 
 ## [0.4.0] - 2026-11-08
 
@@ -134,7 +164,9 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/SteelCrab/westerm/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/SteelCrab/westerm/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SteelCrab/westerm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SteelCrab/westerm/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/SteelCrab/westerm/compare/v0.2.0...v0.2.1

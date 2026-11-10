@@ -7,6 +7,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 
 const HOST_SOURCES: &[&str] = &[
     "src/protocol.rs",
@@ -46,4 +47,29 @@ fn main() {
     println!("cargo:rustc-env=WESTERM_HOST_BUILD=rs-{:016x}", hasher.finish());
     // Which release archive an update downloads (src/update.rs).
     println!("cargo:rustc-env=WESTERM_TARGET={}", std::env::var("TARGET").unwrap_or_default());
+    println!("cargo:rustc-env=WESTERM_WEB_DIST={}", web_dist().display());
+}
+
+fn web_dist() -> PathBuf {
+    let manifest = PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo must set CARGO_MANIFEST_DIR"),
+    );
+    let candidates = [manifest.join("../dist"), manifest.join("web-dist")];
+    // Track both locations so creating or removing the source build switches the path.
+    for directory in &candidates {
+        println!("cargo:rerun-if-changed={}", directory.display());
+    }
+    for directory in candidates {
+        if directory.join("index.html").is_file() {
+            return fs::canonicalize(&directory).unwrap_or_else(|error| {
+                panic!(
+                    "cannot resolve web assets at {}: {error}",
+                    directory.display()
+                )
+            });
+        }
+    }
+    panic!(
+        "westerm web assets are missing: run npm ci and npx vite build in the repository root; published crates must include web-dist/index.html"
+    );
 }

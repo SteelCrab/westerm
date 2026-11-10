@@ -211,7 +211,7 @@ mod tests {
             let state_dir = tempfile::tempdir().unwrap();
             let work = tempfile::tempdir().unwrap();
             let mut state = test_state(&[&format!("http://{HOST}")]);
-            state.plugins = PluginState::load(state_dir.path());
+            state.plugins = std::sync::Arc::new(PluginState::load(state_dir.path()));
             Self { state_dir, work, state: Arc::new(state) }
         }
 

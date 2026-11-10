@@ -66,13 +66,36 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
 | `src/i18n/` | UI text in four languages, and language detection |
 | `shared/` | Protocol types, the layout tree, saved-file validation |
 
+A Cloudflare tunnel adds a second listener that exists only while the tunnel is on:
+
+```
+Another device's browser
+   │  HTTPS  https://<name>.trycloudflare.com
+   ▼
+Cloudflare edge                       TLS ends here
+   │  the outbound connection cloudflared made
+   ▼
+cloudflared        westerm tunnel-guard -- cloudflared tunnel --url …
+   │  HTTP + WebSocket
+   ▼
+Tunnel listener    in the dashboard   127.0.0.1:<any free port>; Host, path list, cookie
+   │  the dashboard's own handlers
+   ▼
+PTY host           as above
+```
+
+- The dashboard starts `westerm tunnel-guard`, which runs cloudflared. The dashboard holds the guard's stdin open and never writes to it; when the dashboard ends, however it ends, the OS closes that pipe and the guard ends cloudflared.
+- cloudflared runs with `--no-autoupdate`, `--metrics 127.0.0.1:<port>`, and an empty `--config`, so a user's `~/.cloudflared/config.yml` does not apply. The dashboard reads the address from the metrics route `/quicktunnel` and the edge connection from `/ready` every 2 seconds.
+- The tunnel's controls are on 4317 only: `GET /api/tunnel/status` (a WebSocket with the status, now and on every change) and `POST /api/tunnel/start`, `/api/tunnel/stop`, `/api/tunnel/check`.
+- Both listeners answer `GET /api/tunnel-auth`. The page asks it first: 4317 says `{"tunnel":false}`; the tunnel listener says whether the cookie is valid and whether logins are locked.
+
 ## Security
 
 - The server listens on `127.0.0.1` only.
 - WebSocket connections, layout writes (PUT), and update installs (POST) accept only the dashboard's own Origin. Other sites cannot open shells, change the layout, or trigger an update.
 - The server and the host each validate the session id, kind, size, URL, SSH target, and language.
 - SSH targets are passed as arguments, never inside a shell string. Values that start with `-` or contain spaces or shell characters are refused.
-- On Windows, programs installed as `.cmd` shims pass their arguments through cmd.exe, so a URL for terminal-browser that contains `" & | < > ^ % !` is refused.
+- On Windows, terminal-browser and terminal-code run in WSL. `wsl.exe --exec` hands every argument over unchanged, and the login shell there gets the URL and SSH target as positional parameters, as on macOS and Linux. cmd.exe is never involved.
 - The Windows host channel replaces Unix socket permissions with:
   - a random 128-bit pipe name, written only to `host.pipe` in the user's private state folder;
   - a first instance created with `first_pipe_instance`, so the host does not start when someone else created the name first;
@@ -123,6 +146,15 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
   - The app passes a remote window's target to the dashboard only when it is a valid ssh destination, as the dashboard checks it.
 - The layout file is checked by the server only for size (256 KiB) and basic shape; the UI validates the rest when it loads it.
 - **Remote windows** open a UDP port on the server: the gate. It is the only port westerm opens to a network.
+- **Cloudflare tunnel** opens no port: cloudflared makes outbound connections only, and the tunnel listener is on `127.0.0.1` like the dashboard.
+  - The tunnel listener exists only while a tunnel is on. Every request on it is a tunnel request, so no header can skip its checks: the Host must be the tunnel's own name (it has none before cloudflared gives the address), then the path must be on a fixed list, then the API paths need the cookie. Static page files and the login are public; `/api/terminal-config`, `/api/workspace`, `/api/ssh-hosts`, `/ws/session`, `/api/docs/…`, `/api/agents/history`, and `/api/git/…` need the cookie; every other `/api/…`, `/ws/…`, and `/remote/…` path is 404, so a new route is closed to the tunnel until it is listed.
+  - The dashboard's own Origin checks hold there with the origin `https://<name>.trycloudflare.com`.
+  - Plugins stay on 4317: `/api/plugins…` is 404 on the tunnel, and `/plugin-assets/…` and `/plugin-sdk/v1.js` get the page instead of plugin files. A pane that a plugin started opens through the tunnel's `/ws/session` with the same check as on 4317: the plugin must be installed, and an external plugin's program must be granted. Both listeners share one plugin state.
+  - A 6-digit access code from the OS random source, new for each tunnel, compared in constant time. A right code gives a 256-bit random token as a cookie (`HttpOnly; Secure; SameSite=Strict`). The dashboard keeps only the tokens' SHA-256, in memory. Wrong codes lock logins for the whole tunnel (5 in a row: 30 s, doubling to 15 min); 20 stop the tunnel.
+  - Stopping a tunnel drops every token first, then closes the tunnel's terminal sockets with close code 4010 (the page stops reconnecting), the listener, and cloudflared. Shells only detach.
+  - Every answer on the tunnel listener has `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`. Terminal sockets get a ping every 30 seconds, because Cloudflare closes quiet WebSockets.
+  - The status holds the access code, so its stream and the controls check the Host and the Origin, and the POST routes take JSON only. The code and the token are never logged.
+  - TLS ends at Cloudflare's edge: Cloudflare can see the terminal's traffic.
   - TLS 1.3 with a certificate on both ends. Each side pins the other's SHA-256 fingerprint, exchanged over SSH; there is no certificate authority.
   - The gate accepts only clients listed in `remote/authorized_clients` in the server's state folder. Only `westerm remote-setup`, which runs over SSH, adds lines, so only someone who can log in to the server can connect.
   - QUIC Retry checks a client's address before the gate does any work for it.
@@ -131,7 +163,7 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
   - On the local dashboard, the `/remote/…` routes and the status stream (`/api/remote/link`) check the Host header (against DNS rebinding) and the Origin. GET routes also refuse `Sec-Fetch-Site: cross-site` and `same-site`. JSON APIs check the content type. A request alone never starts SSH: it gets 503 until a window keeps the status stream open.
   - Remote commands are fixed strings that mean the same in sh, bash, zsh, and fish. The destination is validated and comes after `--`; data (a fingerprint, the executable) goes on stdin.
   - The executable sent to a server is the release archive of this version, checked against its published SHA-256 sum. A source build sends a file the developer names (`WESTERM_REMOTE_BINARY_DIR`).
-- **Known gap**: any program on the same computer can reach port 4317 and send the dashboard's own Origin; the Origin check stops web pages, not local programs. Through the `/remote/…` routes such a program can also open shells on the servers this dashboard has a link to. If the Docker plugin is installed, such a program can also stop or remove containers through the Docker routes. The same holds for external plugins: such a program can install one, or call its `run`, and that too is no new power, because it can already open shells. Access tokens are planned. Until then, do not run westerm on a computer shared with other users.
+- **Known gap**: any program on the same computer can reach port 4317 and send the dashboard's own Origin; the Origin check stops web pages, not local programs. Through the `/remote/…` routes such a program can also open shells on the servers this dashboard has a link to. Such a program can also start a Cloudflare tunnel and read its access code; it could open shells through 4317 anyway. If the Docker plugin is installed, such a program can also stop or remove containers through the Docker routes. The same holds for external plugins: such a program can install one, or call its `run`, and that too is no new power, because it can already open shells. Access tokens are planned. Until then, do not run westerm on a computer shared with other users.
 
 ## Pixel updates
 
@@ -184,7 +216,7 @@ Page       src/terminal/pixel-surface.ts: a Worker draws the rectangles on an
 
 - **Pixel updates are large.** A changed rectangle travels as raw RGBA to the local page: scrolling or video in a 1700 × 1000 pane moves 0.4 to 0.7 GB/s through local sockets. A remote window gets deflated rectangles, which cost the server's host CPU (zlib level 1).
 - **Retina sharpness**: a pixel app draws one pixel per CSS pixel, as before, so its picture is not sharp on a high-density screen.
-- **terminal-browser and terminal-code on Windows**: both draw with Kitty graphics, which Windows ConPTY does not pass through. Shells and SSH work.
+- **terminal-browser and terminal-code on Windows** run in WSL. Their Kitty graphics need Microsoft's ConPTY next to `westerm.exe` (the ConPTY built into Windows drops them), and WSL and Windows share no memory, so every frame travels inline as base64.
 - **Korean in the terminal-browser address bar**: terminal-browser's own UI font (JetBrains Mono) has no Hangul, so it shows boxes. Page content is fine.
 
 ## Tests

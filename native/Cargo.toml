@@ -1,6 +1,12 @@
 [package]
 name = "westerm"
-version = "0.4.0"
+description = "A web terminal whose sessions survive closed tabs, restarts, and reboots"
+readme = "README.md"
+keywords = ["terminal", "web", "pty", "session"]
+categories = ["command-line-utilities"]
+publish = ["crates-io"]
+include = ["/src/**", "/tests/**", "/build.rs", "/README.md", "/LICENSE", "/web-dist/**"]
+version = "0.4.2"
 license = "MIT"
 repository = "https://github.com/SteelCrab/westerm"
 edition = "2024"
@@ -16,6 +22,11 @@ bytes = "1.12.1"
 # remote windows. The default backend is pure Rust.
 flate2 = "1.1.11"
 futures-util = "0.3.34"
+# Settings lists the fonts installed on this computer. Both are pure Rust:
+# fontdb finds the font files and names, ttf-parser reads widths and glyphs.
+fontdb = "0.24.0"
+# The tunnel's access code and cookie tokens come from the OS random source.
+getrandom = "0.3"
 # The docs pane lists Markdown files the way git sees them (.gitignore).
 ignore = "0.4"
 libc = "0.2.191"
@@ -25,20 +36,34 @@ portable-pty = "0.9.0"
 # Windows without cmake. TLS is used only here; downloads still go through curl.
 quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "ring"] }
-rust-embed = "8.13.0"
+rust-embed = { version = "8.13.0", features = ["interpolate-folder-path"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 tokio = { version = "1.54.1", features = ["full"] }
 tokio-tungstenite = "0.30.0"
+ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }
 vt100 = "0.18.1"
 
+# macOS: CoreText names the fonts apps may use, as Font Book shows them.
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10.1"
+
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes", "Win32_System_Power"] }
 
 [dev-dependencies]
+# Router tests send requests without a socket.
+http-body-util = "0.1"
 tempfile = "3.27.0"
+tower = { version = "0.5", features = ["util"] }
+
+# The tunnel tests run this file's own binary as a fake cloudflared, so they
+# need their own main.
+[[test]]
+name = "tunnel"
+harness = false
 
 [profile.release]
 lto = "thin"

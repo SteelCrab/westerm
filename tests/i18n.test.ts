@@ -49,5 +49,11 @@ test("parameterized messages include their values in every language", () => {
     assert.ok(t.agents.start("Gemini CLI").includes("Gemini CLI"), locale);
     assert.ok(t.agents.resumeLabel("빌드").includes("빌드"), locale);
     assert.ok(t.settings.resumeAgentsHint.includes("Gemini CLI"), locale);
+    assert.ok(t.fontPicker.full(8).includes("8"), locale);
+    assert.ok(t.fontPicker.addTyped("My Font").includes("My Font"), locale);
+    assert.ok(t.fontPicker.count(4, 42).includes("4") && t.fontPicker.count(4, 42).includes("42"), locale);
+    assert.ok(t.fontPicker.remove("Menlo").includes("Menlo"), locale);
+    assert.ok(t.fontPicker.empty("D2Coding").includes("D2Coding"), locale);
+    assert.ok(t.settings.fontFamilyHint("D2Coding").includes("D2Coding"), locale);
   }
 });

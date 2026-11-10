@@ -53,3 +53,12 @@ test("plugin frames sit above the narrow sidebar and below the dialogs; popovers
   assert.ok(frame, ".plugin-frame rule exists");
   assert.match(frame, /position:\s*fixed/);
 });
+
+test("long Git content scrolls within the viewport instead of expanding the grid row", () => {
+  assert.match(rule(".app") ?? "", /grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+  assert.match(rule(".sidebar-slot") ?? "", /min-height:\s*0/);
+  assert.match(rule(".git-panel") ?? "", /min-height:\s*0/);
+  assert.match(rule(".git-scroll") ?? "", /min-height:\s*0/);
+  assert.match(rule(".git-scroll") ?? "", /overflow-y:\s*auto/);
+  assert.match(rule(".git-preview pre") ?? "", /max-height:/);
+});

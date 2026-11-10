@@ -104,6 +104,7 @@ WESTERM_STATE_DIR=/tmp/westerm-dev WESTERM_REMOTE_BINARY_DIR=/tmp/wrb ./native/t
 | `native/tests/` | Rust integration tests against the real executable |
 | `desktop/` | Desktop app (Tauri 2) for macOS, Windows, and Linux: `src/` (Rust), `tauri.conf.json`, icons |
 | `scripts/desktop.mjs` | `npm run app:dev` and `npm run build:app` |
+| `scripts/conpty.mjs` | Microsoft's ConPTY for Windows builds (Kitty graphics pass through it) |
 | `scripts/start.mjs` | `npm start` on every OS |
 | `docs/` | Usage, sessions, architecture |
 
@@ -208,7 +209,7 @@ To add a language:
 westerm runs on macOS, Linux, and Windows. CI tests every pull request on all three.
 
 - Put OS-specific code behind `#[cfg(unix)]` and `#[cfg(windows)]`, and give every OS a path. Keep the differences in small modules: `ipc.rs` (host channel), `spawn.rs` (what a session runs), `state_dir.rs` (folders and file permissions), `cwd.rs`, `time.rs`.
-- macOS and Linux start sessions through the login shell. Windows starts programs directly with an argument list, so check arguments that a `.cmd` shim would pass through cmd.exe.
+- macOS and Linux start sessions through the login shell. Windows starts PowerShell and ssh directly with an argument list, and terminal-browser and terminal-code with `wsl.exe --exec` through the login shell in WSL.
 - Check Windows from macOS or Linux before you push:
 
   ```bash
@@ -216,7 +217,7 @@ westerm runs on macOS, Linux, and Windows. CI tests every pull request on all th
   cargo check --target x86_64-pc-windows-msvc --all-targets --manifest-path native/Cargo.toml
   ```
 
-  The desktop app's check also needs `llvm-rc` on PATH for the Windows resources (on macOS: `brew install llvm`, then `PATH="$(brew --prefix llvm)/bin:$PATH"`), and a placeholder for the westerm it ships: `touch desktop/binaries/westerm-x86_64-pc-windows-msvc.exe`.
+  The desktop app's check also needs `llvm-rc` on PATH for the Windows resources (on macOS: `brew install llvm`, then `PATH="$(brew --prefix llvm)/bin:$PATH"`), a placeholder for the westerm it ships: `touch desktop/binaries/westerm-x86_64-pc-windows-msvc.exe`, and the ConPTY files: `node scripts/conpty.mjs desktop/binaries/conpty`.
 
 - Run the Linux tests from macOS with Docker:
 
@@ -264,9 +265,62 @@ For maintainers. A version tag builds and publishes everything.
    git push origin v0.2.0
    ```
 
-4. The [Release workflow](.github/workflows/release.yml) checks that the tag matches the three versions, tests and builds macOS (Apple silicon, Intel), Linux (x64, arm64, static), and Windows, bundles the desktop app (universal macOS, Windows x64, Linux x64 and arm64), and publishes a GitHub release with the archives and SHA-256 sums. A last job installs the release with `install.sh` and `install.ps1` on every system. `install.sh` and `install.ps1` install it as the latest release.
+4. The [Release workflow](.github/workflows/release.yml) checks that the tag matches the three versions, tests and builds macOS (Apple silicon, Intel), Linux (x64, arm64, static), and Windows, bundles the desktop app (universal macOS, Windows x64, Linux x64 and arm64), and publishes a GitHub release with the archives and SHA-256 sums. The workflow verifies `install.sh` and `install.ps1` against the published release, then packs, tests, and publishes the same version to npm.
 
 A new version with changed PTY host code restarts users' shells once, as "restored". Mention it in the release notes.
+
+### npm package
+
+The root `package.json` stays private because it builds the web UI. `npm/` contains the public `@pistacrab/westerm` package template and launcher. The packaging script reads the root version and downloads that version's published GitHub release. It verifies each archive's SHA-256, then copies only the executables and required Windows files to `dist-npm/`. The generated package has no runtime dependencies or install scripts.
+
+The Release workflow publishes the tested tarball with [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/). Stable releases use npm's default `latest` tag. Prereleases use `next`. A rerun skips versions already published to npm.
+
+Before the first automated release, configure a trusted publisher for `@pistacrab/westerm` in npm with repository `SteelCrab/westerm`, workflow `release.yml`, and permission to run `npm publish`. Leave the environment field blank. You can also set this up with npm CLI 11.15 or later:
+
+```bash
+npm trust github @pistacrab/westerm --repo SteelCrab/westerm --file release.yml --allow-publish
+```
+
+Complete the first automated publication within two days of creating the trusted publisher. npm expires new configurations that have not been used within that window.
+
+To build and test the package locally after a matching GitHub release exists:
+
+```bash
+npm run test:npm
+npm run pack:npm
+npm run test:npm-install
+```
+
+The package includes all five release builds (about 20 MB compressed). It supports Node.js 22 or later. `release.json` records the release URLs and archive checksums. Packaging on Linux requires `unzip` for the Windows archive.
+
+The separate npm workflow tests packaging and installation on macOS, Linux, and Windows. It pins `WESTERM_NPM_VERSION` to an existing release so version bumps can be tested before publishing the new GitHub release.
+
+### Cargo package
+
+`native/` is also the public `westerm` crate. `build.rs` selects the source checkout's `dist/` or the crate's own `web-dist/`. Package preparation builds the UI and stages it with the license inside `native/`; installing the crate needs no Node.js.
+
+```bash
+npm ci
+npm run test:cargo
+npm run pack:cargo
+npm run test:cargo-install
+```
+
+The install check extracts the `.crate` outside the repository, installs it into a temporary prefix, deletes the extracted web files, and verifies the installed dashboard's HTTP responses against the packaged files. It uses a separate state folder and an automatically assigned port. The Cargo package workflow runs these checks on macOS, Linux, and Windows.
+
+`native/web-dist/` and `native/LICENSE` are generated and ignored by Git, but explicitly included by Cargo. Cargo treats these files as uncommitted changes, so packaging uses `--allow-dirty`. Before publishing, commit the source changes and verify that `git status --porcelain` is empty. The final guard below permits the generated files while rejecting changes reported by Git:
+
+```bash
+cargo login --registry crates-io
+npm run pack:cargo
+npm run test:cargo-install
+test -z "$(git status --porcelain)" && \
+  cargo publish --dry-run --allow-dirty --locked --registry crates-io --manifest-path native/Cargo.toml
+test -z "$(git status --porcelain)" && \
+  cargo publish --allow-dirty --locked --registry crates-io --manifest-path native/Cargo.toml
+```
+
+Publishing is manual. Match the package version to the reviewed release commit. Windows Cargo installs do not include the ConPTY helper files; document that limitation until a separate installation path exists for them.
 
 ## Security issues
 

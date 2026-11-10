@@ -468,7 +468,7 @@ mod tests {
         fn shared(installed: bool) -> (Shared, tempfile::TempDir) {
             let dir = tempfile::tempdir().unwrap();
             let mut state = crate::server::tests::test_state(&["http://127.0.0.1:4317"]);
-            state.plugins = crate::server::plugins::PluginState::load(dir.path());
+            state.plugins = std::sync::Arc::new(crate::server::plugins::PluginState::load(dir.path()));
             if installed {
                 state.plugins.set_builtin(&["docker".into()]).unwrap();
             }

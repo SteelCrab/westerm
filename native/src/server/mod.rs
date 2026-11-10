@@ -4,8 +4,11 @@
 //! routes a remote window needs, on a private Unix socket instead.
 
 mod agents;
+mod cloudflare;
 mod config;
 mod docs;
+mod git;
+mod fonts;
 pub(crate) mod host_client;
 mod http1;
 mod plugins;
@@ -42,8 +45,9 @@ use crate::state_dir::{home_dir, state_dir};
 use host_client::HostClient;
 use remote::RemoteManager;
 
+// Keep the canonical path intact: appending '/' breaks Windows verbatim paths.
 #[derive(RustEmbed)]
-#[folder = "../dist/"]
+#[folder = "$WESTERM_WEB_DIST"]
 struct Assets;
 
 pub struct Options {
@@ -53,17 +57,20 @@ pub struct Options {
 }
 
 struct AppState {
-    host: HostClient,
+    /// Shared with the tunnel listener's state: one connection to one host.
+    host: Arc<HostClient>,
     origins: Vec<String>,
     state_dir: PathBuf,
     updates: updates::UpdateCheck,
-    /// The installed plugins.
-    plugins: plugins::PluginState,
+    /// The installed plugins; shared with the tunnel listener's state.
+    plugins: Arc<plugins::PluginState>,
     /// Links to remote westerm servers, one per server.
     remote: Arc<RemoteManager>,
     /// True when every caller is already trusted, as on the server's private
     /// socket: no Origin is checked.
     trusted: bool,
+    /// The Cloudflare tunnel's controls; only the local dashboard has them.
+    tunnel: Option<Arc<cloudflare::TunnelManager>>,
 }
 
 type Shared = Arc<AppState>;
@@ -105,14 +112,20 @@ pub async fn run(options: Options) -> std::io::Result<()> {
     // Before the rename the state lived elsewhere; move it before serving.
     host_client::migrate_legacy_state().await;
     plugins::clear_staging(&state_dir()?);
+    let host = Arc::new(HostClient::default());
+    let remote = Arc::new(RemoteManager::new(state_dir()?));
+    let plugins = Arc::new(plugins::PluginState::load(&state_dir()?));
+    let tunnel =
+        cloudflare::TunnelManager::new(Arc::clone(&host), Arc::clone(&remote), Arc::clone(&plugins), state_dir()?);
     let state = Arc::new(AppState {
-        host: HostClient::default(),
+        host,
         origins,
         state_dir: state_dir()?,
         updates: updates::UpdateCheck::default(),
-        plugins: plugins::PluginState::load(&state_dir()?),
-        remote: Arc::new(RemoteManager::new(state_dir()?)),
+        plugins,
+        remote,
         trusted: false,
+        tunnel: Some(tunnel),
     });
     plugins::spawn_daily_check(state.clone());
     // Start the PTY host now so the first pane does not wait for it.
@@ -120,13 +133,13 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         eprintln!("> {error}");
     }
 
-    let app = dashboard_router(state);
+    let app = local_router(state);
     println!("> westerm: http://127.0.0.1:{port}");
     axum::serve(listener, app).await
 }
 
-/// Every route of the local dashboard, and the web UI for the rest.
-fn dashboard_router(state: Shared) -> Router {
+/// Every route of the dashboard on 127.0.0.1, and the web UI for the rest.
+fn local_router(state: Shared) -> Router {
     Router::new()
         .route("/api/terminal-config", get(terminal_config))
         .route("/api/update", get(updates::get_update).post(updates::post_update))
@@ -138,10 +151,15 @@ fn dashboard_router(state: Shared) -> Router {
         .route("/api/remote/close", post(remote_close))
         .route("/api/remote/update-host", post(remote_update_host))
         .route("/ws/session", get(session))
+        // The page asks this first; the tunnel listener answers it differently.
+        .route(cloudflare::AUTH_PATH, get(|| async { no_store(Json(serde_json::json!({ "tunnel": false }))) }))
         .merge(docs::routes())
         .merge(agents::routes())
+        .merge(git::routes())
+        .merge(fonts::routes())
         .merge(plugins::routes())
         .merge(remote_window::routes())
+        .merge(cloudflare::control_routes())
         .fallback(asset)
         .with_state(state)
 }
@@ -152,13 +170,14 @@ fn dashboard_router(state: Shared) -> Router {
 #[cfg(unix)]
 pub fn remote_router(state_dir: PathBuf) -> Router {
     let state = Arc::new(AppState {
-        host: HostClient::keeping_running(),
+        host: Arc::new(HostClient::keeping_running()),
         origins: Vec::new(),
         remote: Arc::new(RemoteManager::new(state_dir.clone())),
-        plugins: plugins::PluginState::load(&state_dir),
+        plugins: Arc::new(plugins::PluginState::load(&state_dir)),
         state_dir,
         updates: updates::UpdateCheck::default(),
         trusted: true,
+        tunnel: None,
     });
     Router::new()
         .route("/api/workspace", get(get_workspace).put(put_workspace))
@@ -166,8 +185,14 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         .route("/ws/session", get(session))
         .merge(docs::routes())
         .merge(agents::routes())
+        .merge(git::routes())
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)
+}
+
+/// `westerm tunnel-guard -- <program> <args…>` (see cloudflare/guard.rs).
+pub fn tunnel_guard(program: std::ffi::OsString, args: Vec<std::ffi::OsString>) -> i32 {
+    cloudflare::guard::run(program, args)
 }
 
 /// Binds 127.0.0.1:`port`. After an update on Windows the new process starts
@@ -210,7 +235,13 @@ fn host_allowed(state: &AppState, headers: &HeaderMap) -> bool {
     headers
         .get(header::HOST)
         .and_then(|value| value.to_str().ok())
-        .is_some_and(|host| state.origins.iter().filter_map(|origin| origin.strip_prefix("http://")).any(|allowed| allowed == host))
+        .is_some_and(|host| {
+            state
+                .origins
+                .iter()
+                .filter_map(|origin| origin.strip_prefix("http://").or_else(|| origin.strip_prefix("https://")))
+                .any(|allowed| allowed == host)
+        })
 }
 
 /// A browser says the request comes from another site: `Sec-Fetch-Site` is
@@ -383,10 +414,7 @@ async fn session(
     Query(query): Query<HashMap<String, String>>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let Some(request) = AttachRequest::from_query(&query)
-        .filter(|_| origin_allowed(&state, &headers))
-        .filter(|request| plugins::session_allowed(request, &state.plugins))
-    else {
+    let Some(request) = session_request(&state, &headers, &query) else {
         return StatusCode::FORBIDDEN.into_response();
     };
     let dir = match state.host.ensure().await {
@@ -401,6 +429,14 @@ async fn session(
     ws.max_message_size(MAX_MESSAGE).on_upgrade(move |browser| relay(browser, dir, query, state))
 }
 
+/// A pane's attach request, from this dashboard's own page only. A pane a
+/// plugin starts also needs that plugin (plugins::session_allowed).
+fn session_request(state: &AppState, headers: &HeaderMap, query: &HashMap<String, String>) -> Option<AttachRequest> {
+    AttachRequest::from_query(query)
+        .filter(|_| origin_allowed(state, headers))
+        .filter(|request| plugins::session_allowed(request, &state.plugins))
+}
+
 /// Codes a server may send in a close frame; others become 1011.
 fn sendable(code: u16) -> u16 {
     if code == 1000 || (3000..=4999).contains(&code) { code } else { 1011 }
@@ -409,21 +445,100 @@ fn sendable(code: u16) -> u16 {
 /// Pipes a browser pane to its host session, frame for frame. A closed
 /// browser only detaches: the host keeps text sessions running.
 async fn relay(browser: WebSocket, dir: PathBuf, query: String, state: Shared) {
+    let Some((host, browser)) = connect_host(browser, &dir, &query, &state).await else { return };
+    let (to_browser, from_browser) = browser.split();
+    pipe(to_browser, from_browser, host).await;
+}
+
+/// The pane's session in the host. When the host cannot be reached, the
+/// browser is told with 1011 and None comes back.
+async fn connect_host(
+    mut browser: WebSocket,
+    dir: &std::path::Path,
+    query: &str,
+    state: &AppState,
+) -> Option<(WebSocketStream<crate::ipc::Stream>, WebSocket)> {
     let host = async {
-        let stream = crate::ipc::connect(&dir).await.ok()?;
+        let stream = crate::ipc::connect(dir).await.ok()?;
         let config = WebSocketConfig::default().max_message_size(None).max_frame_size(None);
         let url = format!("ws://host/session?{query}");
         tokio_tungstenite::client_async_with_config(url, stream, Some(config)).await.ok().map(|(ws, _)| ws)
     };
-    let Some(host) = host.await else {
-        eprintln!("> pty host connection failed");
-        state.host.invalidate().await;
-        let mut browser = browser;
-        let _ = browser.send(Message::Close(Some(CloseFrame { code: 1011, reason: "pty host unavailable".into() }))).await;
+    match host.await {
+        Some(host) => Some((host, browser)),
+        None => {
+            eprintln!("> pty host connection failed");
+            state.host.invalidate().await;
+            let _ = browser.send(close_message(1011, "pty host unavailable")).await;
+            None
+        }
+    }
+}
+
+/// What a tunnel pane's relay adds to a local one.
+struct RelayExtra {
+    /// True (or dropped) when the tunnel ends: the browser gets CLOSE_TUNNEL_ENDED.
+    ended: tokio::sync::watch::Receiver<bool>,
+    /// Cloudflare closes WebSockets that stay quiet; a quiet shell is common.
+    ping: std::time::Duration,
+    /// Runs once when the relay ends, however it ends.
+    on_end: Box<dyn FnOnce() + Send>,
+}
+
+/// Like `relay`, for the tunnel listener. A closed browser or an ended tunnel
+/// only detaches: the shell keeps running in the host.
+async fn relay_with(browser: WebSocket, dir: PathBuf, query: String, state: Shared, extra: RelayExtra) {
+    let RelayExtra { mut ended, ping, on_end } = extra;
+    let Some((host, browser)) = connect_host(browser, &dir, &query, &state).await else {
+        on_end();
         return;
     };
-    let (to_browser, from_browser) = browser.split();
-    pipe(to_browser, from_browser, host).await;
+    let (mut to_browser, mut from_browser) = browser.split();
+    let (mut to_host, mut from_host) = host.split();
+    let mut pings = tokio::time::interval_at(tokio::time::Instant::now() + ping, ping);
+    loop {
+        tokio::select! {
+            message = from_browser.next() => {
+                let forwarded = match message {
+                    Some(Ok(Message::Text(text))) => HostMessage::text(text.as_str()),
+                    Some(Ok(Message::Binary(bytes))) => HostMessage::Binary(bytes),
+                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
+                    _ => break,
+                };
+                if to_host.send(forwarded).await.is_err() {
+                    break;
+                }
+            }
+            message = from_host.next() => {
+                let forwarded = match message {
+                    Some(Ok(HostMessage::Text(text))) => Message::Text(text.as_str().into()),
+                    Some(Ok(HostMessage::Binary(bytes))) => Message::Binary(bytes),
+                    Some(Ok(HostMessage::Close(frame))) => {
+                        let (code, reason) = frame.map(|f| (u16::from(f.code), f.reason.to_string())).unwrap_or((1000, String::new()));
+                        let _ = to_browser.send(close_message(sendable(code), &reason)).await;
+                        break;
+                    }
+                    Some(Ok(_)) => continue,
+                    _ => break,
+                };
+                if to_browser.send(forwarded).await.is_err() {
+                    break;
+                }
+            }
+            _ = pings.tick() => {
+                if to_browser.send(Message::Ping(Bytes::new())).await.is_err() {
+                    break;
+                }
+            }
+            // The guard that wait_for returns must not live across the send below.
+            () = async { drop(ended.wait_for(|ended| *ended).await) } => {
+                let _ = to_browser.send(close_message(cloudflare::CLOSE_TUNNEL_ENDED, "tunnel ended")).await;
+                break;
+            }
+        }
+    }
+    let _ = to_host.close().await;
+    on_end();
 }
 
 /// How long a remote host may take to accept a session on a fresh stream.
@@ -538,13 +653,14 @@ mod tests {
 
     pub(super) fn test_state(origins: &[&str]) -> AppState {
         AppState {
-            host: HostClient::default(),
+            host: Arc::new(HostClient::default()),
             origins: origins.iter().map(|origin| (*origin).to_owned()).collect(),
             state_dir: PathBuf::new(),
             updates: updates::UpdateCheck::default(),
-            plugins: plugins::PluginState::default(),
+            plugins: Arc::default(),
             remote: Arc::new(RemoteManager::new(PathBuf::new())),
             trusted: false,
+            tunnel: None,
         }
     }
 
@@ -575,7 +691,7 @@ mod tests {
         let state: Shared = Arc::new(test_state(&["http://127.0.0.1:4318"]));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, dashboard_router(state)).await });
+        tokio::spawn(async move { axum::serve(listener, local_router(state)).await });
 
         // The page, a remote window's page, and the single-page-app fallback.
         for path in ["/", "/?remote=example", "/index.html", "/some/route"] {
@@ -604,6 +720,29 @@ mod tests {
         }
         assert!(!host_allowed(&state, &headers_with_host("evil.example:4317")));
         assert!(!host_allowed(&state, &HeaderMap::new()));
+    }
+
+    #[test]
+    fn host_allowed_accepts_https_origins() {
+        let state = test_state(&["https://t.example"]);
+        assert!(host_allowed(&state, &headers_with_host("t.example")));
+        assert!(!host_allowed(&state, &headers_with_host("t.example:443")));
+        assert!(!host_allowed(&state, &headers_with_host("evil.example")));
+    }
+
+    #[tokio::test]
+    async fn the_local_dashboard_says_it_is_not_a_tunnel() {
+        use tower::ServiceExt;
+        let app = local_router(Arc::new(test_state(&["http://127.0.0.1:4317"])));
+        let request = axum::http::Request::builder()
+            .uri("/api/tunnel-auth")
+            .header("host", "127.0.0.1:4317")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = http_body_util::BodyExt::collect(response.into_body()).await.unwrap().to_bytes();
+        assert_eq!(&body[..], br#"{"tunnel":false}"#);
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! Starting PTY processes: shells, ssh, terminal-browser, terminal-code.
-//! macOS and Linux start everything through a login shell; Windows starts
-//! programs directly (ConPTY) with PowerShell as the shell.
+//! macOS and Linux start everything through a login shell. Windows starts
+//! PowerShell and ssh directly (ConPTY), and terminal-browser and
+//! terminal-code through a login shell in WSL: they have Linux builds only.
 
 use std::path::PathBuf;
 
@@ -97,12 +98,17 @@ pub fn shell_kind() -> Option<ShellKind> {
 }
 
 /// Every kind starts through a login shell so PATH matches the user's
-/// terminal. URLs and ssh destinations are positional parameters, never part
-/// of the script, so they cannot inject shell syntax.
+/// terminal.
 #[cfg(unix)]
 pub fn command_for(kind: SessionKind, url: Option<&str>, target: Option<&str>) -> Result<(String, Vec<String>), String> {
-    let shell = login_shell();
-    let args: Vec<String> = match kind {
+    Ok((login_shell(), login_shell_args(kind, url, target)?))
+}
+
+/// The arguments of a login shell that runs `kind`. URLs and ssh
+/// destinations are positional parameters, never part of the script, so they
+/// cannot inject shell syntax.
+pub fn login_shell_args(kind: SessionKind, url: Option<&str>, target: Option<&str>) -> Result<Vec<String>, String> {
+    Ok(match kind {
         SessionKind::Shell => vec!["-l".into()],
         SessionKind::Ssh => {
             let target = target.ok_or("ssh needs a destination")?;
@@ -127,25 +133,74 @@ pub fn command_for(kind: SessionKind, url: Option<&str>, target: Option<&str>) -
         }
         // `tode <folder>` without --split opens VS Code in this pane.
         SessionKind::Editor => vec!["-l".into(), "-c".into(), "exec tode .".into(), "tode".into()],
-    };
-    Ok((shell, args))
+    })
+}
+
+/// Run by /bin/sh in WSL: starts the user's login shell with the arguments
+/// that follow, so PATH matches a WSL terminal (installers put tode and
+/// terminal-browser in ~/.local/bin).
+#[cfg(any(windows, test))]
+const WSL_LOGIN_SHELL: &str = r#"shell=$(getent passwd "$(id -un)" | cut -d: -f7); exec "${shell:-/bin/sh}" "$@""#;
+
+/// `wsl.exe` arguments that run a login shell with `login_args`. `--exec`
+/// passes every argument as it is; without it WSL joins them into a command
+/// line for the default shell, which would read URLs as syntax.
+#[cfg(any(windows, test))]
+pub fn wsl_args(login_args: Vec<String>) -> Vec<String> {
+    let mut args: Vec<String> = ["--exec", "/bin/sh", "-c", WSL_LOGIN_SHELL, "sh"].map(String::from).into();
+    args.extend(login_args);
+    args
+}
+
+/// Variables from terminal_env() that programs in WSL read. WSL passes a
+/// Windows variable to Linux only when WSLENV names it.
+#[cfg(any(windows, test))]
+const WSL_SHARED: &[&str] = &["TERM", "COLORTERM", "TERM_PROGRAM", "TERMINAL_BROWSER_PRESENT"];
+
+/// `env` with WSL_SHARED added to WSLENV. The user's own entries stay.
+#[cfg(any(windows, test))]
+pub fn wsl_env(mut env: Vec<(String, String)>) -> Vec<(String, String)> {
+    let index = env.iter().position(|(key, _)| key.eq_ignore_ascii_case("WSLENV"));
+    let current = index.map(|i| env[i].1.clone()).unwrap_or_default();
+    let mut entries: Vec<String> = current.split(':').filter(|entry| !entry.is_empty()).map(String::from).collect();
+    for name in WSL_SHARED {
+        // An entry is NAME or NAME/flags.
+        if !entries.iter().any(|entry| entry.split('/').next() == Some(*name)) {
+            entries.push((*name).into());
+        }
+    }
+    let value = entries.join(":");
+    match index {
+        Some(i) => env[i].1 = value,
+        None => env.push(("WSLENV".into(), value)),
+    }
+    env
+}
+
+#[cfg(windows)]
+fn on_path(program: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(program).is_file()))
 }
 
 /// PowerShell 7 when installed, else Windows PowerShell, which every
 /// Windows 10 and later has.
 #[cfg(windows)]
 fn windows_shell() -> String {
-    let has_pwsh = std::env::var_os("PATH")
-        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()));
-    if has_pwsh { "pwsh.exe" } else { "powershell.exe" }.into()
+    if on_path("pwsh.exe") { "pwsh.exe" } else { "powershell.exe" }.into()
 }
 
-/// Characters that cmd.exe reads as syntax. Tools installed as .cmd shims
-/// (npm, scoop) run through cmd.exe, so arguments must not contain them.
+/// terminal-browser and terminal-code have Linux builds only.
 #[cfg(windows)]
-const CMD_SYNTAX: &str = "\"&|<>^%!";
+fn runs_in_wsl(kind: SessionKind) -> bool {
+    matches!(kind, SessionKind::Browser | SessionKind::Editor)
+}
 
-/// Programs start directly with an argument list; there is no script.
+#[cfg(windows)]
+const WSL_MISSING: &str =
+    "terminal-browser and terminal-code run in WSL on Windows. Install WSL in PowerShell with `wsl --install`, then restart this pane.";
+
+/// PowerShell and ssh start directly with an argument list. wsl.exe is a
+/// real executable, not a cmd.exe shim, so URLs need no filtering.
 #[cfg(windows)]
 pub fn command_for(kind: SessionKind, url: Option<&str>, target: Option<&str>) -> Result<(String, Vec<String>), String> {
     Ok(match kind {
@@ -154,20 +209,7 @@ pub fn command_for(kind: SessionKind, url: Option<&str>, target: Option<&str>) -
             let target = target.ok_or("ssh needs a destination")?;
             ("ssh".into(), vec!["--".into(), target.into()])
         }
-        SessionKind::Browser => {
-            let mut args: Vec<String> = vec!["open".into(), "--no-merge".into()];
-            if let Some(target) = target {
-                args.extend(["--ssh".into(), target.into()]);
-            }
-            if let Some(url) = url {
-                if url.contains(|c| CMD_SYNTAX.contains(c)) {
-                    return Err(format!("this URL cannot be passed safely on Windows; remove {CMD_SYNTAX}"));
-                }
-                args.push(url.into());
-            }
-            ("terminal-browser".into(), args)
-        }
-        SessionKind::Editor => ("tode".into(), vec![".".into()]),
+        SessionKind::Browser | SessionKind::Editor => ("wsl.exe".into(), wsl_args(login_shell_args(kind, url, target)?)),
     })
 }
 
@@ -185,11 +227,21 @@ pub struct Pty {
 
 pub fn spawn(spec: &LaunchSpec, size: PtySize) -> Result<Pty, String> {
     let (file, args) = command_for(spec.kind, spec.url.as_deref(), spec.target.as_deref())?;
+    let env = terminal_env(std::env::vars());
+    #[cfg(windows)]
+    let env = if runs_in_wsl(spec.kind) {
+        if !on_path("wsl.exe") {
+            return Err(WSL_MISSING.into());
+        }
+        wsl_env(env)
+    } else {
+        env
+    };
     let pair = native_pty_system().openpty(pty_size(size)).map_err(|e| e.to_string())?;
     let mut command = CommandBuilder::new(file);
     command.args(args);
     command.env_clear();
-    for (key, value) in terminal_env(std::env::vars()) {
+    for (key, value) in env {
         command.env(key, value);
     }
     command.cwd(&spec.cwd);
@@ -214,15 +266,51 @@ mod tests {
         assert_eq!(args.last().unwrap(), "example.com; rm -rf ~");
     }
 
+    #[test]
+    fn login_shell_scripts_take_destinations_as_parameters() {
+        assert_eq!(login_shell_args(SessionKind::Shell, None, None).unwrap(), ["-l"]);
+        let args = login_shell_args(SessionKind::Editor, None, None).unwrap();
+        assert_eq!(args, ["-l", "-c", "exec tode .", "tode"]);
+        let args = login_shell_args(SessionKind::Browser, Some("example.com/?a=1&b=2"), None).unwrap();
+        assert_eq!(args, ["-l", "-c", r#"exec terminal-browser open --no-merge "$1""#, "terminal-browser", "example.com/?a=1&b=2"]);
+    }
+
+    #[test]
+    fn wsl_runs_the_login_shell_without_parsing_its_arguments() {
+        let login = login_shell_args(SessionKind::Browser, Some("localhost:3000"), Some("prod")).unwrap();
+        let args = wsl_args(login.clone());
+        assert_eq!(args[..5], ["--exec", "/bin/sh", "-c", WSL_LOGIN_SHELL, "sh"]);
+        assert_eq!(args[5..], login[..], "the login shell arguments follow unchanged");
+        assert!(!WSL_LOGIN_SHELL.contains("localhost"), "destinations never enter the script");
+    }
+
+    #[test]
+    fn wsl_receives_the_variables_westerm_sets() {
+        let env = wsl_env(terminal_env([("PATH".to_owned(), "C:\\Windows".to_owned())]));
+        let wslenv: Vec<&str> = env.iter().filter(|(k, _)| k == "WSLENV").map(|(_, v)| v.as_str()).collect();
+        assert_eq!(wslenv, ["TERM:COLORTERM:TERM_PROGRAM:TERMINAL_BROWSER_PRESENT"]);
+    }
+
+    #[test]
+    fn wsl_keeps_the_users_shared_variables() {
+        let base = [("WslEnv", "USERPROFILE/p:TERM_PROGRAM"), ("PATH", "C:\\Windows")].map(|(k, v)| (k.to_owned(), v.to_owned()));
+        let env = wsl_env(base.to_vec());
+        let wslenv: Vec<(&str, &str)> =
+            env.iter().filter(|(k, _)| k.eq_ignore_ascii_case("WSLENV")).map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        assert_eq!(wslenv, [("WslEnv", "USERPROFILE/p:TERM_PROGRAM:TERM:COLORTERM:TERMINAL_BROWSER_PRESENT")]);
+    }
+
     #[cfg(windows)]
     #[test]
     fn windows_programs_get_argument_lists() {
         let (program, args) = command_for(SessionKind::Ssh, None, Some("prod")).unwrap();
         assert_eq!(program, "ssh");
         assert_eq!(args, ["--", "prod"]);
-        let (_, args) = command_for(SessionKind::Browser, Some("localhost:3000"), Some("prod")).unwrap();
-        assert_eq!(args, ["open", "--no-merge", "--ssh", "prod", "localhost:3000"]);
-        assert!(command_for(SessionKind::Browser, Some("example.com/?a=1&b=2"), None).is_err(), "cmd.exe syntax");
+        let (program, args) = command_for(SessionKind::Browser, Some("example.com/?a=1&b=2"), Some("prod")).unwrap();
+        assert_eq!(program, "wsl.exe");
+        assert_eq!(args.last().unwrap(), "example.com/?a=1&b=2", "wsl.exe is not a cmd.exe shim");
+        let (program, _) = command_for(SessionKind::Editor, None, None).unwrap();
+        assert_eq!(program, "wsl.exe");
         let (shell, _) = command_for(SessionKind::Shell, None, None).unwrap();
         assert!(shell.ends_with(".exe"));
     }

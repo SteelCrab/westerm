@@ -10,19 +10,45 @@
 
 ## Install
 
-macOS and Linux:
+### npm
+
+Requires Node.js 22 or later.
+
+```bash
+npm install -g @pistacrab/westerm
+```
+
+Or run `npx @pistacrab/westerm`. Update the npm installation with `npm install -g @pistacrab/westerm@latest`.
+
+### Cargo
+
+Requires a current stable Rust toolchain and a C compiler/linker.
+
+```bash
+cargo install westerm --locked
+```
+
+The crate includes the web UI and does not need Node.js. Update with the same command.
+
+See [Cargo requirements and Windows limitations](docs/install.md#cargo).
+
+### Install script
+
+#### macOS and Linux
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SteelCrab/westerm/main/install.sh | sh
 ```
 
-Windows (PowerShell):
+#### Windows (PowerShell)
 
 ```powershell
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-Desktop app for macOS, Windows, and Linux, from [Releases](https://github.com/SteelCrab/westerm/releases/latest):
+### Desktop app
+
+Download the installer for your platform from [Releases](https://github.com/SteelCrab/westerm/releases/latest):
 
 - macOS: open `westerm-macos-app.dmg` and drag **westerm** onto the Applications folder.
 - Windows: run `westerm-windows-app-setup.exe`.

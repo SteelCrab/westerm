@@ -527,12 +527,13 @@ mod tests {
             let state_dir = tempfile::tempdir().unwrap();
             let work = tempfile::tempdir().unwrap();
             let mut state = test_state(&[ORIGIN]);
-            state.plugins = PluginState::load(state_dir.path());
-            state.plugins.externals.sources = Sources {
+            let mut plugins = PluginState::load(state_dir.path());
+            plugins.externals.sources = Sources {
                 index_url: format!("file://{}/index.json", work.path().display()),
                 github_api: format!("file://{}/api", work.path().display()),
                 allow_file: true,
             };
+            state.plugins = Arc::new(plugins);
             Self { state_dir, work, state: Arc::new(state) }
         }
 
@@ -631,8 +632,9 @@ mod tests {
         /// A new server over the same state folder, as after a restart.
         fn restart(&mut self) {
             let mut state = test_state(&[ORIGIN]);
-            state.plugins = PluginState::load(self.state_dir.path());
-            state.plugins.externals.sources = self.sources().clone();
+            let mut plugins = PluginState::load(self.state_dir.path());
+            plugins.externals.sources = self.sources().clone();
+            state.plugins = Arc::new(plugins);
             self.state = Arc::new(state);
         }
 

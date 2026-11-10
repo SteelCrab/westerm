@@ -1,5 +1,18 @@
 # Install
 
+## npm
+
+Requires Node.js 22 or later:
+
+```bash
+npm install -g @pistacrab/westerm
+westerm
+```
+
+Or run `npx @pistacrab/westerm` without a global installation. The package includes the release executables for all supported platforms and needs no Rust compiler or install scripts. Windows on Arm uses the x64 build through emulation.
+
+Update with `npm install -g @pistacrab/westerm@latest`, then restart westerm. The built-in updater replaces the bundled executable directly; npm updates keep the package version in sync.
+
 ## Install script
 
 macOS and Linux:
@@ -63,13 +76,28 @@ npm start          # http://127.0.0.1:4317
 - The build is a single executable: `native/target/release/westerm` (`westerm.exe` on Windows). The web UI is embedded, so running it does not need Node.
 - Change the port with `westerm --port N` or the `PORT` environment variable.
 
+## Cargo
+
+Once the crate has been published to crates.io, Rust users can install the CLI and web dashboard with:
+
+```bash
+cargo install westerm --locked
+westerm
+```
+
+Use a current stable Rust toolchain and your platform's C compiler and linker. The crate includes the built web UI, so installing and running it does not need Node.js. It does not install the Tauri desktop app.
+
+Update with `cargo install westerm --locked`. The built-in `westerm update` instead replaces the executable with a GitHub release build.
+
+On Windows, Cargo installs the executable without Microsoft's `conpty.dll` and `OpenConsole.exe`. Windows' built-in ConPTY drops Kitty graphics. Use npm or the GitHub release for the bundled Windows files.
+
 ## Platforms
 
 | | macOS, Linux | Windows |
 |---|---|---|
 | Shell | your login shell (`$SHELL`) | PowerShell 7 (`pwsh`), else Windows PowerShell |
 | SSH | `ssh` and `~/.ssh/config` | the built-in OpenSSH client and `%USERPROFILE%\.ssh\config` |
-| terminal-browser, terminal-code | when installed (see below) | not yet: Windows ConPTY does not pass their Kitty graphics through |
+| terminal-browser, terminal-code | when installed (see below) | in WSL, when installed there (see below) |
 
 The launcher programs must be on your PATH (on macOS and Linux, your login shell's PATH):
 
@@ -77,3 +105,21 @@ The launcher programs must be on your PATH (on macOS and Linux, your login shell
 |---|---|
 | terminal-browser | `brew install --cask terminal-browser` |
 | terminal-code | `curl -fsSL https://tode.sh/install \| bash` (the command is `tode`) |
+
+### terminal-browser and terminal-code on Windows
+
+Both have Linux builds only, so westerm starts them in WSL: `wsl.exe` runs your login shell in the default distribution, and the shell runs the program. Install them inside WSL. From PowerShell:
+
+```powershell
+wsl --install    # once, when WSL is not set up; then restart Windows
+wsl --exec bash -c "curl -fsSL https://terminal-browser.sh/install | bash"
+wsl --exec bash -c "curl -fsSL https://tode.sh/install | bash"
+```
+
+When a program is missing, its pane shows the command for it.
+
+The ConPTY built into Windows drops the Kitty graphics both programs draw with. The Windows release, the install script, the update, and the desktop app put Microsoft's ConPTY (`conpty.dll` and `OpenConsole.exe`, MIT) next to `westerm.exe`, and westerm uses it for every session. A source build needs the two files too:
+
+```powershell
+node scripts/conpty.mjs native/target/release
+```

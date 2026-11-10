@@ -236,7 +236,101 @@ export const REMOTE_DECISION_PATH = "/api/remote/decision";
 export const REMOTE_CLOSE_PATH = "/api/remote/close";
 /** POST {target}: replace the server's westerm host now. */
 export const REMOTE_UPDATE_HOST_PATH = "/api/remote/update-host";
+/** WebSocket (dashboard origin only): the tunnel's status as JSON, now and on every change. */
+export const TUNNEL_STATUS_PATH = "/api/tunnel/status";
+/** POST {} (dashboard origin only): start, stop, or look for cloudflared again. */
+export const TUNNEL_START_PATH = "/api/tunnel/start";
+export const TUNNEL_STOP_PATH = "/api/tunnel/stop";
+export const TUNNEL_CHECK_PATH = "/api/tunnel/check";
+/** GET: whether this page came through a tunnel, signed in, locked. Local dashboards say {tunnel: false}. */
+export const TUNNEL_AUTH_PATH = "/api/tunnel-auth";
+/** POST {code}: the access code for the tunnel cookie. */
+export const TUNNEL_LOGIN_PATH = "/api/tunnel-auth/login";
+/** The tunnel ended on purpose: a tunnel page stops reconnecting. Same value in native/src/server/cloudflare/mod.rs. */
+export const CLOSE_TUNNEL_ENDED = 4010;
+
+export type TunnelPhase = "off" | "starting" | "on" | "reconnecting" | "missing" | "failed";
+export type TunnelReason = "stopped" | "idle" | "tooManyCodes" | "timeout" | "exited" | "listen";
+export type TunnelOs = "macos" | "linux" | "windows";
+
+export interface TunnelDevice {
+  /** "iPhone · Safari" */
+  label: string;
+  /** Milliseconds since the epoch. */
+  lastSeen: number;
+  connected: boolean;
+}
+
+/** native/src/server/cloudflare/manager.rs `Status`. Times are milliseconds since the epoch. */
+export interface TunnelStatus {
+  phase: TunnelPhase;
+  os: TunnelOs;
+  url: string | null;
+  code: string | null;
+  startedAt: number | null;
+  devices: TunnelDevice[];
+  idleDeadline: number | null;
+  keepAwake: boolean;
+  reason: TunnelReason | null;
+  /** cloudflared's last lines when it failed. */
+  log: string[];
+  localPort: number | null;
+}
+
+export interface TunnelAuth {
+  tunnel: boolean;
+  signedIn: boolean;
+  /** Seconds until logins open again. */
+  lockedFor: number | null;
+}
+
+const TUNNEL_PHASES: readonly string[] = ["off", "starting", "on", "reconnecting", "missing", "failed"];
+const TUNNEL_REASONS: readonly string[] = ["stopped", "idle", "tooManyCodes", "timeout", "exited", "listen"];
+const TUNNEL_OSES: readonly string[] = ["macos", "linux", "windows"];
+
+const textOrNull = (value: unknown) => (typeof value === "string" ? value : null);
+const numberOrNull = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
+/** The status stream's message, or null for anything this page does not know. */
+export function parseTunnelStatus(value: unknown): TunnelStatus | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.phase !== "string" || !TUNNEL_PHASES.includes(raw.phase)) return null;
+  if (typeof raw.os !== "string" || !TUNNEL_OSES.includes(raw.os)) return null;
+  const devices = (Array.isArray(raw.devices) ? raw.devices : []).flatMap((item): TunnelDevice[] => {
+    if (!item || typeof item !== "object") return [];
+    const { label, lastSeen, connected } = item as Record<string, unknown>;
+    return typeof label === "string" && typeof lastSeen === "number" && typeof connected === "boolean"
+      ? [{ label, lastSeen, connected }]
+      : [];
+  });
+  const reason = typeof raw.reason === "string" && TUNNEL_REASONS.includes(raw.reason) ? (raw.reason as TunnelReason) : null;
+  return {
+    phase: raw.phase as TunnelPhase,
+    os: raw.os as TunnelOs,
+    url: textOrNull(raw.url),
+    code: textOrNull(raw.code),
+    startedAt: numberOrNull(raw.startedAt),
+    devices,
+    idleDeadline: numberOrNull(raw.idleDeadline),
+    keepAwake: raw.keepAwake === true,
+    reason,
+    log: Array.isArray(raw.log) ? raw.log.filter((line): line is string => typeof line === "string") : [],
+    localPort: numberOrNull(raw.localPort),
+  };
+}
+
+/** The answer of TUNNEL_AUTH_PATH. A local dashboard sends only `tunnel: false`. */
+export function parseTunnelAuth(value: unknown): TunnelAuth | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.tunnel !== "boolean") return null;
+  return { tunnel: raw.tunnel, signedIn: raw.signedIn === true, lockedFor: numberOrNull(raw.lockedFor) };
+}
+
 export const CONFIG_PATH = "/api/terminal-config";
+/** Font families installed on the computer that runs the server (and the browser). */
+export const SYSTEM_FONTS_PATH = "/api/system-fonts";
 /** Concrete Host aliases from ~/.ssh/config. */
 export const SSH_HOSTS_PATH = "/api/ssh-hosts";
 /** GET: whether a newer release exists. POST (dashboard origin only): install it and restart. */
@@ -264,6 +358,22 @@ export interface TerminalConfig {
   fontFamilies: string[];
   /** Ghostty `font-size` in points; null when unset. */
   fontSize: number | null;
+}
+
+/** One installed font family, for Settings ▸ Terminal ▸ Font. */
+export interface SystemFont {
+  /** The family name CSS `font-family` takes. */
+  family: string;
+  /** Latin letters and digits have one width, as a terminal needs. */
+  mono: boolean;
+  /** Has Korean Hangul. */
+  hangul: boolean;
+  /** Has Japanese kana. */
+  kana: boolean;
+  /** Has Chinese characters. */
+  han: boolean;
+  /** Has the Nerd Font icons that shell prompts use. */
+  icons: boolean;
 }
 
 /** The browser acknowledges parsed output in batches of at least this many bytes. */

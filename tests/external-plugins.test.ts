@@ -648,7 +648,7 @@ test("toggling a built-in plugin keeps the external plugins installed", async ()
   const ctxFor = (): PluginContext => ({ ...fakeCtx().ctx, fetch: () => new Promise<Response>(noop) });
   let plugins: Plugins | null = null;
   function Probe() {
-    plugins = usePlugins(ctxFor);
+    plugins = usePlugins(ctxFor, true);
     return null;
   }
   const container = document.createElement("div");

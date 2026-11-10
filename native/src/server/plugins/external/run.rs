@@ -293,7 +293,8 @@ mod tests {
     async fn the_login_shells_own_place_is_not_passed_on() {
         let dir = tempfile::tempdir().unwrap();
         fake(dir.path(), "kubectl", "printf '%s|%s|%s|%s' \"$PWD\" \"$OLDPWD\" \"$SHLVL\" \"$_\"");
-        let extra = [("PWD", "/login-pwd"), ("OLDPWD", "/login-old"), ("SHLVL", "7"), ("_", "/usr/bin/env"), ("KUBECONFIG", "/k")];
+        // PWD is the working folder, not a password (GitGuardian reads it as one).
+        let extra = [("PWD", "/login-pwd"), ("OLDPWD", "/login-old"), ("SHLVL", "7"), ("_", "/usr/bin/env"), ("KUBECONFIG", "/k")]; // ggignore
         let output = run_capped("kubectl", &[], dir.path(), &login(dir.path(), &extra), LIMIT, CAP).await.unwrap();
         for value in ["/login-pwd", "/login-old", "|7|", "/usr/bin/env"] {
             assert!(!output.stdout.contains(value), "{value} in {:?}", output.stdout);

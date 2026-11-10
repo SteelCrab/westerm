@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Bot, Command, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
+import { Bot, Cloud, Command, FolderGit2, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import type { PaneKind } from "../../shared/protocol.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KINDS, LAUNCHERS, RemoteWindowIcon } from "../kinds.tsx";
@@ -22,17 +22,25 @@ interface ActivityBarProps {
   /** An agent in any workspace waits for the user: the button shows a yellow dot. */
   agentsWaiting: boolean;
   onToggleAgents: () => void;
+  gitOpen: boolean;
+  onToggleGit: () => void;
+  /** The sidebar slot shows the tunnel panel. */
+  tunnelOpen: boolean;
+  /** A tunnel is on: the button shows a green dot. */
+  tunnelOn: boolean;
+  /** Null in a remote window and on a tunnel page: only the computer's own dashboard runs tunnels. */
+  onToggleTunnel: (() => void) | null;
   /** The installed plugins, in registry order. */
   plugins: PluginButton[];
   onTogglePlugin: (id: string) => void;
-  /** Opens the plugin manager. Null in a remote window, which has no plugin bar. */
+  /** Opens the plugin manager. Null in a remote window and on a tunnel page, which have no plugin bar. */
   onOpenPlugins: (() => void) | null;
 }
 
 /**
- * The icon bar on the far left: launchers at the top; the plugin bar above
- * the bottom group; the agents panel, the command palette, settings
- * (language, theme, font, updates), and the sidebar switch at the bottom.
+ * The icon bar on the far left: launchers, agents, Git, and the tunnel at the top;
+ * the plugin bar between the groups; the command palette, settings (language,
+ * theme, font, updates), and the sidebar switch at the bottom.
  */
 export function ActivityBar(props: ActivityBarProps) {
   const { sidebarOpen, counts, onLaunch, onToggleSidebar, onOpenSettings } = props;
@@ -75,11 +83,6 @@ export function ActivityBar(props: ActivityBarProps) {
             <RemoteWindowIcon size={20} />
           </BarButton>
         )}
-      </div>
-      {props.onOpenPlugins && (
-        <PluginBar plugins={props.plugins} onTogglePlugin={props.onTogglePlugin} onOpenPlugins={props.onOpenPlugins} />
-      )}
-      <div className="activity-group">
         <BarButton
           className="activity-agents"
           label={props.agentsWaiting ? `${t.agents.title} · ${t.agent.tab.waiting}` : t.agents.title}
@@ -91,6 +94,34 @@ export function ActivityBar(props: ActivityBarProps) {
           <Bot size={19} strokeWidth={1.75} />
           {props.agentsWaiting && <span className="activity-dot" aria-hidden="true" />}
         </BarButton>
+        <BarButton
+          className="activity-git"
+          label={t.git.title}
+          tooltip={t.git.title}
+          title={t.git.hint}
+          pressed={props.gitOpen}
+          onClick={props.onToggleGit}
+        >
+          <FolderGit2 size={19} strokeWidth={1.75} aria-hidden="true" />
+        </BarButton>
+        {props.onToggleTunnel && (
+          <BarButton
+            className="activity-tunnel"
+            label={t.activity.tunnel}
+            tooltip={t.activity.tunnel}
+            title={`${t.activity.tunnel} — ${t.activity.tunnelHint}`}
+            pressed={props.tunnelOpen}
+            onClick={props.onToggleTunnel}
+          >
+            <Cloud size={19} strokeWidth={1.75} />
+            {props.tunnelOn && <span className="activity-dot on" aria-hidden="true" />}
+          </BarButton>
+        )}
+      </div>
+      {props.onOpenPlugins && (
+        <PluginBar plugins={props.plugins} onTogglePlugin={props.onTogglePlugin} onOpenPlugins={props.onOpenPlugins} />
+      )}
+      <div className="activity-group">
         <BarButton label={t.palette.open} tooltip={`${t.palette.open} · ${props.paletteShortcut}`} onClick={props.onOpenPalette}>
           <Command size={17} strokeWidth={1.75} />
         </BarButton>
