@@ -19,6 +19,7 @@ import type { Locale } from "../i18n/messages.ts";
 import { postRemote } from "../remoteApi.ts";
 import { REMOTE_TARGET, serverPath, shouldPostRemoteClose } from "../remoteWindow.ts";
 import { splitBinary } from "./pixel-update.ts";
+import { TUNNEL_ENDED_EVENT, tunnelEnded } from "../tunnel.ts";
 
 export type ConnectionEvent =
   | { type: "ready"; pid: number; mode: AttachMode; pixels?: boolean }
@@ -121,7 +122,10 @@ export class PtyConnection {
       this.send({ type: "resize", ...this.pendingSize });
     };
     this.ws.onmessage = (event) => this.receive(event.data);
-    this.ws.onclose = (event) => this.finish({ type: "closed", takenOver: event.code === CLOSE_TAKEN_OVER });
+    this.ws.onclose = (event) => {
+      if (tunnelEnded(event.code)) window.dispatchEvent(new Event(TUNNEL_ENDED_EVENT));
+      this.finish({ type: "closed", takenOver: event.code === CLOSE_TAKEN_OVER });
+    };
   }
 
   sendInput(data: string): void {

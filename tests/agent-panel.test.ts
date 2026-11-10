@@ -14,14 +14,16 @@ import {
   historyCache,
   historyPath,
   pastConversations,
-  pressAgents,
+  pressPanel,
   sidebarView,
   type SidebarFlags,
+  type SidebarPanel,
 } from "../src/agents.ts";
 import { AgentIcon } from "../src/agentIcons.tsx";
 import { ActivityBar } from "../src/components/ActivityBar.tsx";
 import { AgentMark } from "../src/components/AgentMark.tsx";
 import { AgentPanel, PastList } from "../src/components/AgentPanel.tsx";
+import { readSidebarPanel } from "../src/useSidebarPanel.ts";
 import { I18nProvider } from "../src/i18n/index.tsx";
 import { createDashboard, dashboardReducer, type Dashboard } from "../src/workspace.ts";
 
@@ -149,11 +151,10 @@ const flags = (change: Partial<SidebarFlags>): SidebarFlags => ({
   narrow: false,
   sidebarOpen: false,
   drawerOpen: false,
-  agentsView: false,
-  gitView: false,
+  panel: null,
   ...change,
 });
-const press = (o: SidebarFlags): SidebarFlags => ({ ...o, ...pressAgents(o) });
+const press = (o: SidebarFlags, which: SidebarPanel = "agents"): SidebarFlags => ({ ...o, ...pressPanel(o, which) });
 
 test("the agents button", () => {
   let o = flags({});
@@ -186,6 +187,40 @@ test("the agents button", () => {
     assert.equal(o.drawerOpen, false);
     assert.equal(sidebarView(o), null);
   }
+});
+
+test("the tunnel button shares the slot", () => {
+  let o = flags({ layout: "sidebar", sidebarOpen: true });
+  o = press(o, "tunnel");
+  assert.equal(sidebarView(o), "tunnel");
+  o = press(o, "agents");
+  assert.equal(sidebarView(o), "agents");
+  o = press(o, "agents");
+  assert.equal(sidebarView(o), "sessions");
+  assert.equal(o.sidebarOpen, true);
+
+  o = flags({});
+  o = press(o, "tunnel");
+  assert.equal(sidebarView(o), "tunnel");
+  o = press(o, "tunnel");
+  assert.equal(sidebarView(o), null);
+
+  o = flags({ narrow: true });
+  o = press(o, "tunnel");
+  assert.equal(o.drawerOpen, true);
+  assert.equal(sidebarView(o), "tunnel");
+  o = press(o, "tunnel");
+  assert.equal(o.drawerOpen, false);
+  assert.equal(sidebarView(o), null);
+});
+
+test("the old agents choice is read once", () => {
+  const storage = (values: Record<string, string>) => ({ getItem: (key: string) => values[key] ?? null });
+  assert.equal(readSidebarPanel(storage({ "westerm.agentsView": "true" })), "agents");
+  assert.equal(readSidebarPanel(storage({ "westerm.agentsView": "false" })), null);
+  assert.equal(readSidebarPanel(storage({ "westerm.sidebarPanel": "tunnel", "westerm.agentsView": "true" })), "tunnel");
+  assert.equal(readSidebarPanel(storage({ "westerm.sidebarPanel": "nonsense" })), null);
+  assert.equal(readSidebarPanel(null), null);
 });
 
 test("running conversations are not past", () => {
@@ -512,6 +547,9 @@ function bar(change: Partial<Parameters<typeof ActivityBar>[0]>) {
         onToggleAgents: noop,
         gitOpen: false,
         onToggleGit: noop,
+        tunnelOpen: false,
+        tunnelOn: false,
+        onToggleTunnel: null,
         ...change,
       }),
     ),
