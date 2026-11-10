@@ -247,6 +247,23 @@ A docs pane lists the Markdown files of a folder and shows, edits, and saves the
 - **Remote browser**: opens `terminal-browser --ssh <host>`. Pages load through the remote server, so `localhost:3000` is that server's dev server.
 - Authentication uses your SSH keys and agent. Type passwords into the terminal when a server asks; the dashboard never stores or sends them.
 
+## Tunnel
+
+Use this westerm from another device's browser, such as your phone, through a temporary Cloudflare address. Only you use it: the address and a 6-digit access code are for one person.
+
+- Open it from the activity bar (the cloud icon, under the remote window button) or the command palette ("Start tunnel"). The panel takes the sidebar's place, like the agents panel; on a phone-wide window it opens as a drawer.
+- westerm runs [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/) as a Quick Tunnel. It needs no Cloudflare account, no domain, and no open port. If cloudflared is missing, the panel shows the install command (macOS: `brew install cloudflared`, Windows: `winget install --id Cloudflare.cloudflared`, Linux: Cloudflare's downloads page). westerm does not install it. Press **Check again** after you install it.
+- **Start tunnel** gives an address like `https://<name>.trycloudflare.com`, its QR code, and an access code. The address changes every time you start a tunnel. The QR code holds the address only; type the code on the other device.
+- On the other device, open the address and enter the code. Then you see the same workspaces, tabs, and shells. One window at a time owns the sessions, as always: when the phone opens a session, the computer's window says "In use in another window"; click it to take them back.
+- Five wrong codes in a row lock logins for 30 seconds, then for twice as long after each wrong code, up to 15 minutes. Twenty wrong codes stop the tunnel.
+- The panel shows the devices that signed in and when each was last seen. **Stop tunnel** ends every device's access: their cookies stop working, and the page there says "The tunnel has ended". Shells keep running.
+- While the tunnel is on, the computer does not go to idle sleep. Closing the lid, quitting westerm, or quitting the desktop app ends the tunnel. On Linux, westerm uses `systemd-inhibit`; where that does not work, the panel says the computer cannot be kept awake.
+- With no device connected for 12 hours, the tunnel stops by itself.
+- If cloudflared loses Cloudflare (no network, the computer slept), the panel shows **Reconnecting** and the address works again once it reconnects. If cloudflared ends, the panel shows its last output and **Start again**; a new tunnel has a new address and code.
+- Settings kept in the browser (theme, font size, sidebar width, docs drafts) start over on the other device with each tunnel, because the address changes. The layout and the shells are on the computer and stay.
+- A tunnel page has no tunnel, remote window, or update controls.
+- Cloudflare ends TLS at its edge, so Cloudflare can see what passes through the tunnel, terminal output included.
+
 ## Remote windows
 
 A window for a Linux server: its tabs, workspaces, and shells live on the server and keep running when your network does not.
