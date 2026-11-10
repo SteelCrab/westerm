@@ -1,5 +1,20 @@
 # Usage
 
+## Git sidebar
+
+The folder-shaped Git button below Agents opens the repository of the focused terminal. It follows that terminal's folder. Choose another workspace folder from the list, or enter an absolute folder path to pin a repository. Choose **Follow focused terminal** to follow again.
+
+- The panel shows the current branch, changed files, the upstream's last known ahead/behind counts, and recent commits.
+- Select a recent commit to read its full message, author, timestamp, and changed files. Select a committed file to view its patch. Merge commits compare with their first parent; the comparison is labeled.
+- Select a file to read its staged or unstaged diff. A partially staged file appears in both groups.
+- Use `+` and `−` to stage or unstage a file. The section buttons apply to the listed files. Unstaging keeps working files intact.
+- Enter a message and choose **Commit** to commit the staged changes. Git hooks and Git's configured author identity still apply.
+- Select a local branch to switch branches. Git refuses a switch that would overwrite changes or use a branch checked out in another worktree.
+- **Pull** uses fast-forward only. **Push** uses the configured upstream. Both require an upstream branch. Neither runs automatically.
+- The refresh button reloads the repository. While open, the panel also refreshes every five seconds and when the window regains focus.
+- Git errors, such as missing identity, conflicts, authentication failure, and large diffs, appear in the panel. Interactive authentication is unavailable; configure credentials in the terminal first.
+- Linked Git worktrees are supported. In a remote window, the panel runs Git on that server. The panel uses the current theme and opens as a drawer on narrow windows.
+
 ## The screen
 
 | Area | What it does |

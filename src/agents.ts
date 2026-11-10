@@ -67,7 +67,7 @@ export function agentFolders(state: Dashboard): AgentFolder[] {
   return [...folders.values()];
 }
 
-export type SidebarView = "sessions" | "agents" | null;
+export type SidebarView = "sessions" | "agents" | "git" | null;
 
 export interface SidebarFlags {
   layout: "top" | "sidebar";
@@ -77,24 +77,37 @@ export interface SidebarFlags {
   drawerOpen: boolean;
   /** Top layout: the agents list is open. Sidebar layout: the sidebar shows agents, not sessions. */
   agentsView: boolean;
+  gitView: boolean;
 }
 
 /** What the sidebar slot shows now; null when it is closed. */
 export function sidebarView(o: SidebarFlags): SidebarView {
-  const open = o.narrow ? o.drawerOpen : o.layout === "top" ? o.agentsView : o.sidebarOpen;
+  const open = o.narrow ? o.drawerOpen : o.layout === "top" ? o.agentsView || o.gitView : o.sidebarOpen;
   if (!open) return null;
-  return o.layout === "top" || o.agentsView ? "agents" : "sessions";
+  return o.gitView ? "git" : o.agentsView ? "agents" : "sessions";
 }
 
 /** The flags after the agents button is pressed. */
-export function pressAgents(o: SidebarFlags): Pick<SidebarFlags, "agentsView" | "sidebarOpen" | "drawerOpen"> {
-  const { agentsView, sidebarOpen, drawerOpen } = o;
-  if (sidebarView(o) === "agents") {
+export function pressAgents(o: SidebarFlags): SidebarFlags {
+  return pressPanel(o, "agents");
+}
+
+export function pressGit(o: SidebarFlags): SidebarFlags {
+  return pressPanel(o, "git");
+}
+
+function pressPanel(o: SidebarFlags, panel: "agents" | "git"): SidebarFlags {
+  if (sidebarView(o) === panel) {
     // Close a drawer; in the sidebar layout go back to the sessions list, still open.
-    return o.narrow ? { agentsView, sidebarOpen, drawerOpen: false } : { agentsView: false, sidebarOpen, drawerOpen };
+    return o.narrow ? { ...o, drawerOpen: false } : { ...o, agentsView: false, gitView: false };
   }
-  if (o.narrow) return { agentsView: true, sidebarOpen, drawerOpen: true };
-  return { agentsView: true, sidebarOpen: sidebarOpen || o.layout === "sidebar", drawerOpen };
+  return {
+    ...o,
+    agentsView: panel === "agents",
+    gitView: panel === "git",
+    sidebarOpen: o.sidebarOpen || o.layout === "sidebar",
+    drawerOpen: o.narrow || o.drawerOpen,
+  };
 }
 
 const isWaiting = (session: Session) => session.kind === "shell" && agentDisplay(session) === "waiting";

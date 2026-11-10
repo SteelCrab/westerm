@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Bot, Command, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
+import { Bot, Command, FolderGit2, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import type { PaneKind } from "../../shared/protocol.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KINDS, LAUNCHERS, RemoteWindowIcon } from "../kinds.tsx";
@@ -21,10 +21,12 @@ interface ActivityBarProps {
   /** An agent in any workspace waits for the user: the button shows a yellow dot. */
   agentsWaiting: boolean;
   onToggleAgents: () => void;
+  gitOpen: boolean;
+  onToggleGit: () => void;
 }
 
 /**
- * The icon bar on the far left: launchers and the agents panel at the top;
+ * The icon bar on the far left: launchers, agents, and Git at the top;
  * the command palette, settings (language, theme, font, updates), and the
  * sidebar switch at the bottom.
  */
@@ -79,6 +81,16 @@ export function ActivityBar(props: ActivityBarProps) {
         >
           <Bot size={19} strokeWidth={1.75} />
           {props.agentsWaiting && <span className="activity-dot" aria-hidden="true" />}
+        </BarButton>
+        <BarButton
+          className="activity-git"
+          label={t.git.title}
+          tooltip={t.git.title}
+          title={t.git.hint}
+          pressed={props.gitOpen}
+          onClick={props.onToggleGit}
+        >
+          <FolderGit2 size={19} strokeWidth={1.75} aria-hidden="true" />
         </BarButton>
       </div>
       <div className="activity-group">

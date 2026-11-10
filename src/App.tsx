@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { TriangleAlert } from "lucide-react";
 import type { AgentLaunch, PaneKind } from "../shared/protocol.ts";
 import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts";
-import { anyWaiting, pressAgents, sidebarView, type SidebarFlags } from "./agents.ts";
+import { anyWaiting, pressAgents, pressGit, sidebarView, type SidebarFlags } from "./agents.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { AgentPanel } from "./components/AgentPanel.tsx";
+import { GitPanel } from "./components/GitPanel.tsx";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.tsx";
 import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
 import { PaneLayer } from "./components/PaneLayer.tsx";
@@ -103,6 +104,7 @@ export function App() {
   }, [narrow, drawerOpen]);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const [agentsView, setAgentsView] = useAgentsView();
+  const [gitView, setGitView] = useState(false);
   const [renaming, setRenaming] = useState<RenameTarget | null>(null);
   // "commands": the command palette. "ssh": the same palette listing ssh hosts.
   // "window": the host list again, with only the "open in a new window" entries.
@@ -226,6 +228,7 @@ export function App() {
       const placed = placeRename(target, layout);
       if (placed.where === "sidebar") {
         setSidebar(true);
+        setGitView(false);
         // Tab and session names are edited in the sessions list; both views have the workspace menu.
         if (placed.kind !== "workspace") setAgentsView(false);
       }
@@ -412,17 +415,25 @@ export function App() {
   const counts = { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0 } satisfies Record<PaneKind, number>;
   for (const session of state.sessions) counts[session.kind] += 1;
 
-  // Top: the workspace menu and the tab bar; the sidebar slot opens only for
-  // the agents panel. Sidebar: both in the sidebar, no tab bar; the header
+  // Top: the workspace menu and the tab bar; the sidebar slot opens for
+  // agents or Git. Sidebar: both in the sidebar, no tab bar; the header
   // stays only for the update button. The sidebar slot shows the sessions
-  // list or the agents panel (agents.ts sidebarView).
+  // list, agents, or Git (agents.ts sidebarView).
   const onTop = layout === "top";
-  const sidebarFlags: SidebarFlags = { layout, narrow, sidebarOpen, drawerOpen, agentsView };
+  const sidebarFlags: SidebarFlags = { layout, narrow, sidebarOpen, drawerOpen, agentsView, gitView };
   const view = sidebarView(sidebarFlags);
   const sidebarShown = view !== null;
   const toggleAgents = () => {
     const next = pressAgents(sidebarFlags);
     setAgentsView(next.agentsView);
+    setGitView(next.gitView);
+    setSidebarOpen(next.sidebarOpen);
+    setDrawerOpen(next.drawerOpen);
+  };
+  const toggleGit = () => {
+    const next = pressGit(sidebarFlags);
+    setAgentsView(next.agentsView);
+    setGitView(next.gitView);
     setSidebarOpen(next.sidebarOpen);
     setDrawerOpen(next.drawerOpen);
   };
@@ -450,10 +461,14 @@ export function App() {
         agentsOpen={view === "agents"}
         agentsWaiting={anyWaiting(state)}
         onToggleAgents={toggleAgents}
+        gitOpen={view === "git"}
+        onToggleGit={toggleGit}
       />
       {sidebarShown && (
         <div className="sidebar-slot">
-          {view === "agents" ? (
+          {view === "git" ? (
+            <GitPanel key={activeWorkspace(state).id} compact={compact} state={state} />
+          ) : view === "agents" ? (
             <AgentPanel
               state={state}
               renaming={renaming}
