@@ -27,3 +27,14 @@ test("a long sidebar list scrolls within the window instead of expanding the gri
   assert.match(rule(".app") ?? "", /grid-template-rows:\s*minmax\(0,\s*1fr\)/);
   assert.match(rule(".sidebar-slot") ?? "", /min-height:\s*0/);
 });
+
+// The focused pane needs a ring that is easy to see. Draw it with box-shadow
+// outside the 1px border: a thicker border would shrink the terminal grid.
+test("the focused pane has a thick accent ring outside its 1px border", () => {
+  const body = rule(".pane.focused") ?? "";
+  assert.match(body, /border-color:\s*var\(--accent\)/);
+  assert.match(body, /box-shadow:\s*0 0 0 1px var\(--accent\),\s*0 0 0 4px var\(--accent-halo\)/);
+  assert.doesNotMatch(body, /border(-width)?:/);
+  // Dark, light (from the OS) and light (forced) themes each define it.
+  assert.equal(css.match(/--accent-halo:/g)?.length, 3);
+});
