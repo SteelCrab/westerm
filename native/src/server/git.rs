@@ -168,7 +168,10 @@ impl Repository {
         let root = utf8(output.stdout)?;
         let root = root.strip_suffix('\n').unwrap_or(&root);
         let root = if cfg!(windows) { root.strip_suffix('\r').unwrap_or(root) } else { root };
-        Ok(Self(PathBuf::from(root)))
+        // Git and canonicalize spell Windows roots differently (D:/... vs \\?\D:\...).
+        // Compare canonical paths on both sides of the repository boundary check.
+        let root = tokio::fs::canonicalize(root).await.map_err(|_| invalid("Repository folder is no longer available"))?;
+        Ok(Self(root))
     }
 
     async fn run(&self, args: &[&str]) -> Result<std::process::Output, GitError> {
@@ -317,7 +320,7 @@ async fn repository_status(dir: &str) -> Result<RepositoryStatus, GitError> {
     let branches =
         utf8(repo.checked(&["for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads/"]).await?)?.lines().map(str::to_owned).collect();
     let mut result = RepositoryStatus {
-        root: repo.0.to_string_lossy().into_owned(),
+        root: super::docs::shown_path(&repo.0),
         branch,
         head,
         branches,
@@ -577,6 +580,7 @@ mod tests {
             ("user.name", "Sidebar Test"),
             ("user.email", "sidebar@example.test"),
             ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
             ("core.hooksPath", ".git/test-hooks"),
         ] {
             git(&root, &["config", key, value]);
@@ -590,6 +594,24 @@ mod tests {
 
     async fn commit(root: &str, message: &str) {
         change_repository(root, Operation::Commit { message: message.to_owned() }).await.unwrap();
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn untracked_preview_accepts_normal_and_verbatim_windows_roots() {
+        let (_temp, root) = init();
+        let canonical = Path::new(&root).canonicalize().unwrap();
+        let shown = super::super::docs::shown_path(&canonical);
+        fs::write(canonical.join("preview.txt"), "inside the repository\n").unwrap();
+        fs::create_dir(canonical.join("nested")).unwrap();
+        fs::write(canonical.join("nested").join("preview.txt"), "inside the repository\n").unwrap();
+        for dir in [shown.as_str(), canonical.to_str().unwrap()] {
+            for path in ["preview.txt", "nested/preview.txt"] {
+                assert_eq!(repository_diff(dir, path, false).await.unwrap(), "+inside the repository\n");
+            }
+            assert_eq!(repository_status(dir).await.unwrap().root, shown);
+            assert!(repository_diff(dir, "../outside.txt", false).await.is_err());
+        }
     }
 
     #[tokio::test]
