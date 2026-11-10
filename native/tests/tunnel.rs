@@ -71,8 +71,11 @@ fn fake_cloudflared(args: &[String]) {
     let metrics = args.windows(2).find(|pair| pair[0] == "--metrics").map(|pair| pair[1].clone()).expect("--metrics");
     let hostname = std::env::var("FAKE_CF_HOSTNAME").unwrap_or_else(|_| FAKE_HOSTNAME.to_owned());
     if let Some(path) = std::env::var_os("FAKE_CF_HEARTBEAT") {
+        // Counts until the process ends; a u64 at 10 beats a second never wraps.
         std::thread::spawn(move || {
-            for beat in 1u64.. {
+            let mut beat: u64 = 0;
+            loop {
+                beat += 1;
                 let _ = std::fs::write(&path, beat.to_string());
                 std::thread::sleep(Duration::from_millis(100));
             }
