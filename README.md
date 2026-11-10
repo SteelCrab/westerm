@@ -18,6 +18,14 @@ npm install -g @pistacrab/westerm
 
 Or run `npx @pistacrab/westerm`. Update the npm installation with `npm install -g @pistacrab/westerm@latest`.
 
+With Cargo (a current stable Rust toolchain and a C compiler/linker):
+
+```bash
+cargo install westerm --locked
+```
+
+The crate includes the web UI and does not need Node.js. Update with the same command. See [Cargo requirements and Windows limitations](docs/install.md#cargo).
+
 macOS and Linux:
 
 ```bash
