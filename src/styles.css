@@ -203,6 +203,7 @@ button {
   --sidebar-width: 240px;
   display: grid;
   grid-template-columns: 52px var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
 }
 
@@ -365,6 +366,7 @@ button {
   position: relative;
   display: flex;
   min-width: 0;
+  min-height: 0;
 }
 
 .session-panel {
