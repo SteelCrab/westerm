@@ -4,6 +4,16 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-10
+
+### Changed
+
+- The focused pane is easier to see. It now has a 2px accent line with a soft halo, instead of a faint 1px border. The terminal keeps its size.
+
+### Fixed
+
+- The window could extend below the browser's bottom edge, cutting off the lowest panes, their prompts, and the activity bar's bottom buttons. This happened when the sidebar list (folders, agents, past conversations) was taller than the window. The list now scrolls inside the sidebar.
+
 ## [0.4.2] - 2026-11-10
 
 ### Added
@@ -145,7 +155,8 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/SteelCrab/westerm/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/SteelCrab/westerm/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/SteelCrab/westerm/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SteelCrab/westerm/compare/v0.3.0...v0.4.0
