@@ -3,6 +3,8 @@ dist
 logs
 *.log
 native/target
+/native/web-dist/
+/native/LICENSE
 dist-app
 dist-npm
 dist-npm.tmp

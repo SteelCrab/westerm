@@ -43,8 +43,9 @@ use crate::state_dir::{home_dir, state_dir};
 use host_client::HostClient;
 use remote::RemoteManager;
 
+// Keep the canonical path intact: appending '/' breaks Windows verbatim paths.
 #[derive(RustEmbed)]
-#[folder = "../dist/"]
+#[folder = "$WESTERM_WEB_DIST"]
 struct Assets;
 
 pub struct Options {

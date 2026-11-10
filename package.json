@@ -5,6 +5,10 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "prepare:cargo": "vite build && node scripts/prepare-cargo.mjs",
+    "pack:cargo": "npm run prepare:cargo && cargo package --allow-dirty --locked --manifest-path native/Cargo.toml",
+    "test:cargo": "node --test tests/cargo-package.test.mjs",
+    "test:cargo-install": "node scripts/test-cargo-install.mjs",
     "pack:npm": "node scripts/prepare-npm.mjs && npm pack ./dist-npm",
     "test:npm": "node --test tests/npm-package.test.mjs",
     "test:npm-install": "node scripts/test-npm-install.mjs",
