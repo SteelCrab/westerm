@@ -4,13 +4,16 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
-### Changed
+## [0.4.2] - 2026-11-10
 
-- The Agents button moves to the top of the activity bar, below the launchers, so the agents panel is one glance away. The command palette now leads the bottom group.
 ### Added
 
 - Install with `npm install -g @pistacrab/westerm` or run `npx @pistacrab/westerm` (Node.js 22 or later). The npm package includes the verified release executables for macOS, Linux, and Windows, with no install scripts or compiler required.
 - Settings ▸ Terminal ▸ Font picks from the fonts installed on this computer. The fonts form an ordered list (up to 8): search to add one, drag or Alt+↑/↓ to reorder, and see a preview in the stack the terminals use. Fonts with your language's script or Nerd Font icons are tagged, and names that are not installed can still be typed in.
+
+### Changed
+
+- The Agents button moves to the top of the activity bar, below the launchers, so the agents panel is one glance away. The command palette now leads the bottom group.
 
 ## [0.4.1] - 2026-11-09
 
@@ -142,7 +145,8 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/SteelCrab/westerm/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/SteelCrab/westerm/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SteelCrab/westerm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SteelCrab/westerm/compare/v0.2.1...v0.3.0
