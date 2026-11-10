@@ -43,7 +43,7 @@ use host_client::HostClient;
 use remote::RemoteManager;
 
 #[derive(RustEmbed)]
-#[folder = "../dist/"]
+#[folder = "$WESTERM_WEB_DIST/"]
 struct Assets;
 
 pub struct Options {

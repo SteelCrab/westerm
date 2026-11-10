@@ -76,6 +76,21 @@ npm start          # http://127.0.0.1:4317
 - The build is a single executable: `native/target/release/westerm` (`westerm.exe` on Windows). The web UI is embedded, so running it does not need Node.
 - Change the port with `westerm --port N` or the `PORT` environment variable.
 
+## Cargo
+
+Once the crate has been published to crates.io, Rust users can install the CLI and web dashboard with:
+
+```bash
+cargo install westerm --locked
+westerm
+```
+
+Use a current stable Rust toolchain and your platform's C compiler and linker. The crate includes the built web UI, so installing and running it does not need Node.js. It does not install the Tauri desktop app.
+
+Update with `cargo install westerm --locked`. The built-in `westerm update` instead replaces the executable with a GitHub release build.
+
+On Windows, Cargo installs the executable without Microsoft's `conpty.dll` and `OpenConsole.exe`. Windows' built-in ConPTY drops Kitty graphics. Use npm or the GitHub release for the bundled Windows files.
+
 ## Platforms
 
 | | macOS, Linux | Windows |

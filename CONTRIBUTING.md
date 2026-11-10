@@ -295,6 +295,33 @@ The package includes all five release builds (about 20 MB compressed). It suppor
 
 The separate npm workflow tests packaging and installation on macOS, Linux, and Windows. It pins `WESTERM_NPM_VERSION` to an existing release so version bumps can be tested before publishing the new GitHub release.
 
+### Cargo package
+
+`native/` is also the public `westerm` crate. `build.rs` selects the source checkout's `dist/` or the crate's own `web-dist/`. Package preparation builds the UI and stages it with the license inside `native/`; installing the crate needs no Node.js.
+
+```bash
+npm ci
+npm run test:cargo
+npm run pack:cargo
+npm run test:cargo-install
+```
+
+The install check extracts the `.crate` outside the repository, installs it into a temporary prefix, deletes the extracted web files, and verifies the installed dashboard's HTTP responses against the packaged files. It uses a separate state folder and an automatically assigned port. The Cargo package workflow runs these checks on macOS, Linux, and Windows.
+
+`native/web-dist/` and `native/LICENSE` are generated and ignored by Git, but explicitly included by Cargo. Cargo treats these files as uncommitted changes, so packaging uses `--allow-dirty`. Before publishing, commit the source changes and verify that `git status --porcelain` is empty. The final guard below permits the generated files while rejecting changes reported by Git:
+
+```bash
+cargo login --registry crates-io
+npm run pack:cargo
+npm run test:cargo-install
+test -z "$(git status --porcelain)" && \
+  cargo publish --dry-run --allow-dirty --locked --registry crates-io --manifest-path native/Cargo.toml
+test -z "$(git status --porcelain)" && \
+  cargo publish --allow-dirty --locked --registry crates-io --manifest-path native/Cargo.toml
+```
+
+Publishing is manual. Match the package version to the reviewed release commit. Windows Cargo installs do not include the ConPTY helper files; document that limitation until a separate installation path exists for them.
+
 ## Security issues
 
 Do not open a public issue. Use [private vulnerability reporting](https://github.com/SteelCrab/westerm/security/advisories/new).
