@@ -15,6 +15,14 @@ pub(super) async fn exchange<S>(mut stream: S, method: &str, path: &str, body: O
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
+    exchange_with_timeout(&mut stream, method, path, body, EXCHANGE_TIMEOUT).await
+}
+
+/// Git hooks and authenticated network operations can take longer than layout requests.
+pub(super) async fn exchange_with_timeout<S>(mut stream: S, method: &str, path: &str, body: Option<&[u8]>, timeout: Duration) -> Option<(u16, Vec<u8>)>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let work = async {
         let mut request = format!("{method} {path} HTTP/1.1\r\nHost: westerm\r\nConnection: close\r\n");
         match body {
@@ -27,7 +35,7 @@ where
         stream.read_to_end(&mut response).await.ok()?;
         parse_response(&response)
     };
-    tokio::time::timeout(EXCHANGE_TIMEOUT, work).await.ok().flatten()
+    tokio::time::timeout(timeout, work).await.ok().flatten()
 }
 
 /// Status and body of an HTTP/1.1 response read to the end. Handles chunked

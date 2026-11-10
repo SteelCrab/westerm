@@ -4,6 +4,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Git sidebar: inspect the current repository, review diffs and recent commits (full messages, changed files, and per-file patches), stage or unstage files, and commit staged changes.
+
 ## [0.4.2] - 2026-11-10
 
 ### Added

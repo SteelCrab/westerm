@@ -18,3 +18,12 @@ test("covered panes are hidden", () => {
   assert.ok(body, ".pane.covered rule exists");
   assert.match(body, /visibility:\s*hidden/);
 });
+
+test("long Git content scrolls within the viewport instead of expanding the grid row", () => {
+  assert.match(rule(".app") ?? "", /grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+  assert.match(rule(".sidebar-slot") ?? "", /min-height:\s*0/);
+  assert.match(rule(".git-panel") ?? "", /min-height:\s*0/);
+  assert.match(rule(".git-scroll") ?? "", /min-height:\s*0/);
+  assert.match(rule(".git-scroll") ?? "", /overflow-y:\s*auto/);
+  assert.match(rule(".git-preview pre") ?? "", /max-height:/);
+});

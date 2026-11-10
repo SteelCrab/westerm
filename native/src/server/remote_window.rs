@@ -30,6 +30,7 @@ pub(super) fn routes() -> Router<Shared> {
             get(docs_get).put(docs_put).post(docs_post).layer(DefaultBodyLimit::max(super::docs::MAX_BODY_BYTES)),
         )
         .route("/remote/{target}/api/agents/history", get(agents_history_get))
+        .route("/remote/{target}/api/git/{name}", get(git_get).post(git_post).layer(DefaultBodyLimit::max(super::git::MAX_BODY_BYTES)))
 }
 
 /// The target from the path, when the Host header is one of this dashboard's
@@ -65,7 +66,12 @@ async fn forward(state: &Shared, target: &str, method: &str, path: &str, body: O
         Ok(opened) => opened,
         Err(status) => return status.into_response(),
     };
-    let Some((status, body)) = http1::exchange(opened.stream, method, path, body).await else {
+    let answer = if path.starts_with("/api/git/") {
+        http1::exchange_with_timeout(opened.stream, method, path, body, std::time::Duration::from_secs(35)).await
+    } else {
+        http1::exchange(opened.stream, method, path, body).await
+    };
+    let Some((status, body)) = answer else {
         drop_link(state, target, opened.link);
         return StatusCode::BAD_GATEWAY.into_response();
     };
@@ -127,6 +133,29 @@ async fn agents_history_get(State(state): State<Shared>, Path(target): Path<Stri
         Ok(target) => forward(&state, &target, "GET", &history_path(query), None).await,
         Err(status) => status.into_response(),
     }
+}
+
+async fn git_get(
+    State(state): State<Shared>, Path((target, name)): Path<(String, String)>,
+    RawQuery(query): RawQuery, headers: HeaderMap,
+) -> Response {
+    if !matches!(name.as_str(), "status" | "diff" | "commit" | "commit-diff") { return StatusCode::NOT_FOUND.into_response(); }
+    let path = match query { Some(query) => format!("/api/git/{name}?{query}"), None => format!("/api/git/{name}") };
+    match checked_get_target(&state, &headers, &target) {
+        Ok(target) => forward(&state, &target, "GET", &path, None).await,
+        Err(status) => status.into_response(),
+    }
+}
+
+async fn git_post(
+    State(state): State<Shared>, Path((target, name)): Path<(String, String)>, headers: HeaderMap, body: Bytes,
+) -> Response {
+    if name != "action" { return StatusCode::NOT_FOUND.into_response(); }
+    let target = match checked_target(&state, &headers, &target) {
+        Ok(target) => target, Err(status) => return status.into_response(),
+    };
+    if !is_json(&headers) || !origin_allowed(&state, &headers) { return StatusCode::FORBIDDEN.into_response(); }
+    forward(&state, &target, "POST", "/api/git/action", Some(&body)).await
 }
 
 /// A docs pane of a remote window reads the server's files.

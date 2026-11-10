@@ -150,6 +150,7 @@ const flags = (change: Partial<SidebarFlags>): SidebarFlags => ({
   sidebarOpen: false,
   drawerOpen: false,
   agentsView: false,
+  gitView: false,
   ...change,
 });
 const press = (o: SidebarFlags): SidebarFlags => ({ ...o, ...pressAgents(o) });
@@ -509,6 +510,8 @@ function bar(change: Partial<Parameters<typeof ActivityBar>[0]>) {
         agentsOpen: false,
         agentsWaiting: false,
         onToggleAgents: noop,
+        gitOpen: false,
+        onToggleGit: noop,
         ...change,
       }),
     ),
