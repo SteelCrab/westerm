@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  Cloud,
   ArrowRightToLine,
   MoveLeft,
   MoveRight,
@@ -28,6 +29,7 @@ import {
   normalizeSshTarget,
   REMOTE_RETRY_PATH,
   REMOTE_UPDATE_HOST_PATH,
+  type TunnelStatus,
 } from "../shared/protocol.ts";
 import { postRemote } from "./remoteApi.ts";
 import type { SshHost } from "./useSshHosts.ts";
@@ -472,6 +474,40 @@ export function remoteWindowCommands(target: string, t: Messages): Array<Palette
       },
     },
   ];
+}
+
+const TUNNEL_KEYWORDS = "tunnel cloudflare share phone remote access";
+
+/** The tunnel's commands for its state: start or stop it, copy its address, or open the panel to install cloudflared. */
+export function tunnelCommands(
+  status: TunnelStatus | null,
+  actions: { start: () => void; stop: () => void; copy: (url: string) => void; open: () => void },
+  t: Messages,
+): Array<PaletteCommand & { keywords: string }> {
+  if (!status) return [];
+  const command = (id: string, title: string, run: () => void) => ({
+    id,
+    title,
+    group: t.palette.groups.app,
+    icon: <Cloud size={14} />,
+    keywords: TUNNEL_KEYWORDS,
+    run,
+  });
+  const list = [];
+  switch (status.phase) {
+    case "off":
+    case "failed":
+      list.push(command("tunnel-start", t.tunnel.palette.start, actions.start));
+      break;
+    case "missing":
+      list.push(command("tunnel-open", t.tunnel.palette.open, actions.open));
+      break;
+    default:
+      list.push(command("tunnel-stop", t.tunnel.palette.stop, actions.stop));
+  }
+  const url = status.url;
+  if (url !== null) list.push(command("tunnel-copy", t.tunnel.palette.copy, () => actions.copy(url)));
+  return list;
 }
 
 /** Typing something URL-like offers to open it in terminal-browser. */

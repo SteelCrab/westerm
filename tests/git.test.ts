@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { focusedGitFolder, gitEntries, gitFolders, gitPath, runGitOperation, type GitFile } from "../src/git.ts";
-import { pressAgents, pressGit, sidebarView, type SidebarFlags } from "../src/agents.ts";
+import { pressPanel, sidebarView, type SidebarFlags } from "../src/agents.ts";
 import { createDashboard, dashboardReducer } from "../src/workspace.ts";
 
 const file = (path: string, index: string, worktree: string, conflict = false): GitFile => ({ path, index, worktree, conflict, oldPath: null });
@@ -38,14 +38,14 @@ test("the Git sidebar follows the focused shell and only offers the active works
 test("Git and Agents share the sidebar slot in both layouts and in a narrow drawer", () => {
   for (const layout of ["top", "sidebar"] as const) {
     for (const narrow of [false, true]) {
-      const initial: SidebarFlags = { layout, narrow, sidebarOpen: layout === "sidebar", drawerOpen: false, agentsView: false, gitView: false };
-      let state = pressGit(initial);
+      const initial: SidebarFlags = { layout, narrow, sidebarOpen: layout === "sidebar", drawerOpen: false, panel: null };
+      let state = pressPanel(initial, "git");
       assert.equal(sidebarView(state), "git");
-      state = pressAgents(state);
+      state = pressPanel(state, "agents");
       assert.equal(sidebarView(state), "agents");
-      state = pressGit(state);
+      state = pressPanel(state, "git");
       assert.equal(sidebarView(state), "git");
-      state = pressGit(state);
+      state = pressPanel(state, "git");
       assert.equal(sidebarView(state), !narrow && layout === "sidebar" ? "sessions" : null);
     }
   }

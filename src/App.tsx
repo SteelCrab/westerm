@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { TriangleAlert } from "lucide-react";
 import type { AgentLaunch, PaneKind } from "../shared/protocol.ts";
 import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts";
-import { anyWaiting, pressAgents, pressGit, sidebarView, type SidebarFlags } from "./agents.ts";
+import { anyWaiting, pressPanel, sidebarView, type SidebarFlags, type SidebarPanel } from "./agents.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { AgentPanel } from "./components/AgentPanel.tsx";
 import { GitPanel } from "./components/GitPanel.tsx";
@@ -11,6 +11,7 @@ import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
 import { PaneLayer } from "./components/PaneLayer.tsx";
 import { RemoteBanner, RemoteConnect, stageText } from "./components/RemoteConnect.tsx";
 import { SessionList } from "./components/SessionList.tsx";
+import { TunnelPanel } from "./components/TunnelPanel.tsx";
 import { isCompact, SidebarResizer } from "./components/SidebarResizer.tsx";
 import { TabBar } from "./components/TabBar.tsx";
 import { tabColors, WorkspaceMenu } from "./components/WorkspaceMenu.tsx";
@@ -24,6 +25,7 @@ import {
   isPaletteShortcut,
   PALETTE_SHORTCUT,
   remoteWindowCommands,
+  tunnelCommands,
   sshCommands,
   urlCommands,
 } from "./paletteCommands.tsx";
@@ -33,7 +35,9 @@ import { useSshHosts } from "./useSshHosts.ts";
 import { terminalColors } from "./colorThemes.ts";
 import { useColorScheme, useWindowColors } from "./theme.ts";
 import { useNarrow } from "./useNarrow.ts";
-import { useAgentsView } from "./useAgentsView.ts";
+import { useSidebarPanel } from "./useSidebarPanel.ts";
+import { useTunnel } from "./useTunnel.ts";
+import { pageControls } from "./tunnel.ts";
 import { useSidebarWidth } from "./useSidebarWidth.ts";
 import { useTerminalFont } from "./useTerminalFont.ts";
 import { useUpdate } from "./useUpdate.ts";
@@ -76,7 +80,21 @@ const pickCommands = (commands: PaletteCommand[], windowsOnly: boolean) =>
 /** A local window's layout needs no link. */
 const LOCAL_LINK = { ready: true, reconnects: 0 };
 
-export function App() {
+interface AppProps {
+  /** This page came through a Cloudflare tunnel: no tunnel, remote window, or update controls. */
+  tunnelPage?: boolean;
+}
+
+/** Copies without feedback, for the palette, which closes at once. */
+function copyText(text: string) {
+  try {
+    void navigator.clipboard.writeText(text).catch(() => {});
+  } catch {
+    // No clipboard outside secure contexts.
+  }
+}
+
+export function App({ tunnelPage = false }: AppProps = {}) {
   const [state, rawDispatch] = useReducer(dashboardReducer, null, createFresh);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // On a phone the sidebar is a drawer over the panes. It starts closed and
@@ -103,8 +121,14 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [narrow, drawerOpen]);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
-  const [agentsView, setAgentsView] = useAgentsView();
-  const [gitView, setGitView] = useState(false);
+  const [savedPanel, setPanel] = useSidebarPanel();
+  // Only this computer's own dashboard updates westerm, opens remote windows,
+  // and runs tunnels. A remote window shares this page's storage, so a
+  // remembered tunnel panel does not apply there.
+  const controls = pageControls(REMOTE_TARGET !== null, tunnelPage);
+  const tunnelAllowed = controls.tunnel;
+  const tunnel = useTunnel(tunnelAllowed);
+  const panel = savedPanel === "tunnel" && !tunnelAllowed ? null : savedPanel;
   const [renaming, setRenaming] = useState<RenameTarget | null>(null);
   // "commands": the command palette. "ssh": the same palette listing ssh hosts.
   // "window": the host list again, with only the "open in a new window" entries.
@@ -119,7 +143,7 @@ export function App() {
   const fontOverride = useMemo(() => parseFamilies(settings.fontFamily), [settings.fontFamily]);
   const { font, sizeOverridden, ghosttyFont, changeSize, resetSize } = useTerminalFont(locale, fontOverride);
   // A remote window does not update westerm: the server follows this one.
-  const update = useUpdate(settings.autoUpdate && REMOTE_TARGET === null);
+  const update = useUpdate(settings.autoUpdate && controls.updates);
   const scheme = useColorScheme(settings.theme);
   const colors = terminalColors(settings.colorTheme, scheme);
   useWindowColors(settings.colorTheme, scheme);
@@ -147,10 +171,10 @@ export function App() {
   // The macOS app's Check for Updates menu sends this event. Remote windows
   // have no updates of their own.
   useEffect(() => {
-    if (REMOTE_TARGET !== null) return;
+    if (!controls.updates) return;
     window.addEventListener("westerm:update", checkUpdates);
     return () => window.removeEventListener("westerm:update", checkUpdates);
-  }, [checkUpdates]);
+  }, [checkUpdates, controls.updates]);
 
   // Keep the latest state at hand for callbacks that must not change identity.
   const stateRef = useRef(state);
@@ -228,13 +252,13 @@ export function App() {
       const placed = placeRename(target, layout);
       if (placed.where === "sidebar") {
         setSidebar(true);
-        setGitView(false);
-        // Tab and session names are edited in the sessions list; both views have the workspace menu.
-        if (placed.kind !== "workspace") setAgentsView(false);
+        // Tab and session names are edited in the sessions list. The sessions
+        // list and the agents panel have the workspace menu; Git and the tunnel panel do not.
+        if (placed.kind !== "workspace" || panel !== "agents") setPanel(null);
       }
       setRenaming(placed);
     },
-    [layout, setSidebar, setAgentsView],
+    [layout, setSidebar, setPanel, panel],
   );
 
   const renameWorkspace = useCallback(
@@ -371,14 +395,34 @@ export function App() {
         t,
         locale,
         setLocale,
-        checkUpdates: REMOTE_TARGET === null ? checkUpdates : null,
-        newVersion: REMOTE_TARGET === null && update.status?.newer ? (update.status.latest ?? null) : null,
+        checkUpdates: controls.updates ? checkUpdates : null,
+        newVersion: controls.updates && update.status?.newer ? (update.status.latest ?? null) : null,
         showUpdate: () => setUpdateOpen(true),
         openSettings: () => setSettingsOpen(true),
       }),
       ...(REMOTE_TARGET === null ? [] : remoteWindowCommands(REMOTE_TARGET, t)),
+      ...(tunnelAllowed
+        ? tunnelCommands(
+            tunnel.status,
+            {
+              start: tunnel.start,
+              stop: tunnel.stop,
+              copy: copyText,
+              open: () => {
+                setPanel("tunnel");
+                setSidebar(true);
+              },
+            },
+            t,
+          )
+        : []),
     ],
     [
+      tunnel,
+      tunnelAllowed,
+      controls.updates,
+      setPanel,
+      setSidebar,
       state,
       dispatch,
       open,
@@ -401,7 +445,7 @@ export function App() {
   );
   const dynamicCommands = useCallback((query: string) => urlCommands(query, open, t), [open, t]);
   // A remote window opens no windows: they do not nest.
-  const openWindow = REMOTE_TARGET === null ? openRemoteWindow : null;
+  const openWindow = controls.remoteWindows ? openRemoteWindow : null;
   const windowsOnly = palette === "window";
   const sshPaletteCommands = useMemo(
     () => pickCommands(sshCommands(sshHosts ?? [], null, open, openWindow, t), windowsOnly),
@@ -420,26 +464,18 @@ export function App() {
   // stays only for the update button. The sidebar slot shows the sessions
   // list, agents, or Git (agents.ts sidebarView).
   const onTop = layout === "top";
-  const sidebarFlags: SidebarFlags = { layout, narrow, sidebarOpen, drawerOpen, agentsView, gitView };
+  const sidebarFlags: SidebarFlags = { layout, narrow, sidebarOpen, drawerOpen, panel };
   const view = sidebarView(sidebarFlags);
   const sidebarShown = view !== null;
-  const toggleAgents = () => {
-    const next = pressAgents(sidebarFlags);
-    setAgentsView(next.agentsView);
-    setGitView(next.gitView);
-    setSidebarOpen(next.sidebarOpen);
-    setDrawerOpen(next.drawerOpen);
-  };
-  const toggleGit = () => {
-    const next = pressGit(sidebarFlags);
-    setAgentsView(next.agentsView);
-    setGitView(next.gitView);
+  const togglePanel = (which: SidebarPanel) => {
+    const next = pressPanel(sidebarFlags, which);
+    setPanel(next.panel);
     setSidebarOpen(next.sidebarOpen);
     setDrawerOpen(next.drawerOpen);
   };
   const compact = !narrow && isCompact(sidebarWidth);
   // A remote window always shows its server in the header.
-  const headerShown = onTop || REMOTE_TARGET !== null || updateShown(update.status, updateOpen);
+  const headerShown = onTop || REMOTE_TARGET !== null || (controls.updates && updateShown(update.status, updateOpen));
 
   return (
     <div
@@ -458,16 +494,27 @@ export function App() {
         onOpenPalette={() => setPalette("commands")}
         onOpenRemoteWindow={openWindow && (() => setPalette("window"))}
         paletteShortcut={PALETTE_SHORTCUT}
+        tunnelOpen={view === "tunnel"}
+        tunnelOn={tunnel.status?.phase === "on"}
+        onToggleTunnel={tunnelAllowed ? () => togglePanel("tunnel") : null}
         agentsOpen={view === "agents"}
         agentsWaiting={anyWaiting(state)}
-        onToggleAgents={toggleAgents}
+        onToggleAgents={() => togglePanel("agents")}
         gitOpen={view === "git"}
-        onToggleGit={toggleGit}
+        onToggleGit={() => togglePanel("git")}
       />
       {sidebarShown && (
         <div className="sidebar-slot">
           {view === "git" ? (
             <GitPanel key={activeWorkspace(state).id} compact={compact} state={state} />
+          ) : view === "tunnel" ? (
+            <TunnelPanel
+              status={tunnel.status}
+              onStart={tunnel.start}
+              onStop={tunnel.stop}
+              onCheck={tunnel.check}
+              compact={compact}
+            />
           ) : view === "agents" ? (
             <AgentPanel
               state={state}
@@ -564,7 +611,7 @@ export function App() {
             )}
             <div className="workspace-tools">
               {REMOTE_TARGET === null ? (
-                <UpdateButton update={update} open={updateOpen} onOpenChange={setUpdateOpen} />
+                controls.updates && <UpdateButton update={update} open={updateOpen} onOpenChange={setUpdateOpen} />
               ) : (
                 <span className="remote-badge" title={stageText(link.stage, t)}>
                   <RemoteWindowIcon size={13} />
@@ -619,7 +666,7 @@ export function App() {
           changeSize={changeSize}
           resetSize={resetSize}
           update={update}
-          updates={REMOTE_TARGET === null}
+          updates={controls.updates}
           onShowUpdate={() => {
             setSettingsOpen(false);
             setUpdateOpen(true);

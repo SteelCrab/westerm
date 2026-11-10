@@ -67,7 +67,10 @@ export function agentFolders(state: Dashboard): AgentFolder[] {
   return [...folders.values()];
 }
 
-export type SidebarView = "sessions" | "agents" | "git" | null;
+/** A panel that can take the sidebar slot instead of the sessions list. */
+export type SidebarPanel = "agents" | "git" | "tunnel";
+
+export type SidebarView = "sessions" | SidebarPanel | null;
 
 export interface SidebarFlags {
   layout: "top" | "sidebar";
@@ -75,36 +78,26 @@ export interface SidebarFlags {
   narrow: boolean;
   sidebarOpen: boolean;
   drawerOpen: boolean;
-  /** Top layout: the agents list is open. Sidebar layout: the sidebar shows agents, not sessions. */
-  agentsView: boolean;
-  gitView: boolean;
+  /** The panel in the slot. Top layout: the slot opens only for one. Sidebar layout: null shows the sessions list. */
+  panel: SidebarPanel | null;
 }
 
 /** What the sidebar slot shows now; null when it is closed. */
 export function sidebarView(o: SidebarFlags): SidebarView {
-  const open = o.narrow ? o.drawerOpen : o.layout === "top" ? o.agentsView || o.gitView : o.sidebarOpen;
+  const open = o.narrow ? o.drawerOpen : o.layout === "top" ? o.panel !== null : o.sidebarOpen;
   if (!open) return null;
-  return o.gitView ? "git" : o.agentsView ? "agents" : "sessions";
+  return o.panel ?? "sessions";
 }
 
-/** The flags after the agents button is pressed. */
-export function pressAgents(o: SidebarFlags): SidebarFlags {
-  return pressPanel(o, "agents");
-}
-
-export function pressGit(o: SidebarFlags): SidebarFlags {
-  return pressPanel(o, "git");
-}
-
-function pressPanel(o: SidebarFlags, panel: "agents" | "git"): SidebarFlags {
-  if (sidebarView(o) === panel) {
+/** The flags after the button of panel `which` is pressed. The panels share the slot. */
+export function pressPanel(o: SidebarFlags, which: SidebarPanel): SidebarFlags {
+  if (sidebarView(o) === which) {
     // Close a drawer; in the sidebar layout go back to the sessions list, still open.
-    return o.narrow ? { ...o, drawerOpen: false } : { ...o, agentsView: false, gitView: false };
+    return o.narrow ? { ...o, drawerOpen: false } : { ...o, panel: null };
   }
   return {
     ...o,
-    agentsView: panel === "agents",
-    gitView: panel === "git",
+    panel: which,
     sidebarOpen: o.sidebarOpen || o.layout === "sidebar",
     drawerOpen: o.narrow || o.drawerOpen,
   };

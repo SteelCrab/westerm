@@ -4639,3 +4639,339 @@ body.resizing-rows .pane {
 .git-commit-files .git-file-select[aria-pressed="true"] { background: var(--accent-soft); }
 .git-commit-file-path { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-commit-detail .git-preview { margin: 10px 0 0; }
+
+/* The tunnel button: a tunnel is on. */
+.activity-dot.on {
+  background: var(--ok);
+}
+
+.activity-tunnel[aria-pressed="true"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* The tunnel panel reuses the session panel's frame and the agents header. */
+.tunnel-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 4px 14px 16px;
+  overflow-y: auto;
+  font-size: 12.5px;
+}
+
+.tunnel-intro,
+.tunnel-muted,
+.tunnel-reason,
+.tunnel-state,
+.tunnel-code,
+.tunnel-warning {
+  margin: 0;
+}
+
+.tunnel-intro {
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.tunnel-muted {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.tunnel-reason {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.tunnel-action {
+  align-self: flex-start;
+}
+
+.tunnel-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tunnel-state.failed {
+  color: var(--danger);
+}
+
+.tunnel-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.tunnel-dot.reconnecting {
+  background: var(--warn);
+}
+
+.tunnel-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tunnel-spinner {
+    animation: none;
+  }
+}
+
+.tunnel-live {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tunnel-live.dim {
+  opacity: 0.45;
+}
+
+.tunnel-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tunnel-copy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.tunnel-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tunnel-text.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Black on white in both themes: scanners need the contrast. */
+.tunnel-qr {
+  align-self: flex-start;
+  width: 148px;
+  height: 148px;
+  padding: 4px;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.tunnel-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tunnel-code {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tunnel-devices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tunnel-device {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tunnel-device-state {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.tunnel-device-state.online {
+  color: var(--ok);
+}
+
+.tunnel-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--warn);
+  line-height: 1.45;
+}
+
+.tunnel-warning svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.tunnel-link {
+  align-self: flex-start;
+  color: var(--accent);
+}
+
+.tunnel-log summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tunnel-log pre {
+  max-height: 180px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tunnel-compact {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 40px;
+  color: var(--text-muted);
+}
+
+.tunnel-compact .tunnel-dot {
+  position: absolute;
+  top: 10px;
+  right: calc(50% - 12px);
+}
+
+/* A tunnel page before the app: the access code, or the end of the tunnel. */
+.tunnel-login {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.tunnel-login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(360px, 100%);
+  padding: 28px 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.tunnel-login-card h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.tunnel-login-logo {
+  border-radius: 9px;
+}
+
+.tunnel-login-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Six cells drawn behind one input, so paste and one-time-code autofill work. */
+.tunnel-login-code {
+  --cell: 2.1ch;
+  box-sizing: content-box;
+  width: calc(var(--cell) * 6);
+  padding: 8px 0 8px 0.65ch;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(var(--cell) - 1px),
+      var(--border) calc(var(--cell) - 1px) var(--cell)
+    ),
+    var(--bg);
+  color: var(--text);
+  font: 600 28px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 1.1ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.tunnel-login-code:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.tunnel-login-code:disabled {
+  opacity: 0.5;
+}
+
+.tunnel-login-code.shake {
+  animation: tunnel-shake 0.35s ease-in-out;
+}
+
+@keyframes tunnel-shake {
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tunnel-login-code.shake {
+    animation: none;
+  }
+}
+
+.tunnel-login-error {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--danger);
+  font-size: 12.5px;
+}
