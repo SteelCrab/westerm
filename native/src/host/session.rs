@@ -188,6 +188,9 @@ pub struct Spec {
     pub pixels: Option<PixelCodec>,
     /// An agent to start in a new shell once its prompt is up.
     pub agent: Option<Launch>,
+    /// A plugin command to type into a new shell once its prompt is up,
+    /// already quoted for that shell.
+    pub plugin_command: Option<String>,
 }
 
 pub fn start(
@@ -220,10 +223,14 @@ pub fn start(
     });
     // What the shell types once its prompt is up, and the agent it then runs.
     // A launch has no restore notice: the user just asked for it.
-    let (command, record) = match (resuming, &spec.agent) {
-        (Some(resuming), _) => (Some(resuming.record.resume_command()), Some(resuming.record)),
-        (None, Some(launch)) => (Some(agent::launch_command(launch)), agent::launch_record(launch)),
-        (None, None) => (None, None),
+    // A plugin command starts no agent, so it has no record. A command that
+    // cannot be quoted (a control character) is not typed.
+    let shell = agent::resume_shell();
+    let (command, record) = match (resuming, &spec.agent, spec.plugin_command) {
+        (Some(resuming), _, _) => (resuming.record.resume_command(shell), Some(resuming.record)),
+        (None, Some(launch), _) => (agent::launch_command(launch, shell), agent::launch_record(launch)),
+        (None, None, Some(command)) => (Some(command), None),
+        (None, None, None) => (None, None),
     };
     let latest = Instant::now() + RESUME_LATEST;
     let resume = command.map(|command| Resume { input: format!("{command}\r").into_bytes(), at: latest, latest });

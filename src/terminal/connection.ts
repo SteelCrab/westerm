@@ -10,6 +10,7 @@ import {
   type AttachMode,
   type ClientMessage,
   type PixelCodec,
+  type PluginLaunch,
   type Place,
   type PtySize,
   type ServerMessage,
@@ -42,6 +43,8 @@ export interface ConnectionOptions {
   cwd: string | null;
   /** A new shell starts this agent. */
   launch: AgentLaunch | null;
+  /** A new shell types this plugin's command. */
+  plugin: PluginLaunch | null;
   /** ssh destination. */
   target: string | null;
   /** Language of text the server writes: the restore notice and errors. */
@@ -70,7 +73,7 @@ const WINDOW_ID = `w${Array.from(crypto.getRandomValues(new Uint8Array(8)), (byt
 export function sessionQuery(
   options: Pick<
     ConnectionOptions,
-    "session" | "kind" | "url" | "cwdFrom" | "cwd" | "launch" | "target" | "lang" | "resumeAgents" | "size"
+    "session" | "kind" | "url" | "cwdFrom" | "cwd" | "launch" | "plugin" | "target" | "lang" | "resumeAgents" | "size"
   > &
     Partial<Pick<ConnectionOptions, "pixels">>,
   windowId: string = WINDOW_ID,
@@ -92,7 +95,14 @@ export function sessionQuery(
     query.set("agent", options.launch.kind);
     if (options.launch.conversation) query.set("conversation", options.launch.conversation);
   }
-  if (options.target) query.set("target", options.target);
+  // A plugin launch owns `target` (its ssh destination is always null).
+  if (options.plugin) {
+    query.set("plugin", options.plugin.plugin);
+    query.set("action", options.plugin.action);
+    query.set("target", options.plugin.target);
+  } else if (options.target) {
+    query.set("target", options.target);
+  }
   if (!options.resumeAgents) query.set("resume", "off");
   if (options.pixels) query.set("pixels", options.pixels);
   return query;

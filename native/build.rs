@@ -14,6 +14,7 @@ const HOST_SOURCES: &[&str] = &[
     "src/ipc.rs",
     "src/time.rs",
     "src/spawn.rs",
+    "src/quote.rs",
     "src/cwd.rs",
     "src/git.rs",
     "src/process.rs",
@@ -28,6 +29,9 @@ const HOST_SOURCES: &[&str] = &[
     "src/host/session.rs",
     "src/host/registry.rs",
     "src/host/agent.rs",
+    "src/plugins/mod.rs",
+    "src/plugins/docker.rs",
+    "src/plugins/external.rs",
 ];
 
 fn main() {

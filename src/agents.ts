@@ -2,7 +2,7 @@
 // folder, which view the sidebar slot shows, and past conversations.
 
 import type { AgentKind } from "../shared/protocol.ts";
-import { homeShort } from "./components/AgentCard.tsx";
+import { homeShort } from "./uiHelpers.ts";
 import { REMOTE_TARGET } from "./remoteWindow.ts";
 import {
   activeWorkspace,
@@ -67,7 +67,10 @@ export function agentFolders(state: Dashboard): AgentFolder[] {
   return [...folders.values()];
 }
 
-export type SidebarView = "sessions" | "agents" | null;
+/** A panel the sidebar slot can show besides the sessions list: agents, or one plugin's. */
+export type SidebarPanel = "agents" | `plugin:${string}`;
+
+export type SidebarView = "sessions" | SidebarPanel | null;
 
 export interface SidebarFlags {
   layout: "top" | "sidebar";
@@ -75,26 +78,51 @@ export interface SidebarFlags {
   narrow: boolean;
   sidebarOpen: boolean;
   drawerOpen: boolean;
-  /** Top layout: the agents list is open. Sidebar layout: the sidebar shows agents, not sessions. */
-  agentsView: boolean;
+  /** Top layout: the open panel. Sidebar layout: the panel shown instead of the sessions list. */
+  panel: SidebarPanel | null;
 }
 
 /** What the sidebar slot shows now; null when it is closed. */
 export function sidebarView(o: SidebarFlags): SidebarView {
-  const open = o.narrow ? o.drawerOpen : o.layout === "top" ? o.agentsView : o.sidebarOpen;
+  const open = o.narrow ? o.drawerOpen : o.layout === "top" ? o.panel !== null : o.sidebarOpen;
   if (!open) return null;
-  return o.layout === "top" || o.agentsView ? "agents" : "sessions";
+  return o.layout === "top" ? (o.panel ?? "agents") : (o.panel ?? "sessions");
 }
 
-/** The flags after the agents button is pressed. */
-export function pressAgents(o: SidebarFlags): Pick<SidebarFlags, "agentsView" | "sidebarOpen" | "drawerOpen"> {
-  const { agentsView, sidebarOpen, drawerOpen } = o;
-  if (sidebarView(o) === "agents") {
+/** The flags after the button of `panel` is pressed. */
+export function pressPanel(
+  o: SidebarFlags,
+  panel: SidebarPanel,
+): Pick<SidebarFlags, "panel" | "sidebarOpen" | "drawerOpen"> {
+  const { sidebarOpen, drawerOpen } = o;
+  if (sidebarView(o) === panel) {
     // Close a drawer; in the sidebar layout go back to the sessions list, still open.
-    return o.narrow ? { agentsView, sidebarOpen, drawerOpen: false } : { agentsView: false, sidebarOpen, drawerOpen };
+    return o.narrow ? { panel: o.panel, sidebarOpen, drawerOpen: false } : { panel: null, sidebarOpen, drawerOpen };
   }
-  if (o.narrow) return { agentsView: true, sidebarOpen, drawerOpen: true };
-  return { agentsView: true, sidebarOpen: sidebarOpen || o.layout === "sidebar", drawerOpen };
+  if (o.narrow) return { panel, sidebarOpen, drawerOpen: true };
+  return { panel, sidebarOpen: sidebarOpen || o.layout === "sidebar", drawerOpen };
+}
+
+/** A built-in plugin's id (`docker`) or an external one's (`<author>.<name>`). */
+const PLUGIN_PANEL = /^plugin:[a-z0-9-]{1,32}(\.[a-z0-9-]{1,32})?$/;
+
+/**
+ * The remembered panel. `legacyAgentsView` is the value of the old
+ * `westerm.agentsView` key, used when nothing is stored under the new key.
+ */
+export function readSidebarPanel(stored: string | null, legacyAgentsView: string | null): SidebarPanel | null {
+  if (stored === null) return legacyAgentsView === "true" ? "agents" : null;
+  if (stored === "agents") return stored;
+  return PLUGIN_PANEL.test(stored) ? (stored as SidebarPanel) : null;
+}
+
+/**
+ * The panel to show: a plugin panel needs its plugin in the installed list.
+ * `installed` is null while the list is being read.
+ */
+export function effectivePanel(panel: SidebarPanel | null, installed: readonly string[] | null): SidebarPanel | null {
+  if (panel === null || !panel.startsWith("plugin:")) return panel;
+  return installed?.includes(panel.slice("plugin:".length)) ? panel : null;
 }
 
 const isWaiting = (session: Session) => session.kind === "shell" && agentDisplay(session) === "waiting";

@@ -80,7 +80,7 @@ fn channel_of(path: &Path) -> Channel {
 }
 
 /// "1.2.3" or "v1.2.3-rc.1" as (1, 2, 3).
-fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
+pub(crate) fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
     let core = text.trim_start_matches('v').split(['-', '+']).next()?;
     let mut parts = core.split('.').map(|part| part.parse::<u64>().ok());
     let version = (parts.next()??, parts.next()??, parts.next()??);
@@ -165,7 +165,7 @@ fn parse_release(body: &[u8]) -> Result<Release, String> {
     })
 }
 
-fn sha256_hex(path: &Path) -> Result<String, String> {
+pub(crate) fn sha256_hex(path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 64 * 1024];

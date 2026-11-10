@@ -445,6 +445,40 @@ fn fake_claude_env(state: &Path, bin: &Path, home: &Path) -> Vec<(&'static str, 
     vec![("CLAUDE_CONFIG_DIR", state.join("claude").into_os_string()), ("HOME", home.as_os_str().to_owned())]
 }
 
+/// A fake `docker` that the host's shell finds first; it only prints its arguments.
+/// Same PATH trick as `fake_claude_env`.
+#[cfg(unix)]
+fn fake_docker_env(bin: &Path, home: &Path) -> Vec<(&'static str, std::ffi::OsString)> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let docker = bin.join("docker");
+    std::fs::write(&docker, "#!/bin/sh\necho FAKE_DOCKER \"$@\"\n").unwrap();
+    std::fs::set_permissions(&docker, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(home.join(".profile"), format!("PATH='{}':\"$PATH\"\nexport PATH\n", bin.display())).unwrap();
+    vec![("HOME", home.as_os_str().to_owned())]
+}
+
+/// A fake `kubectl` that the host's shell finds first; it only prints its arguments.
+/// Same PATH trick as `fake_claude_env`.
+#[cfg(unix)]
+fn fake_kubectl_env(bin: &Path, home: &Path) -> Vec<(&'static str, std::ffi::OsString)> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let kubectl = bin.join("kubectl");
+    std::fs::write(&kubectl, "#!/bin/sh\necho FAKE_KUBECTL \"$@\"\n").unwrap();
+    std::fs::set_permissions(&kubectl, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(home.join(".profile"), format!("PATH='{}':\"$PATH\"\nexport PATH\n", bin.display())).unwrap();
+    vec![("HOME", home.as_os_str().to_owned())]
+}
+
+/// A query value as the dashboard sends it.
+#[cfg(unix)]
+fn enc(text: &str) -> String {
+    text.bytes()
+        .map(|byte| if byte.is_ascii_alphanumeric() { (byte as char).to_string() } else { format!("%{byte:02X}") })
+        .collect()
+}
+
 /// Collects output for `time`, or until the host closes the stream.
 #[cfg(unix)]
 async fn drain_output(pane: &mut Viewer<Stream>, time: Duration) {
@@ -536,6 +570,117 @@ async fn a_launch_into_a_missing_folder_opens_a_plain_shell() {
     // A typed launch would come after 300 ms of quiet, later than MARK_42.
     drain_output(&mut pane, Duration::from_secs(2)).await;
     assert_eq!(pane.output.matches("FAKE_CLAUDE").count(), 0, "the shell opens in the home folder without the agent");
+    pane.detach().await;
+    stop_host(state.path(), host).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_plugin_launch_types_the_docker_command() {
+    let state = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let env = fake_docker_env(bin.path(), home.path());
+    let host = start_host_with(state.path(), &env);
+    let query = format!(
+        "{}&plugin=docker&action=logs&target=0123456789ab&cwd={}",
+        QUERY.replace("stest1", "slaunchd1"),
+        work.path().display()
+    );
+
+    let (mut pane, ready) = attach_query(state.path(), &query).await;
+    assert_eq!(ready["mode"], "new");
+    pane.wait_for("FAKE_DOCKER logs -f --tail 200 0123456789ab").await;
+    assert_eq!(pane.output.matches("FAKE_DOCKER").count(), 1, "typed once, not twice");
+    pane.detach().await;
+
+    // The browser sends the same query on every reconnect: the command is not typed again.
+    let (mut pane, ready) = attach_query(state.path(), &query).await;
+    assert_eq!(ready["mode"], "reattached");
+    drain_output(&mut pane, Duration::from_secs(2)).await;
+    assert_eq!(pane.output.matches("FAKE_DOCKER").count(), 1, "only the replayed screen has it");
+    pane.detach().await;
+    stop_host(state.path(), host).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_plugin_launch_into_a_missing_folder_still_types() {
+    let state = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let gone = tempfile::tempdir().unwrap();
+    let gone_path = gone.path().join("removed");
+    let env = fake_docker_env(bin.path(), home.path());
+    let host = start_host_with(state.path(), &env);
+    let query = format!(
+        "{}&plugin=docker&action=shell&target=0123456789ab&cwd={}",
+        QUERY.replace("stest1", "slaunchd2"),
+        gone_path.display()
+    );
+
+    let (mut pane, ready) = attach_query(state.path(), &query).await;
+    assert_eq!(ready["mode"], "new");
+    pane.wait_for("FAKE_DOCKER exec -it 0123456789ab").await;
+    assert_eq!(pane.output.matches("FAKE_DOCKER").count(), 1, "typed once, not twice");
+    pane.detach().await;
+    stop_host(state.path(), host).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_external_launch_types_the_quoted_command() {
+    let state = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let env = fake_kubectl_env(bin.path(), home.path());
+    let host = start_host_with(state.path(), &env);
+    let query = format!(
+        "{}&plugin=k8s-tools.kubernetes&action=run&target={}",
+        QUERY.replace("stest1", "slaunchk1"),
+        enc(r#"["kubectl","logs","it's"]"#)
+    );
+
+    let (mut pane, ready) = attach_query(state.path(), &query).await;
+    assert_eq!(ready["mode"], "new");
+    // `env` finds the fake on PATH; every word is quoted.
+    pane.wait_for(r"'env' '--' 'kubectl' 'logs' 'it'\''s'").await;
+    pane.wait_for("FAKE_KUBECTL logs it's").await;
+    assert_eq!(pane.output.matches("FAKE_KUBECTL").count(), 1, "typed once, not twice");
+    pane.detach().await;
+    stop_host(state.path(), host).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_unsupported_shell_refuses_a_plugin_pane() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let state = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    // Named like nushell, runs sh: the host knows a shell by its file name.
+    let nu = bin.path().join("nu");
+    std::fs::write(&nu, "#!/bin/sh\nexec /bin/sh \"$@\"\n").unwrap();
+    std::fs::set_permissions(&nu, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let host = start_host_with(state.path(), &[("SHELL", nu.into_os_string())]);
+    let query = format!(
+        "{}&plugin=k8s-tools.kubernetes&action=run&target={}",
+        QUERY.replace("stest1", "snu1").replace("lang=ko", "lang=en"),
+        enc(r#"["kubectl","get","pods"]"#)
+    );
+
+    let (ws, _) = tokio_tungstenite::client_async(format!("ws://host/session?{query}"), connect(state.path()).await).await.unwrap();
+    let mut refused = Viewer { ws, output: String::new() };
+    let message = refused.next_json().await;
+    assert_eq!(message["type"], "error");
+    assert_eq!(message["message"], "Your shell is not supported for plugin panes");
+
+    // The same shell opens a plain pane.
+    let (mut pane, ready) = attach_query(state.path(), &QUERY.replace("stest1", "snu2")).await;
+    assert_eq!(ready["mode"], "new");
+    pane.send(MARK_INPUT).await;
+    pane.wait_for("MARK_42").await;
     pane.detach().await;
     stop_host(state.path(), host).await;
 }

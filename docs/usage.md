@@ -4,7 +4,7 @@
 
 | Area | What it does |
 |---|---|
-| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top; a badge shows how many are open. The Agents button, the command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. See [Agents sidebar](#agents-sidebar). |
+| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top; a badge shows how many are open. The plugin bar sits between them and the bottom group. The Agents button, the command palette, Settings, and (in the sidebar layout) the sidebar switch are at the bottom. See [Agents sidebar](#agents-sidebar) and [Plugins](#plugins). |
 | Layout | Settings ▸ General ▸ Workspaces and tabs picks one. **Top** (the default): the workspace menu and the tab bar across the top, and no sidebar. **Sidebar**: the workspace menu and the tabs in the sidebar, and no tab bar. |
 | Tab bar (top layout) | The workspace menu at the left, then the tabs. `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Sidebar (sidebar layout) | The workspace menu, then the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: the workspace icon, tab numbers, and the session icons of the tab in view. |
@@ -36,7 +36,7 @@ A workspace is a set of tabs, for example one per project.
 ## Command palette
 
 - Open it with ⌘K on macOS, or Ctrl+Shift+K on Linux and Windows.
-- It launches sessions, switches workspaces, tabs, and sessions, renames, maximizes, moves panes and tabs, changes the font size and language, opens settings, and checks for updates.
+- It launches sessions, switches workspaces, tabs, and sessions, renames, maximizes, moves panes and tabs, changes the font size and language, opens settings and the plugin manager (**Plugins…**), and checks for updates.
 - Type a URL to open it in terminal-browser.
 - English words find commands in any language, for example `rename`, `font`, or `language`.
 
@@ -200,6 +200,136 @@ Each agent row shows the agent's logo, its name (as in the session list), how lo
 
 - Limits: a file is read up to 16 MiB; at most the 500 newest Codex files are checked; Codex's `session_index.jsonl` is read from its last 4 MiB; Gemini folders are matched by name, or by up to 256 `.project_root` files. Titles are cut to 120 characters.
 - In a remote window, the panel shows the server's shells, folders, and past conversations.
+
+## Plugins
+
+A plugin adds a panel to westerm. Docker is built in: installing it turns it on, and nothing is downloaded. Other plugins come from outside (the plugin list, a GitHub repository, a `.tar.gz` link, or a folder on your computer) and run in an isolated frame with only the permissions you confirm. See [External plugins](#external-plugins). To write one, see [Writing plugins](plugins.md).
+
+### The plugin bar
+
+- The plugin bar is the group of buttons in the activity bar between the launchers at the top and the bottom group (Agents, palette, Settings). Lines above and below set it apart.
+- Each installed plugin has a button. The last button is the puzzle piece. It opens the plugin manager. With nothing installed, you see only the puzzle piece.
+- A button of an external plugin has a small yellow mark, and its panel header says `external`.
+- A plugin button can show a number badge and a red dot. The plugin decides what they mean. For Docker, see [Docker](#docker).
+- A plugin button opens the plugin's panel in the sidebar's place, the same way the Agents button does:
+  - Top layout: the button opens and closes the panel.
+  - Sidebar layout: the button switches the sidebar between the sessions list and the panel. Press it again to go back to the sessions list.
+  - Windows 640px wide or less: the panel opens as a drawer.
+- This browser remembers which panel is open. A panel whose plugin is not installed is closed.
+- A remote window has no plugin bar. The server's dashboard has no plugin routes.
+
+### The plugin manager
+
+- Open it with the puzzle piece, or with **Plugins…** in the command palette.
+- It is a dialog like Settings. At the top left, **Installed** and **Browse** switch the list, and a search box filters it by name, description, and author (the part of the id before the dot). **Installed** lists what you installed, built-in plugins included. **Browse** lists the plugin list and what you installed. Below the list is **Install from URL or folder…**. The plugin list is a GitHub repository, `SteelCrab/westerm-plugins`, that does not exist yet. Until it does, **Browse** shows "Could not load the plugin list" and **Retry**, and installs from a URL or a folder work as usual.
+- Each plugin has a badge:
+
+| Badge | Meaning |
+|---|---|
+| `built-in` | Part of westerm (Docker). |
+| `verified` | Installed from the plugin list. |
+| `unverified` | Installed from a URL. |
+| `local` | Installed from a folder, for developing a plugin. |
+
+- The right side shows the plugin you picked: its name, version, author, source (a repository address or a folder), description, what **This plugin can** do, and its buttons. Each permission has a risk: `run` is high, `panes` is medium, `background` is low.
+- A built-in plugin's "can do" list is a description. westerm does not enforce it, because a built-in plugin is westerm's own code. For an external plugin the list is enforced (see [External plugins](#external-plugins)).
+- **Install** of a built-in plugin asks for no confirmation. The button appears in the plugin bar and its panel opens. No restart is needed.
+- **Uninstall** removes the button, stops the plugin's background checks, and makes its server routes answer 404. If its panel was open, the sidebar goes back to the sessions list (the top layout closes it). Panes the plugin opened stay, because they are ordinary shells.
+- With nothing installed (the default), the page makes no plugin request except `GET /api/plugins`, and westerm runs no `docker` process. westerm downloads the plugin list only when you open the plugin manager. The server also looks for updates once a day, but only when an installed plugin came from the plugin list or a GitHub repository.
+- If the plugin list cannot be loaded (for now it always cannot, because the repository does not exist yet), **Browse** shows "Could not load the plugin list" and **Retry**. Installing from a URL or a folder still works.
+
+### External plugins
+
+An external plugin is a folder of files that someone wrote. westerm shows its panel in a sandboxed frame. The frame cannot read your sessions, terminal output, layout, or other plugins, and cannot make network requests itself. It reaches westerm only through messages, and the server checks each one against the permissions you confirmed.
+
+#### Install
+
+1. Open the plugin manager.
+2. From the plugin list (not available until the plugin list repository exists): pick the plugin in **Browse** and press **Install**. From elsewhere: press **Install from URL or folder…**, choose **URL** or **Folder**, enter the address, and press **Next**.
+   - **URL**: `https://github.com/<owner>/<repo>` (westerm takes `westerm-plugin.tar.gz` from the latest release), or an `https://` link to a `.tar.gz` file.
+   - **Folder**: an absolute path on this computer. westerm uses the folder in place and copies nothing.
+3. westerm downloads and checks the package, then shows its name, version, size, badge, and what it can do. A `run` permission reads "Can run kubectl with any arguments, as you". That means the plugin is as trusted as you are with that program: westerm does not limit the arguments.
+4. For `unverified` and `local` plugins, read the warning and tick **I trust \<source\>**. **Install** stays locked until you do. A `verified` plugin shows the permissions and **Install**.
+5. After **Install**, the plugin's button appears in the plugin bar and its panel opens. The manager closes. No restart is needed.
+
+Every package is checked before it is unpacked: `.tar.gz` only, at most 5 MiB packed and 10 MiB unpacked, at most 300 files and folders, regular files and folders only, and no path that leaves the package. A plugin that needs a newer westerm (`plugin.json` `westerm`) is refused. Downloads use `https://` only. A package from the plugin list must also match the SHA-256 sum in the list.
+
+A note on trust: westerm blocks the plugin's direct network requests, but a bad plugin can still send out the data it receives, for example by WebRTC. Install a plugin only if you trust where it comes from.
+
+#### Update
+
+- westerm looks for new versions when you open the plugin manager, and once a day. A plugin with a new version shows **Update** in the list and **Update to vX.Y.Z** in its details. westerm never updates by itself.
+  - From the plugin list: the list's version is compared with yours.
+  - From a GitHub repository: the latest release tag is compared (a tag must be a plain version such as `v1.2.3`; a tag with a suffix such as `-beta` is refused).
+  - From a `.tar.gz` link: there is no check. The plugin shows **Reinstall to update**. Reinstalling replaces the installed version in one step and keeps the plugin's saved data. If it fails, the installed version stays.
+  - From a folder: there is no check. Press **Reload** after you change a file. It reads the files again and restarts the panel.
+- An update that asks for the same permissions or fewer needs one confirmation. An update that asks for more (a new program, a new permission) shows what it adds and asks again. westerm applies only the permissions you confirmed.
+- When the update is done, the old version's files are deleted. An open panel restarts with the new version.
+
+#### Uninstall
+
+**Uninstall** asks once, then deletes the plugin's files and its saved data. For a folder plugin, the folder itself stays ("The folder itself stays."). Panes the plugin opened stay, because they are ordinary shells. A window that still shows the plugin finds out when it reads the installed list again, and closes the panel without an error.
+
+#### Things to know
+
+- External plugins have no on/off switch. Installing turns one on, and uninstalling deletes it.
+- A plugin keeps one small JSON value (up to 64 KiB) on the server, in `plugins/<id>/data.json` in the state folder.
+- A plugin's shell pane types its command into your new shell. This works on macOS and Linux, in the sh family (`sh`, `bash`, `zsh`, `dash`, `ksh`) and `fish`. With another shell (`nu`, `pwsh`, `xonsh`, `elvish`, and also `ash`, `mksh`, `yash`, for example Alpine's default), and on Windows, the plugin's call fails with "Your shell is not supported for plugin panes" and no pane opens. See [Writing plugins](plugins.md#openshell).
+- A plugin that tries to leave its page is stopped: the bar shows "Plugin stopped: it tried to leave its page", and opening the panel again starts it fresh.
+- A plugin cannot open westerm's own address in a browser pane. Other local addresses, such as a dev server, open normally.
+- A remote window shows no plugins.
+- A plugin's programs run with the server's environment plus the whole environment of your login shell, so tools find `PATH`, `KUBECONFIG`, and similar settings as in your shells.
+
+### Where the list is kept
+
+- The installed list is saved on the server, in `plugins.json` in the state folder. It is the same for every browser and window of this westerm, and the server uses it to refuse routes of plugins that are off. For an external plugin it also holds where the plugin came from and the permissions you confirmed. The server checks requests against those, not against the plugin's own `plugin.json`. Package files of a plugin from the list, a repository, or a link are in `plugins/<id>/<version>/`. A folder plugin has no such folder: westerm uses your folder in place.
+- A page reads the list when it opens, and again when it becomes visible or gets focus. So a window shows an install or an uninstall made in another window when you switch to it. A plugin route that answers 404 (uninstalled elsewhere) also makes the page read the list again. Its panel closes without an error.
+
+### Docker
+
+Install **Docker** to see this computer's containers in the sidebar.
+
+- **Header**: the Docker mark, "Docker", the engine name `local`, and the Docker server's version. The refresh button reads the list now. The ⋯ menu has **Uninstall…**.
+- **Filter**: type to filter by container name, image, or compose project. It filters on the page only. At the right: "running N / total M".
+- **Groups**: containers are grouped by compose project (the `com.docker.compose.project` label). A group row shows the project name, its working folder (`~` for your home), and a "running / total" badge. The badge turns red when a container in the group exited with a code other than 0. Click a group row to fold or unfold it (not saved). Containers outside compose are under **Other containers**, at the end. Groups sort by project name, containers by name, so a row does not move when its state changes.
+- **Container row**: a status dot, the compose service name (else the container name), a chip for each published TCP port (`:8080`), and the image below.
+
+| Dot | State |
+|---|---|
+| Green | Running ("healthy" next to the name when the container says so) |
+| Yellow | Unhealthy, paused, or restarting |
+| Red, with "Exited (code) · when" | Exited with a code other than 0 |
+| Empty gray circle | Exited with code 0, or created |
+| Turning circle | An action is running on it |
+
+- **Click a row** to open its logs in a new shell pane (`docker logs -f --tail 200 <id>`), split next to the focused pane. If this workspace already has that container's logs pane, you go to it instead.
+- **Click a port chip** to open `http://localhost:<port>` in a terminal-browser pane.
+- **Point at a row** for buttons: Logs, Shell, Restart, and Stop (**Start** for a stopped container). **Shell** opens a new shell pane that runs `docker exec -it <id>` with bash if the container has it, else sh.
+- **Right-click** (or the menu key, or Shift+F10) for the menu: Logs, Shell, Open :port in browser (one per port), Start or Stop, Restart, Remove…, Copy container ID. Tab moves between rows, and Enter opens the logs.
+- **Remove…** exists for stopped containers only, and asks once: "Remove {name}? This deletes the container. Its image and volumes stay." It never uses `-f`.
+- **Start all** and **Stop all** on a group row run `docker start` or `docker stop` for that group's containers. westerm does not use `docker compose`, so it works without the compose plugin.
+- While an action runs, the row's dot turns and its buttons lock. When it ends, the list is read again. If it fails, Docker's first error line shows under the row.
+- A log or shell pane is an ordinary shell session. It stays when you close the window or restart westerm. After a restart or reboot it comes back as a plain shell, and the command is not typed again. When the container stops, the shell stays open.
+- The shell opens in the compose working folder when it exists, else in the default folder.
+
+#### Badge and red dot
+
+- The page asks the server for the containers every 2 seconds while the Docker panel is open, and every 15 seconds while it is closed. A hidden page asks nothing. Each window asks on its own.
+- The badge on the Docker button is the number of running containers. It is hidden at 0.
+- The red dot turns on when a container that was running at the last check stops with a code other than 0, or becomes unhealthy. It turns off when you open the Docker panel. A new page starts with it off, and a container that stopped long ago never sets it.
+- Badge and dot are hidden while Docker is not available.
+
+#### When Docker is missing or off
+
+| Panel shows | Meaning |
+|---|---|
+| "Docker CLI not found" | `docker` is not on the PATH. On macOS and Windows the panel shows the install command (`brew install --cask docker`, `winget install Docker.DockerDesktop`) with **Copy**; on Linux a link to Docker's install guide. westerm never types commands from the browser: copy the command and run it in a shell. |
+| "Docker is not running", and Docker's first error line | The engine does not answer, or you may lack permission (on Linux, the `docker` group). Checks go on every 15 seconds, and the list appears by itself when the engine is up. **Retry** checks now and reads your login shell's environment again. |
+| "No containers" | Docker works, and there are no containers. |
+
+- **Which `docker`**: a desktop app started from Finder gets a short PATH, without `/opt/homebrew/bin` or `DOCKER_HOST` from your `.zshrc`. So the server runs your login shell once the first time it checks Docker and keeps only `PATH`, `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH`, and `DOCKER_TLS_VERIFY`. It runs `docker` with them, so the list and the log and shell panes see the same Docker. If the shell takes more than 5 seconds, the server's own environment is used. Install and **Retry** read it again. On Windows the server's environment is used.
+- A `docker` call that takes more than 5 seconds counts as "Docker is not running" ("timed out"). Start, stop, restart, and remove wait up to 30 seconds, because Docker waits up to 10 seconds for a container to stop.
+- Not in this version: images, volumes, networks, `docker context` choice, remote engines, CPU and memory, compose up and down, and Docker in remote windows.
 
 ## terminal-browser and terminal-code
 

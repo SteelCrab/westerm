@@ -14,7 +14,9 @@ import {
   historyCache,
   historyPath,
   pastConversations,
-  pressAgents,
+  effectivePanel,
+  pressPanel,
+  readSidebarPanel,
   sidebarView,
   type SidebarFlags,
 } from "../src/agents.ts";
@@ -149,10 +151,10 @@ const flags = (change: Partial<SidebarFlags>): SidebarFlags => ({
   narrow: false,
   sidebarOpen: false,
   drawerOpen: false,
-  agentsView: false,
+  panel: null,
   ...change,
 });
-const press = (o: SidebarFlags): SidebarFlags => ({ ...o, ...pressAgents(o) });
+const press = (o: SidebarFlags): SidebarFlags => ({ ...o, ...pressPanel(o, "agents") });
 
 test("the agents button", () => {
   let o = flags({});
@@ -509,6 +511,9 @@ function bar(change: Partial<Parameters<typeof ActivityBar>[0]>) {
         agentsOpen: false,
         agentsWaiting: false,
         onToggleAgents: noop,
+        plugins: [],
+        onTogglePlugin: noop,
+        onOpenPlugins: null,
         ...change,
       }),
     ),
@@ -522,4 +527,51 @@ test("the activity bar's agents button shows its state and a waiting dot", () =>
   const open = bar({ agentsOpen: true, agentsWaiting: true });
   assert.match(open, /aria-pressed="true"/);
   assert.match(open, /activity-dot/);
+});
+
+test("plugin panels follow the agents rules in every layout", () => {
+  const base: SidebarFlags = { layout: "sidebar", narrow: false, sidebarOpen: true, drawerOpen: false, panel: null };
+  assert.equal(sidebarView(base), "sessions");
+  const opened = { ...base, ...pressPanel(base, "plugin:docker") };
+  assert.equal(sidebarView(opened), "plugin:docker");
+  assert.equal(sidebarView({ ...opened, ...pressPanel(opened, "plugin:docker") }), "sessions");
+  const top: SidebarFlags = { ...base, layout: "top", sidebarOpen: false };
+  assert.equal(sidebarView(top), null);
+  assert.equal(sidebarView({ ...top, ...pressPanel(top, "plugin:docker") }), "plugin:docker");
+  const narrow: SidebarFlags = { ...base, narrow: true };
+  assert.deepEqual(pressPanel(narrow, "agents"), { panel: "agents", sidebarOpen: true, drawerOpen: true });
+});
+
+test("another panel's button switches the open panel instead of closing it", () => {
+  const base: SidebarFlags = { layout: "sidebar", narrow: false, sidebarOpen: true, drawerOpen: false, panel: "agents" };
+  const next = { ...base, ...pressPanel(base, "plugin:docker") };
+  assert.equal(sidebarView(next), "plugin:docker");
+  assert.equal(next.sidebarOpen, true);
+});
+
+test("a remembered panel moves from the old key and drops bad values", () => {
+  assert.equal(readSidebarPanel(null, "true"), "agents");
+  assert.equal(readSidebarPanel(null, "false"), null);
+  assert.equal(readSidebarPanel("agents", null), "agents");
+  assert.equal(readSidebarPanel("plugin:docker", null), "plugin:docker");
+  assert.equal(readSidebarPanel("plugin:../x", null), null);
+  assert.equal(readSidebarPanel("plugin:", null), null);
+  assert.equal(readSidebarPanel(`plugin:${"a".repeat(33)}`, null), null);
+  assert.equal(readSidebarPanel("sessions", null), null);
+});
+
+test("sidebar panels accept external plugin ids", () => {
+  assert.equal(readSidebarPanel("plugin:k8s-tools.kubernetes", null), "plugin:k8s-tools.kubernetes");
+  assert.equal(readSidebarPanel("plugin:a.b.c", null), null);
+  assert.equal(readSidebarPanel("plugin:a.", null), null);
+  assert.equal(readSidebarPanel("plugin:.b", null), null);
+  assert.equal(readSidebarPanel(`plugin:a.${"b".repeat(33)}`, null), null);
+});
+
+test("a plugin panel shows only while its plugin is installed", () => {
+  assert.equal(effectivePanel("plugin:docker", null), null);
+  assert.equal(effectivePanel("plugin:docker", []), null);
+  assert.equal(effectivePanel("plugin:docker", ["docker"]), "plugin:docker");
+  assert.equal(effectivePanel("agents", null), "agents");
+  assert.equal(effectivePanel(null, ["docker"]), null);
 });

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty};
 
 use crate::protocol::{PtySize, SessionKind};
+use crate::quote::ShellKind;
 
 /// Variables that make programs think they run inside another terminal.
 /// terminal-browser reads them to pick a pane strategy and frame transport.
@@ -79,8 +80,20 @@ pub struct LaunchSpec {
 }
 
 #[cfg(unix)]
-fn login_shell() -> String {
+pub(crate) fn login_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into())
+}
+
+/// How a new shell reads quoted words; None for a shell westerm cannot quote for.
+#[cfg(unix)]
+pub fn shell_kind() -> Option<ShellKind> {
+    ShellKind::from_path(&login_shell())
+}
+
+/// Windows shells (PowerShell, cmd) get no plugin panes.
+#[cfg(windows)]
+pub fn shell_kind() -> Option<ShellKind> {
+    None
 }
 
 /// Every kind starts through a login shell so PATH matches the user's

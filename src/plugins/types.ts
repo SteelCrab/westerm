@@ -1,0 +1,68 @@
+// The shape of a plugin and everything it may ask of westerm. The core knows
+// plugins only through these types, `registry.ts`, and the external runtime
+// in `external/`.
+
+import type { ComponentType } from "react";
+import type { LucideIcon } from "lucide-react";
+import type { Locale } from "../i18n/messages.ts";
+import type { ExternalPermissions, ExternalSource } from "./external/info.ts";
+
+export interface PluginText {
+  name: string;
+  description: string;
+  /** What the plugin can do, one line each; shown in the plugin manager. */
+  permissions: string[];
+}
+
+/** What the plugin's button in the plugin bar shows. */
+export interface PluginStatus {
+  /** A number on the button, or none. */
+  badge: number | null;
+  /** A red dot on the button. */
+  alert: boolean;
+  /** Why the plugin is not running, shown with its name (an external plugin that stopped). */
+  note?: string;
+}
+
+export interface OpenShellOptions {
+  action: string;
+  target: string;
+  cwd: string | null;
+  name: string;
+  reuse: boolean;
+}
+
+/** Everything a plugin may ask of westerm. Stable for the life of the plugin. */
+export interface PluginContext {
+  /** reuse: focus the pane this launch opened before in this workspace, if any. */
+  openShell(options: OpenShellOptions): void;
+  openBrowser(url: string): void;
+  /** fetch() under /api/plugins/<id>; `path` starts with "/". */
+  fetch(path: string, init?: RequestInit): Promise<Response>;
+  /** Read the installed list again (a plugin route answered 404). */
+  refreshInstalled(): void;
+  /** Opens the plugin manager with this plugin selected, e.g. for its Uninstall button. */
+  openManager(): void;
+}
+
+/** A running plugin: started on install (or page load), disposed on uninstall. */
+export interface PluginInstance {
+  subscribe(listener: () => void): () => void;
+  /** The same object until it changes (useSyncExternalStore). */
+  status(): PluginStatus;
+  setPanelOpen(open: boolean): void;
+  dispose(): void;
+  Panel: ComponentType;
+}
+
+export interface WestermPlugin {
+  id: string;
+  version: string;
+  icon: LucideIcon;
+  /** An image to show instead of `icon` (an external plugin's SVG, drawn with <img>). */
+  iconUrl?: string;
+  text: Record<Locale, PluginText>;
+  /** Set for a plugin installed from outside westerm. */
+  external?: { source: ExternalSource; granted: ExternalPermissions; installedAt: number };
+  start(ctx: PluginContext): PluginInstance;
+}

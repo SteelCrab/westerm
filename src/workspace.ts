@@ -1,4 +1,4 @@
-import type { AgentLaunch, AgentState, AgentStatus, AttachMode, PaneKind, Place } from "../shared/protocol.ts";
+import type { AgentLaunch, AgentState, AttachMode, PaneKind, Place, PluginLaunch } from "../shared/protocol.ts";
 import {
   DEFAULT_WORKSPACE_ICON,
   positionColor,
@@ -9,6 +9,7 @@ import {
   type WorkspaceColor,
   type WorkspaceIcon,
 } from "../shared/workspace-file.ts";
+import type { AgentDisplay, TabAgentDisplay } from "./agentDisplay.ts";
 import type { Notice } from "./i18n/messages.ts";
 import {
   dockPane,
@@ -79,14 +80,16 @@ export interface Session {
   cwd: string | null;
   /** A new shell starts this agent; the first attach clears it. Not saved. */
   launch: AgentLaunch | null;
+  /** A new shell starts this plugin command; the first attach clears it. Not saved. */
+  pluginLaunch: PluginLaunch | null;
+  /** The plugin launch that opened this session; kept after the attach to find the pane again. Not saved. */
+  openedBy: PluginLaunch | null;
   /** A restored shell here resumes its agent, when Settings allow it. Saved with the layout. */
   autoResume: boolean;
 }
 
-/** What an agent's mark shows: its status, or "done" until its pane is seen. */
-export type AgentDisplay = AgentStatus | "done";
-/** What a tab shows for its agents; an idle agent shows nothing there. */
-export type TabAgentDisplay = Exclude<AgentDisplay, "idle">;
+// Defined in agentDisplay.ts so the UI text can name them without this file.
+export type { AgentDisplay, TabAgentDisplay };
 
 /** A tab owns a split layout of panes. Focus and maximize are remembered per tab. */
 export interface Tab {
@@ -142,6 +145,10 @@ export type DashboardAction =
       cwd?: string | null;
       /** A new shell starts this agent. */
       launch?: AgentLaunch | null;
+      /** A new shell starts this plugin command. */
+      plugin?: PluginLaunch | null;
+      /** The session's name, as if the user had renamed it. */
+      name?: string | null;
       target?: string | null;
       /** Layer width / height, to split the focused pane along its longer side. */
       aspect?: number;
@@ -326,6 +333,19 @@ export function sessionTab(state: Dashboard, sessionId: string): Tab | null {
   return state.tabs.find((tab) => tab.paneIds.includes(sessionId)) ?? null;
 }
 
+/** The session in the workspace in view that a plugin launch opened, if any. */
+export function findOpenedBy(state: Dashboard, launch: PluginLaunch): string | null {
+  const shown = new Set(workspaceTabs(state, activeWorkspace(state).id).flatMap((tab) => tab.paneIds));
+  const found = state.sessions.find(
+    ({ id, openedBy }) =>
+      shown.has(id) &&
+      openedBy?.plugin === launch.plugin &&
+      openedBy.action === launch.action &&
+      openedBy.target === launch.target,
+  );
+  return found?.id ?? null;
+}
+
 /** The session a tab shows as its name: its focused pane, else its first pane. */
 export function tabLead(state: Dashboard, tab: Tab): Session | null {
   const sessions = tabSessions(state, tab.id);
@@ -422,6 +442,8 @@ function newSession(
     place: null,
     cwd: null,
     launch: null,
+    pluginLaunch: null,
+    openedBy: null,
     autoResume: true,
   };
 }
@@ -610,6 +632,9 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
         cwdFrom: action.cwdFrom ?? null,
         cwd: action.cwd ?? null,
         launch: action.launch ?? null,
+        pluginLaunch: action.plugin ?? null,
+        openedBy: action.plugin ?? null,
+        name: action.name ?? null,
       };
       // A new session leaves maximize so it is visible, beside the focused pane.
       const next = { ...state, sessions: [...state.sessions, session] };
@@ -645,6 +670,7 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
         retries: 0,
         // The host started the agent; a later reconnect must not ask again.
         launch: null,
+        pluginLaunch: null,
       });
     case "disconnected": {
       const session = state.sessions.find((item) => item.id === action.id);

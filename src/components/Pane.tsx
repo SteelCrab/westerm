@@ -294,6 +294,7 @@ export function Pane(props: PaneProps) {
           cwdFrom={session.cwdFrom}
           cwd={session.cwd}
           launch={session.launch}
+          plugin={session.pluginLaunch}
           target={session.target}
           label={label}
           font={font}

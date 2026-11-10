@@ -12,6 +12,7 @@ import {
   PanelLeft,
   Pencil,
   Plus,
+  Puzzle,
   Settings,
   RotateCcw,
   SquarePlus,
@@ -87,6 +88,8 @@ export interface PaletteContext {
   newVersion: string | null;
   showUpdate: () => void;
   openSettings: () => void;
+  /** Opens the plugin manager. Null in a remote window, which has no plugins. */
+  openPlugins: (() => void) | null;
 }
 
 /** Each language named in all four, so the switch is found from any UI language. */
@@ -380,6 +383,18 @@ export function buildCommands(ctx: PaletteContext): PaletteCommand[] {
       keywords: "settings preferences options config theme font",
       run: ctx.openSettings,
     },
+    ...(ctx.openPlugins
+      ? [
+          {
+            id: "open-plugins",
+            title: t.plugins.paletteTitle,
+            group: g.app,
+            icon: <Puzzle size={14} />,
+            keywords: "plugins extensions install uninstall",
+            run: ctx.openPlugins,
+          },
+        ]
+      : []),
     ...(ctx.checkUpdates
       ? [
           {

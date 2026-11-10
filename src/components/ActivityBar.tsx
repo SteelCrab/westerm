@@ -3,6 +3,7 @@ import { Bot, Command, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-re
 import type { PaneKind } from "../../shared/protocol.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { KINDS, LAUNCHERS, RemoteWindowIcon } from "../kinds.tsx";
+import { PluginBar, type PluginButton } from "../plugins/PluginBar.tsx";
 
 interface ActivityBarProps {
   sidebarOpen: boolean;
@@ -21,12 +22,17 @@ interface ActivityBarProps {
   /** An agent in any workspace waits for the user: the button shows a yellow dot. */
   agentsWaiting: boolean;
   onToggleAgents: () => void;
+  /** The installed plugins, in registry order. */
+  plugins: PluginButton[];
+  onTogglePlugin: (id: string) => void;
+  /** Opens the plugin manager. Null in a remote window, which has no plugin bar. */
+  onOpenPlugins: (() => void) | null;
 }
 
 /**
- * The icon bar on the far left: launchers at the top; the agents panel, the
- * command palette, settings (language, theme, font, updates), and the sidebar
- * switch at the bottom.
+ * The icon bar on the far left: launchers at the top; the plugin bar above
+ * the bottom group; the agents panel, the command palette, settings
+ * (language, theme, font, updates), and the sidebar switch at the bottom.
  */
 export function ActivityBar(props: ActivityBarProps) {
   const { sidebarOpen, counts, onLaunch, onToggleSidebar, onOpenSettings } = props;
@@ -70,6 +76,9 @@ export function ActivityBar(props: ActivityBarProps) {
           </BarButton>
         )}
       </div>
+      {props.onOpenPlugins && (
+        <PluginBar plugins={props.plugins} onTogglePlugin={props.onTogglePlugin} onOpenPlugins={props.onOpenPlugins} />
+      )}
       <div className="activity-group">
         <BarButton
           className="activity-agents"

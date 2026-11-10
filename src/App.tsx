@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { TriangleAlert } from "lucide-react";
 import type { AgentLaunch, PaneKind } from "../shared/protocol.ts";
 import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts";
-import { anyWaiting, pressAgents, sidebarView, type SidebarFlags } from "./agents.ts";
+import { anyWaiting, effectivePanel, pressPanel, sidebarView, type SidebarFlags, type SidebarPanel } from "./agents.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { AgentPanel } from "./components/AgentPanel.tsx";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.tsx";
@@ -17,6 +17,12 @@ import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { UpdateButton, updateShown } from "./components/UpdateButton.tsx";
 import { useI18n } from "./i18n/index.tsx";
 import { RemoteWindowIcon } from "./kinds.tsx";
+import { closesManager, externalOpensPanel } from "./plugins/installed.ts";
+import type { PluginButton } from "./plugins/PluginBar.tsx";
+import { PluginManager } from "./plugins/PluginManager.tsx";
+import { BUILTIN_PLUGINS } from "./plugins/registry.ts";
+import type { PluginContext, PluginStatus } from "./plugins/types.ts";
+import { usePlugins } from "./plugins/usePlugins.ts";
 import {
   buildCommands,
   IS_MAC,
@@ -32,7 +38,7 @@ import { useSshHosts } from "./useSshHosts.ts";
 import { terminalColors } from "./colorThemes.ts";
 import { useColorScheme, useWindowColors } from "./theme.ts";
 import { useNarrow } from "./useNarrow.ts";
-import { useAgentsView } from "./useAgentsView.ts";
+import { useSidebarPanel } from "./useSidebarPanel.ts";
 import { useSidebarWidth } from "./useSidebarWidth.ts";
 import { useTerminalFont } from "./useTerminalFont.ts";
 import { useUpdate } from "./useUpdate.ts";
@@ -45,6 +51,7 @@ import {
   activeTab,
   activeWorkspace,
   createDashboard,
+  findOpenedBy,
   focusedShellId,
   newDocsPane,
   paneToward,
@@ -75,6 +82,9 @@ const pickCommands = (commands: PaletteCommand[], windowsOnly: boolean) =>
 /** A local window's layout needs no link. */
 const LOCAL_LINK = { ready: true, reconnects: 0 };
 
+/** A plugin button before its instance reports a status. */
+const NO_STATUS: PluginStatus = { badge: null, alert: false };
+
 export function App() {
   const [state, rawDispatch] = useReducer(dashboardReducer, null, createFresh);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -102,7 +112,7 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [narrow, drawerOpen]);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
-  const [agentsView, setAgentsView] = useAgentsView();
+  const [panel, setPanel] = useSidebarPanel();
   const [renaming, setRenaming] = useState<RenameTarget | null>(null);
   // "commands": the command palette. "ssh": the same palette listing ssh hosts.
   // "window": the host list again, with only the "open in a new window" entries.
@@ -114,6 +124,8 @@ export function App() {
   const { t, locale, setLocale } = useI18n();
   const [settings, changeSettings] = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The plugin manager, with the plugin it shows first (null: the first in the list).
+  const [manager, setManager] = useState<{ selected: string | null } | null>(null);
   const fontOverride = useMemo(() => parseFamilies(settings.fontFamily), [settings.fontFamily]);
   const { font, sizeOverridden, ghosttyFont, changeSize, resetSize } = useTerminalFont(locale, fontOverride);
   // A remote window does not update westerm: the server follows this one.
@@ -191,6 +203,31 @@ export function App() {
     [dispatch, closeDrawer],
   );
 
+  // What a plugin may ask of westerm. Each instance gets its own context once;
+  // its functions read the current state through refs, so they never go stale.
+  const refreshPlugins = useRef(() => {});
+  const pluginContext = useCallback(
+    (id: string): PluginContext => ({
+      openShell: ({ action, target, cwd, name, reuse }) => {
+        const plugin = { plugin: id, action, target };
+        const found = reuse ? findOpenedBy(stateRef.current, plugin) : null;
+        if (found) dispatch({ type: "focus", id: found });
+        else dispatch({ type: "open", id: newId("s"), kind: "shell", cwd, plugin, name, aspect: layerAspect() });
+        closeDrawer();
+      },
+      openBrowser: (url) => {
+        open("browser", url);
+        closeDrawer();
+      },
+      fetch: (path, init) => fetch(`/api/plugins/${id}${path}`, init),
+      refreshInstalled: () => refreshPlugins.current(),
+      openManager: () => setManager({ selected: id }),
+    }),
+    [dispatch, open, closeDrawer],
+  );
+  const plugins = usePlugins(pluginContext);
+  refreshPlugins.current = plugins.refresh;
+
   // A new tab starts with a shell, like a terminal app's new tab.
   const newTab = useCallback(() => {
     dispatch({ type: "newTab", id: newId("t") });
@@ -227,11 +264,11 @@ export function App() {
       if (placed.where === "sidebar") {
         setSidebar(true);
         // Tab and session names are edited in the sessions list; both views have the workspace menu.
-        if (placed.kind !== "workspace") setAgentsView(false);
+        if (placed.kind !== "workspace") setPanel(null);
       }
       setRenaming(placed);
     },
-    [layout, setSidebar, setAgentsView],
+    [layout, setSidebar, setPanel],
   );
 
   const renameWorkspace = useCallback(
@@ -372,6 +409,7 @@ export function App() {
         newVersion: REMOTE_TARGET === null && update.status?.newer ? (update.status.latest ?? null) : null,
         showUpdate: () => setUpdateOpen(true),
         openSettings: () => setSettingsOpen(true),
+        openPlugins: REMOTE_TARGET === null ? () => setManager({ selected: null }) : null,
       }),
       ...(REMOTE_TARGET === null ? [] : remoteWindowCommands(REMOTE_TARGET, t)),
     ],
@@ -413,19 +451,79 @@ export function App() {
   for (const session of state.sessions) counts[session.kind] += 1;
 
   // Top: the workspace menu and the tab bar; the sidebar slot opens only for
-  // the agents panel. Sidebar: both in the sidebar, no tab bar; the header
-  // stays only for the update button. The sidebar slot shows the sessions
-  // list or the agents panel (agents.ts sidebarView).
+  // a panel (agents or a plugin's). Sidebar: both in the sidebar, no tab bar;
+  // the header stays only for the update button. The sidebar slot shows the
+  // sessions list, the agents panel, or a plugin's panel (agents.ts
+  // sidebarView). A remembered plugin panel counts only while installed.
   const onTop = layout === "top";
-  const sidebarFlags: SidebarFlags = { layout, narrow, sidebarOpen, drawerOpen, agentsView };
+  const sidebarFlags: SidebarFlags = {
+    layout,
+    narrow,
+    sidebarOpen,
+    drawerOpen,
+    panel: effectivePanel(panel, plugins.installed),
+  };
+  const sidebarFlagsRef = useRef(sidebarFlags);
+  sidebarFlagsRef.current = sidebarFlags;
+  const panelRef = useRef(panel);
+  panelRef.current = panel;
   const view = sidebarView(sidebarFlags);
   const sidebarShown = view !== null;
-  const toggleAgents = () => {
-    const next = pressAgents(sidebarFlags);
-    setAgentsView(next.agentsView);
+  const togglePanel = (pressed: SidebarPanel) => {
+    const next = pressPanel(sidebarFlagsRef.current, pressed);
+    setPanel(next.panel);
     setSidebarOpen(next.sidebarOpen);
     setDrawerOpen(next.drawerOpen);
   };
+  // Installing opens the plugin's panel and closes the manager so the panel
+  // shows; uninstalling closes the panel if it is open and keeps the manager.
+  // The new list may or may not have rendered yet when the change resolves.
+  const closeManager = () => {
+    setManager(null);
+    setFocusNonce((value) => value + 1);
+  };
+  const setPluginInstalled = async (id: string, on: boolean) => {
+    const ok = await plugins.setInstalled(id, on);
+    const pluginPanel: SidebarPanel = `plugin:${id}`;
+    if (ok && on && sidebarView(sidebarFlagsRef.current) !== pluginPanel) togglePanel(pluginPanel);
+    if (ok && !on && panelRef.current === pluginPanel) setPanel(null);
+    if (closesManager(ok, on)) closeManager();
+    return ok;
+  };
+  // An external plugin changed on the server: read the list again first, so
+  // a new plugin's instance exists before its panel opens. Only a plugin
+  // that was not installed before opens its panel and closes the manager.
+  const externalRef = useRef(plugins.external);
+  externalRef.current = plugins.external;
+  const externalChanged = async (id: string, installed: boolean) => {
+    const known = externalRef.current.some((info) => info.id === id);
+    await plugins.refresh();
+    const pluginPanel: SidebarPanel = `plugin:${id}`;
+    if (externalOpensPanel(installed, known)) {
+      if (sidebarView(sidebarFlagsRef.current) !== pluginPanel) togglePanel(pluginPanel);
+      closeManager();
+    }
+    if (!installed && panelRef.current === pluginPanel) setPanel(null);
+  };
+  useEffect(() => {
+    for (const [id, instance] of plugins.instances) instance.setPanelOpen(view === `plugin:${id}`);
+  }, [plugins.instances, view]);
+  const pluginButtons = plugins.registry
+    .filter(({ id }) => plugins.installed?.includes(id))
+    .map((plugin): PluginButton => {
+      const status = plugins.statuses[plugin.id] ?? NO_STATUS;
+      return {
+        id: plugin.id,
+        label: plugin.text[locale].name,
+        icon: plugin.icon,
+        iconUrl: plugin.iconUrl,
+        external: plugin.external !== undefined,
+        note: status.note,
+        status,
+        pressed: view === `plugin:${plugin.id}`,
+      };
+    });
+  const PluginPanel = view?.startsWith("plugin:") ? plugins.instances.get(view.slice("plugin:".length))?.Panel : undefined;
   const compact = !narrow && isCompact(sidebarWidth);
   // A remote window always shows its server in the header.
   const headerShown = onTop || REMOTE_TARGET !== null || updateShown(update.status, updateOpen);
@@ -449,7 +547,10 @@ export function App() {
         paletteShortcut={PALETTE_SHORTCUT}
         agentsOpen={view === "agents"}
         agentsWaiting={anyWaiting(state)}
-        onToggleAgents={toggleAgents}
+        onToggleAgents={() => togglePanel("agents")}
+        plugins={pluginButtons}
+        onTogglePlugin={(id) => togglePanel(`plugin:${id}`)}
+        onOpenPlugins={REMOTE_TARGET === null ? () => setManager({ selected: null }) : null}
       />
       {sidebarShown && (
         <div className="sidebar-slot">
@@ -474,6 +575,8 @@ export function App() {
               onStart={startAgent}
               compact={compact}
             />
+          ) : view.startsWith("plugin:") ? (
+            PluginPanel && <PluginPanel key={view} />
           ) : (
             <SessionList
               state={state}
@@ -613,6 +716,17 @@ export function App() {
             setSettingsOpen(false);
             setFocusNonce((value) => value + 1);
           }}
+        />
+      )}
+      {manager && (
+        <PluginManager
+          builtins={BUILTIN_PLUGINS}
+          external={plugins.external}
+          installed={plugins.installed ?? []}
+          selected={manager.selected}
+          onSetInstalled={setPluginInstalled}
+          onExternalChanged={externalChanged}
+          onClose={closeManager}
         />
       )}
       {palette === "commands" && (

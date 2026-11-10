@@ -47,6 +47,13 @@ fn parse_iso(text: &str) -> Option<i64> {
     Some(days_from_civil(y, mo as u32, d as u32) * 86_400 + h * 3600 + mi * 60 + s)
 }
 
+/// An ISO-8601 UTC stamp in milliseconds since the epoch; the fraction is
+/// ignored. `None` for text that does not parse or lies before 1970, such as
+/// Docker's `0001-01-01T00:00:00Z` for "never".
+pub fn parse_iso_millis(text: &str) -> Option<u64> {
+    u64::try_from(parse_iso(text)?).ok().map(|secs| secs * 1000)
+}
+
 /// "2026-11-04 23:01" in local time, or the raw text when it does not parse.
 pub fn local_label(iso: &str) -> String {
     let Some(epoch) = parse_iso(iso) else { return iso.to_owned() };
@@ -82,5 +89,14 @@ mod tests {
         assert_eq!(parse_iso("1970-01-02T00:00:00.000Z"), Some(86_400));
         assert_eq!(parse_iso("2026-11-04T14:01:07.000Z").map(|s| civil_from_days(s / 86_400)), Some((2026, 11, 4)));
         assert_eq!(local_label("garbage"), "garbage");
+    }
+
+    #[test]
+    fn millis_ignore_the_fraction_and_refuse_the_past() {
+        assert_eq!(parse_iso_millis("2026-11-08T12:05:21.5Z"), Some(1_794_139_521_000));
+        assert_eq!(parse_iso_millis("2026-11-08T12:05:21.123456789Z"), Some(1_794_139_521_000));
+        assert_eq!(parse_iso_millis("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_iso_millis("0001-01-01T00:00:00Z"), None);
+        assert_eq!(parse_iso_millis("garbage"), None);
     }
 }

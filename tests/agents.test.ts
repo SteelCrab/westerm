@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseAgentState, type AgentState } from "../shared/protocol.ts";
 import { parseSavedDashboard } from "../shared/workspace-file.ts";
-import { homeShort, minutesSince } from "../src/components/AgentCard.tsx";
+import { homeShort, minutesSince } from "../src/uiHelpers.ts";
 import { DEFAULT_SETTINGS, parseSettings } from "../src/settings.ts";
 import { sessionQuery, type ConnectionOptions } from "../src/terminal/connection.ts";
 import {
@@ -173,13 +173,14 @@ test("ready clears the launch but keeps the folder", () => {
 });
 
 test("a new shell asks for its folder and agent", () => {
-  const options: Pick<ConnectionOptions, "session" | "kind" | "url" | "cwdFrom" | "cwd" | "launch" | "target" | "lang" | "resumeAgents" | "size"> = {
+  const options: Pick<ConnectionOptions, "session" | "kind" | "url" | "cwdFrom" | "cwd" | "launch" | "plugin" | "target" | "lang" | "resumeAgents" | "size"> = {
     session: "s1",
     kind: "shell",
     url: null,
     cwdFrom: null,
     cwd: "/w",
     launch: { kind: "gemini", conversation: "c-1" },
+    plugin: null,
     target: null,
     lang: "en",
     resumeAgents: true,

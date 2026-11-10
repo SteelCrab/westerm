@@ -4,6 +4,7 @@ import { leaves, rects } from "../shared/layout.ts";
 import {
   activeTab,
   createDashboard,
+  findOpenedBy,
   focusedShellId,
   MAX_RECONNECTS,
   paneToward,
@@ -349,4 +350,24 @@ test("taking the sessions back without a saved layout keeps this one", () => {
     ["a", "connecting", 1],
     ["b", "connecting", 1],
   ]);
+});
+
+test("a plugin launch is sent once and remembered for finding the pane", () => {
+  const launch = { plugin: "docker", action: "logs", target: "0123456789ab" };
+  let state = dashboardReducer(start(), { type: "open", id: "s1", kind: "shell", plugin: launch, name: "api logs" });
+  const session = () => state.sessions[0];
+  assert.deepEqual(session().pluginLaunch, launch);
+  assert.equal(session().name, "api logs");
+  state = dashboardReducer(state, { type: "ready", id: "s1", pid: 1, mode: "new" });
+  assert.equal(session().pluginLaunch, null);
+  assert.deepEqual(session().openedBy, launch);
+  assert.equal(findOpenedBy(state, launch), "s1");
+  assert.equal(findOpenedBy(state, { ...launch, action: "shell" }), null);
+});
+
+test("findOpenedBy looks only at the workspace in view", () => {
+  const launch = { plugin: "docker", action: "logs", target: "0123456789ab" };
+  let state = dashboardReducer(start(), { type: "open", id: "s1", kind: "shell", plugin: launch });
+  state = dashboardReducer(state, { type: "newWorkspace", id: "w2", tabId: "t2" });
+  assert.equal(findOpenedBy(state, launch), null);
 });

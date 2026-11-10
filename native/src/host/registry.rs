@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, oneshot};
 use super::session::{self, Command, Handle, Restored, Resuming, Spec};
 use super::store::SessionStore;
 use crate::protocol::{AttachMode, AttachRequest, ServerMessage, SessionKind};
-use crate::spawn::LaunchSpec;
+use crate::spawn::{shell_kind, LaunchSpec};
 use crate::state_dir::home_dir;
 
 const LIVE_LIMIT: usize = 48;
@@ -132,10 +132,19 @@ impl Registry {
             cwd,
         };
         let mode = if meta.is_some() { AttachMode::Revived } else { AttachMode::New };
-        self.serial += 1;
         let brand_new_shell = meta.is_none() && request.kind == SessionKind::Shell;
         let agent = request.launch.clone().filter(|_| brand_new_shell && folder_found);
-        let spec = Spec { id: request.id.clone(), launch, pixels: request.pixels, agent };
+        // A plugin command is typed even when the folder is gone: the shell opens in
+        // the home folder, and the command does not depend on the folder. It is
+        // quoted here, before the shell starts: a shell it cannot be quoted for
+        // opens no pane. Only the host knows its shell (a remote host's too).
+        let plugin = request.plugin.as_ref().filter(|_| brand_new_shell);
+        let Ok(plugin_command) = plugin.map(|launch| launch.command(shell_kind())).transpose() else {
+            refuse(ws, request.lang.plugin_shell_unsupported());
+            return;
+        };
+        self.serial += 1;
+        let spec = Spec { id: request.id.clone(), launch, pixels: request.pixels, agent, plugin_command };
         match session::start(spec, request.size, self.store.clone(), restored, resuming, self.serial, ended.clone()) {
             Ok(handle) => {
                 let _ = handle.tx.send(Command::Attach { ws, size: request.size, mode, window });

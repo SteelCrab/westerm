@@ -3,18 +3,9 @@ import { Check, Copy } from "lucide-react";
 import type { AgentState } from "../../shared/protocol.ts";
 import { useI18n } from "../i18n/index.tsx";
 import { HTML_LANG } from "../i18n/messages.ts";
+import { homeShort, minutesSince } from "../uiHelpers.ts";
 import { useCopy } from "../useCopy.ts";
 import type { AgentDisplay } from "../workspace.ts";
-
-/** Whole minutes from `time` to `now`, both in milliseconds since the epoch. */
-export function minutesSince(time: number, now: number): number {
-  return Math.max(0, Math.floor((now - time) / 60_000));
-}
-
-/** "~/westerm" for a folder in the user's home on macOS or Linux; other paths as they are. */
-export function homeShort(path: string): string {
-  return path.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
-}
 
 /** The time now, again every `ms`. */
 export function useNow(ms: number): number {

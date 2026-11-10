@@ -1,0 +1,123 @@
+//! Plugins: what a plugin asks a new shell to start. The session query names
+//! a plugin, an action, and a target; each plugin checks them and builds the
+//! command itself, so the browser never sends one.
+
+pub mod docker;
+pub mod external;
+
+use crate::quote::ShellKind;
+
+/// The plugins this build knows.
+pub const PLUGIN_IDS: &[&str] = &["docker"];
+
+/// A checked plugin launch.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PluginLaunch {
+    Docker(docker::Launch),
+    /// An installed plugin's program and arguments.
+    External(external::Launch),
+}
+
+/// Why a launch cannot be typed into the new shell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LaunchError {
+    /// Its words cannot be quoted for this shell (not sh-like or fish).
+    UnsupportedShell,
+    /// A word holds a control character. `parse_argv` refuses these first.
+    ControlCharacter,
+}
+
+impl PluginLaunch {
+    /// None for an unknown plugin, an unknown action, or a target the plugin refuses.
+    pub fn parse(plugin: &str, action: &str, target: &str) -> Option<Self> {
+        match plugin {
+            "docker" => {
+                let action = docker::Action::parse(action)?;
+                docker::is_container_id(target)
+                    .then(|| Self::Docker(docker::Launch { action, container: target.to_owned() }))
+            }
+            id if external::is_external_id(id) && action == external::RUN_ACTION => {
+                let argv = external::parse_argv(target)?;
+                Some(Self::External(external::Launch { id: id.to_owned(), argv }))
+            }
+            _ => None,
+        }
+    }
+
+    /// Its `plugin` query value.
+    pub fn plugin(&self) -> &str {
+        match self {
+            Self::Docker(_) => "docker",
+            Self::External(launch) => &launch.id,
+        }
+    }
+
+    /// Its `action` query value.
+    pub fn action(&self) -> &'static str {
+        match self {
+            Self::Docker(launch) => launch.action.as_str(),
+            Self::External(_) => external::RUN_ACTION,
+        }
+    }
+
+    /// Its `target` query value.
+    pub fn target(&self) -> String {
+        match self {
+            Self::Docker(launch) => launch.container.clone(),
+            Self::External(launch) => serde_json::to_string(&launch.argv).expect("strings serialize"),
+        }
+    }
+
+    /// The line a new shell types. `shell` is the new shell's kind (None for
+    /// any other shell). Docker's fixed commands read the same in every shell.
+    pub fn command(&self, shell: Option<ShellKind>) -> Result<String, LaunchError> {
+        match self {
+            Self::Docker(launch) => Ok(docker::command(launch)),
+            Self::External(launch) => {
+                let shell = shell.ok_or(LaunchError::UnsupportedShell)?;
+                external::command(launch, shell).map_err(|_| LaunchError::ControlCharacter)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::quote::ShellKind;
+
+    #[test]
+    fn launches_parse_only_known_plugins_actions_and_targets() {
+        let launch = PluginLaunch::parse("docker", "shell", "0123456789ab").unwrap();
+        assert_eq!((launch.plugin(), launch.action(), launch.target().as_str()), ("docker", "shell", "0123456789ab"));
+        assert!(launch.command(None).unwrap().starts_with("docker exec -it 0123456789ab "));
+        assert!(PluginLaunch::parse("nope", "logs", "0123456789ab").is_none());
+        assert!(PluginLaunch::parse("docker", "rm", "0123456789ab").is_none());
+        assert!(PluginLaunch::parse("docker", "logs", "x;rm -rf ~").is_none());
+    }
+
+    #[test]
+    fn external_launches_quote_for_the_shell() {
+        let launch = PluginLaunch::parse("k8s-tools.kubernetes", "run", r#"["kubectl","exec","-it","pod/it's","--","sh"]"#).unwrap();
+        // Every word is quoted, and `env` runs it: argv[0] is a program on PATH,
+        // never a builtin, keyword, function, or alias of the user's shell.
+        assert_eq!(launch.command(Some(ShellKind::Sh)).unwrap(), r"'env' '--' 'kubectl' 'exec' '-it' 'pod/it'\''s' '--' 'sh'");
+        assert_eq!(launch.command(Some(ShellKind::Fish)).unwrap(), r"'env' '--' 'kubectl' 'exec' '-it' 'pod/it\'s' '--' 'sh'");
+        let plain = PluginLaunch::parse("k8s-tools.kubernetes", "run", r#"["kubectl","get","G"]"#).unwrap();
+        assert_eq!(plain.command(Some(ShellKind::Sh)).unwrap(), "'env' '--' 'kubectl' 'get' 'G'", "a plain word may be a global alias");
+        assert_eq!(plain.command(Some(ShellKind::Fish)).unwrap(), "'env' '--' 'kubectl' 'get' 'G'", "or a fish abbreviation");
+        assert_eq!(launch.command(None), Err(LaunchError::UnsupportedShell));
+        assert_eq!((launch.plugin(), launch.action()), ("k8s-tools.kubernetes", "run"));
+        assert_eq!(launch.target(), r#"["kubectl","exec","-it","pod/it's","--","sh"]"#);
+        assert!(PluginLaunch::parse("k8s-tools.kubernetes", "logs", r#"["kubectl"]"#).is_none());
+        assert!(PluginLaunch::parse("docker", "run", r#"["kubectl"]"#).is_none());
+        assert!(PluginLaunch::parse("docker", "logs", "0123456789ab").unwrap().command(None).is_ok());
+    }
+
+    #[test]
+    fn every_listed_plugin_parses() {
+        for id in PLUGIN_IDS {
+            assert!(PluginLaunch::parse(id, "logs", "0123456789ab").is_some(), "{id}");
+        }
+    }
+}

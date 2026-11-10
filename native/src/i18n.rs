@@ -67,6 +67,16 @@ impl Lang {
             Lang::Zh => format!("无法启动会话：{error}"),
         }
     }
+
+    /// A plugin pane asks for a shell whose quoting westerm does not know.
+    pub fn plugin_shell_unsupported(self) -> String {
+        match self {
+            Lang::Ko => "이 셸은 플러그인 패널을 지원하지 않습니다".to_owned(),
+            Lang::En => "Your shell is not supported for plugin panes".to_owned(),
+            Lang::Ja => "このシェルはプラグインのパネルに対応していません".to_owned(),
+            Lang::Zh => "插件面板不支持你的 Shell".to_owned(),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -337,7 +337,7 @@ button {
   position: absolute;
   left: calc(100% + 10px);
   top: 50%;
-  z-index: 20;
+  z-index: 62;
   padding: 4px 8px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
@@ -357,6 +357,61 @@ button {
 .activity-button:focus-visible .activity-tooltip {
   opacity: 1;
   transform: translate(0, -50%);
+}
+
+/* The plugin bar: installed plugins and the puzzle button, just above the
+   bottom group. The auto margin takes the free space of the column. */
+.plugin-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: auto 0 6px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-button[aria-pressed="true"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* A plugin asks for attention: a red dot at the lower right. */
+.plugin-alert {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.plugin-button[aria-pressed="true"] .plugin-alert {
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+
+/* An external plugin's SVG, drawn as an image. */
+.plugin-icon {
+  display: block;
+  object-fit: contain;
+}
+
+/* Installed from outside westerm: a small yellow mark at the upper left. */
+.plugin-external {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.plugin-button[aria-pressed="true"] .plugin-external {
+  box-shadow: 0 0 0 2px var(--surface-2);
 }
 
 /* ---- Session panel --------------------------------------------------- */
@@ -1443,7 +1498,7 @@ button {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 40;
+  z-index: 62;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2344,6 +2399,556 @@ button {
   margin: 0;
 }
 
+/* ---- Docker plugin panel (src/plugins/docker) -------------------------- */
+
+/* Reuses the session panel's frame, tree rows, counts, and guide lines. */
+.docker-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.docker-logo {
+  flex: none;
+  color: var(--accent);
+}
+
+.docker-title {
+  font-weight: 600;
+}
+
+.docker-engine {
+  color: var(--text-muted);
+}
+
+.docker-version {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.docker-refresh {
+  margin-left: auto;
+}
+
+.docker-filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 8px 8px 4px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-faint);
+}
+
+.docker-filter:focus-within {
+  border-color: var(--accent);
+}
+
+.docker-filter input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.docker-filter-count {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.docker-panel .tree {
+  padding-top: 0;
+}
+
+.docker-group-node + .docker-group-node {
+  margin-top: 4px;
+}
+
+.docker-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+
+.docker-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.docker-group-toggle {
+  gap: 6px;
+}
+
+.docker-group-icon {
+  flex: none;
+  color: var(--accent);
+}
+
+.docker-project {
+  font-weight: 600;
+}
+
+.docker-dir {
+  margin-left: 6px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.docker-count.failed {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+/* Hover buttons sit over the right end of the row, like the agents panel's. */
+.docker-actions {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  display: flex;
+  gap: 2px;
+  padding-left: 4px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.docker-group:hover .docker-actions,
+.docker-group:focus-within .docker-actions,
+.docker-row:hover .docker-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.docker-actions .icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (hover: none) {
+  .docker-actions {
+    position: static;
+    background: transparent;
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Container rows have two lines: dot, name, and state; then the image. */
+.docker-row {
+  align-items: flex-start;
+}
+
+.docker-select {
+  align-items: flex-start;
+  gap: 8px;
+  height: auto;
+  min-height: 28px;
+  padding: 5px 0;
+  color: var(--text);
+}
+
+.docker-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+
+.docker-dot.running {
+  background: var(--ok);
+}
+
+.docker-dot.warn {
+  background: var(--warn);
+}
+
+.docker-dot.failed {
+  background: var(--danger);
+}
+
+.docker-dot.stopped {
+  border: 1.5px solid var(--text-faint);
+}
+
+.docker-dot.busy {
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border: 1.5px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: agent-turn 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docker-dot.busy {
+    border-color: var(--accent);
+    animation: none;
+  }
+}
+
+.docker-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.docker-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 17px;
+}
+
+.docker-health,
+.docker-exit {
+  flex: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.docker-health {
+  color: var(--ok);
+}
+
+.docker-health.unhealthy {
+  color: var(--warn);
+}
+
+.docker-exit {
+  color: var(--danger);
+}
+
+.docker-image {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The port chips at the right end; the hover buttons hang off their left
+   edge (right: 100%), so they never cover a chip and the chips never move. */
+.docker-tail {
+  position: relative;
+  display: flex;
+  flex: none;
+  max-width: 45%;
+}
+
+.docker-row .docker-actions {
+  right: 100%;
+  margin-right: 4px;
+}
+
+.docker-ports {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 5px;
+}
+
+.docker-port {
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--browser);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.docker-port:hover {
+  background: var(--browser-soft);
+}
+
+.docker-port:focus-visible,
+.docker-confirm button:focus-visible,
+.docker-menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Remove asks on a line under the row. */
+.docker-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 2px 4px 19px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.docker-confirm-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.docker-confirm button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.docker-confirm .docker-confirm-remove {
+  border-color: transparent;
+  background: var(--danger);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+/* A failed action: Docker's first line, the rest on hover. */
+.docker-error {
+  margin: 0 2px 4px 19px;
+  overflow: hidden;
+  color: var(--danger);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docker-none {
+  margin: 0;
+  padding: 8px 14px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* No CLI, engine down, no containers. */
+.docker-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.docker-empty-icon {
+  color: var(--text-faint);
+}
+
+.docker-empty p {
+  max-width: 100%;
+  margin: 0;
+}
+
+.docker-empty-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.docker-empty-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docker-install {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.docker-install code {
+  max-width: 100%;
+  padding: 4px 8px;
+  overflow-x: auto;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.docker-install-link {
+  color: var(--accent);
+}
+
+/* The context menu and the header's ⋯ menu. */
+.docker-menu {
+  position: fixed;
+  z-index: 62;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 16px 40px -12px var(--shadow);
+  font-size: 12px;
+}
+
+.docker-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.docker-menu-item svg {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.docker-menu-item:hover:not(:disabled),
+.docker-menu-item:focus-visible {
+  background: var(--surface-2);
+}
+
+.docker-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.docker-menu-item.danger,
+.docker-menu-item.danger svg {
+  color: var(--danger);
+}
+
+.docker-menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+
+/* ---- External plugin panel (src/plugins/external) ---------------------- */
+
+/* Every plugin iframe lives in this layer under <body> and is never moved
+   (a moved iframe reloads). Above the narrow sidebar drawer (.sidebar-slot,
+   60) and below the dialogs (.remote-connect 90, .palette-backdrop 100,
+   .settings-backdrop 110). Popovers that can open over a plugin panel sit at
+   62 or more. */
+.plugin-frames {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 61;
+  width: 0;
+  height: 0;
+}
+
+/* Laid over the panel's slot (frame.ts sets the box). */
+.plugin-frame {
+  position: fixed;
+  display: block;
+  border: 0;
+  background: var(--surface);
+}
+
+.plugin-frame[hidden] {
+  display: none;
+}
+
+.plugin-panel-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.plugin-panel-icon {
+  flex: none;
+  color: var(--accent);
+}
+
+.plugin-panel-title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.plugin-external-tag {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.plugin-panel-version {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.plugin-panel-more {
+  margin-left: auto;
+}
+
+/* The space the iframe covers. */
+.plugin-frame-slot {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.plugin-stopped {
+  margin: 0;
+  padding: 24px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
 
 /* ---- Rename fields --------------------------------------------------- */
 
@@ -2481,7 +3086,7 @@ body.resizing-sidebar .pane-layer {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: 62;
   width: min(340px, calc(100vw - 32px));
   display: flex;
   flex-direction: column;
@@ -2769,6 +3374,425 @@ body.resizing-sidebar .pane-layer {
 
 .settings-foot .settings-hint {
   margin-left: auto;
+}
+
+/* ---- Plugin manager (the Settings dialog frame) ----------------------- */
+
+.plugin-manager {
+  width: min(760px, 100%);
+}
+
+.plugin-manager .settings-body {
+  height: min(480px, calc(100vh - 8vh - 120px));
+  border-bottom: 0;
+}
+
+.plugin-manager-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The left column: Installed | Browse, search, the list, and the install link. */
+.plugin-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+  min-height: 0;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+}
+
+.plugin-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Two or more buttons that pick one: the tabs, URL | Folder. */
+.plugin-segmented {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+}
+
+.plugin-segmented button {
+  flex: 1;
+  height: 26px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.plugin-segmented button:hover {
+  color: var(--text);
+}
+
+.plugin-segmented button[aria-pressed="true"] {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.plugin-segmented button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.plugin-search,
+.plugin-address {
+  flex: none;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.plugin-address {
+  font-family: var(--term-font-family, ui-monospace, monospace);
+}
+
+.plugin-search:focus-visible,
+.plugin-address:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.plugin-list-failed {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.plugin-list-failed .button {
+  height: 26px;
+}
+
+.plugin-install-from {
+  flex: none;
+  padding: 6px 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-install-from:hover {
+  background: var(--accent-soft);
+}
+
+.plugin-install-from:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.plugin-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-list button:hover {
+  background: var(--surface-2);
+}
+
+.plugin-list button[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.plugin-list button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.plugin-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.plugin-icon.large {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+}
+
+/* An external plugin's own SVG, drawn as an image only. */
+.plugin-icon img {
+  display: block;
+}
+
+/* built-in · verified · unverified · local */
+.plugin-badge {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 15px;
+  vertical-align: 1px;
+}
+
+.plugin-badge.verified {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.plugin-badge.unverified {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.plugin-badge.local {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.plugin-update-tag {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.plugin-list-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.plugin-list-name {
+  font-weight: 600;
+}
+
+/* The description on one line; the details show all of it. */
+.plugin-list-description {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-installed {
+  flex: none;
+  color: var(--ok);
+}
+
+.plugin-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.plugin-detail-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-detail-name h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.plugin-detail-head .button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.plugin-failed {
+  margin: 0;
+  color: var(--danger);
+}
+
+.plugin-description {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.plugin-can {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.plugin-permissions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* An external plugin's permissions: the risk at the end of each line. */
+.plugin-permissions.risks li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plugin-risk {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.plugin-risk.high {
+  background: var(--ws-red-soft);
+  color: var(--danger);
+}
+
+.plugin-risk.medium {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.plugin-risk.low {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.plugin-source {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.plugin-source-value {
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.plugin-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.plugin-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--text);
+}
+
+.plugin-trust {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.plugin-trust input {
+  flex: none;
+  margin: 3px 0 0;
+}
+
+/* The install screens: a form down the panel, the buttons at the end. */
+.plugin-install {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plugin-install h3 {
+  margin: 0;
+}
+
+.plugin-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* "Uninstall …?" and "Update …?": asked inside the panel, not a browser dialog. */
+.plugin-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.plugin-confirm p {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
+.plugin-actions .button:disabled,
+.plugin-confirm .button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Narrow windows: the list goes above the details. */
+@media (max-width: 560px) {
+  .plugin-side {
+    width: auto;
+    max-height: 45vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
 }
 
 /* Settings ▸ Appearance ▸ Color theme: a preview in the theme's own
@@ -3124,6 +4148,17 @@ body.resizing-rows .pane {
   .activity-group {
     flex-direction: row;
     gap: 2px;
+  }
+
+  .plugin-bar {
+    flex-direction: row;
+    gap: 2px;
+    margin: 0 4px 0 auto;
+    padding: 0 4px;
+    border-top: 0;
+    border-bottom: 0;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
   }
 
   .activity-button {

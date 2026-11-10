@@ -18,6 +18,7 @@ mod git;
 mod host;
 mod i18n;
 mod ipc;
+mod plugins;
 mod process;
 // Windows leaves out the server side of remote westerm (the gate and
 // remote-setup run on Unix only), so the code only it uses is unused there.
@@ -25,6 +26,10 @@ mod process;
 #[cfg_attr(not(unix), allow(dead_code))]
 mod protocol;
 mod pixels;
+// Windows shells get no plugin panes (spawn::shell_kind is None), so
+// reading a shell's kind and fish quoting are unused there.
+#[cfg_attr(not(unix), allow(dead_code))]
+mod quote;
 #[cfg_attr(not(unix), allow(dead_code))]
 mod remote;
 mod screen;
