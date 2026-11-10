@@ -40,6 +40,15 @@ const USAGE: &str = "usage: westerm [serve] [--port N] [--allow-origin URL]...\n
 
 fn main() {
     let mut args = std::env::args().skip(1).peekable();
+    // The dashboard runs cloudflared through this; it is not for people, so USAGE leaves it out.
+    if args.peek().map(String::as_str) == Some("tunnel-guard") {
+        args.next();
+        if args.next().as_deref() != Some("--") {
+            exit_usage();
+        }
+        let Some(program) = args.next() else { exit_usage() };
+        std::process::exit(server::tunnel_guard(program.into(), args.map(Into::into).collect()));
+    }
     let command = match args.peek().map(String::as_str) {
         Some("serve" | "host" | "stop" | "update" | "gate" | "remote-dashboard" | "remote-setup") => args.next().unwrap(),
         _ => "serve".to_owned(),
