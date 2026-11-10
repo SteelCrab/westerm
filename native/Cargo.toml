@@ -1,5 +1,11 @@
 [package]
 name = "westerm"
+description = "A web terminal whose sessions survive closed tabs, restarts, and reboots"
+readme = "README.md"
+keywords = ["terminal", "web", "pty", "session"]
+categories = ["command-line-utilites"]
+publish = ["crates-io"]
+include = ["/src/**", "/tests/**", "/build.rs", "README.md", "/LICENSE","/web-dist/**"]
 version = "0.4.2"
 license = "MIT"
 repository = "https://github.com/SteelCrab/westerm"
@@ -37,6 +43,7 @@ tokio = { version = "1.54.1", features = ["full"] }
 tokio-tungstenite = "0.30.0"
 ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }
 vt100 = "0.18.1"
+
 
 # macOS: CoreText names the fonts apps may use, as Font Book shows them.
 [target.'cfg(target_os = "macos")'.dependencies]
