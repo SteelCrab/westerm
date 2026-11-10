@@ -523,3 +523,13 @@ test("the activity bar's agents button shows its state and a waiting dot", () =>
   assert.match(open, /aria-pressed="true"/);
   assert.match(open, /activity-dot/);
 });
+
+test("the agents button is at the top of the activity bar, after the launchers", () => {
+  const [top, bottom] = bar({ onOpenRemoteWindow: noop }).split('<div class="activity-group">').slice(1);
+  assert.match(top, /activity-agents/);
+  assert.doesNotMatch(bottom, /activity-agents/);
+  const agents = top.indexOf("activity-agents");
+  assert.ok(top.indexOf('data-kind="docs"') < agents, "the launchers keep their places");
+  assert.ok(top.indexOf('aria-label="Remote window"') < agents, "so does the remote window button");
+  assert.match(bottom, /^<button[^>]*aria-label="Command palette/, "the palette now leads the bottom group");
+});

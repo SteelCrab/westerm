@@ -4,6 +4,9 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- The Agents button moves to the top of the activity bar, below the launchers, so the agents panel is one glance away. The command palette now leads the bottom group.
 ### Added
 
 - Install with `npm install -g @pistacrab/westerm` or run `npx @pistacrab/westerm` (Node.js 22 or later). The npm package includes the verified release executables for macOS, Linux, and Windows, with no install scripts or compiler required.
