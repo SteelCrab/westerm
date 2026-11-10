@@ -11,12 +11,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { LOCALE_NAMES, LOCALES, useI18n, type Locale } from "../i18n/index.tsx";
-import { FONT_FAMILY_MAX, type Layout, type Settings } from "../settings.ts";
+import { parseFamilies, type Layout, type Settings } from "../settings.ts";
 import { MAX_FONT_SIZE, MIN_FONT_SIZE, type TerminalFont } from "../terminal/fonts.ts";
 import { cssColor, COLOR_THEMES, terminalColors, themeName } from "../colorThemes.ts";
 import type { ColorScheme, ThemeChoice } from "../theme.ts";
 import type { UpdateState } from "../useUpdate.ts";
 import { stepIndex } from "./WorkspaceMenu.tsx";
+import { FontPicker } from "./FontPicker.tsx";
 
 interface SettingsDialogProps {
   settings: Settings;
@@ -65,27 +66,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [page, setPage] = useState<SettingsPage>("general");
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
-  // The font applies on Enter or when the field loses focus: each change
-  // reloads every terminal, which should not happen per keystroke.
-  const [fontDraft, setFontDraft] = useState(settings.fontFamily);
-  const commitFont = () => {
-    if (fontDraft !== settings.fontFamily) onChange({ fontFamily: fontDraft });
-  };
-  // However the dialog closes (Escape, ×, a click outside), keep what was typed.
-  const latest = useRef({ fontDraft, saved: settings.fontFamily, onChange });
-  latest.current = { fontDraft, saved: settings.fontFamily, onChange };
-  useEffect(
-    () => () => {
-      const { fontDraft: draft, saved, onChange: save } = latest.current;
-      if (draft !== saved) save({ fontFamily: draft });
-    },
-    [],
-  );
+  // Each font change reloads every terminal; the list changes one step at a time.
+  const families = parseFamilies(settings.fontFamily);
 
+  // On open only: `onClose` is a new function on each render, and a settings
+  // change (a font added) must not move focus back to the menu.
   useEffect(() => {
     dialog.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+  }, []);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // A part with its own Escape (the font search) closes first.
+      if (event.target instanceof Element && event.target.closest("[data-escape-own]")) return;
       event.preventDefault();
       event.stopPropagation();
       onClose();
@@ -311,22 +305,30 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   </div>
                 </div>
                 <div className="settings-row stacked">
-                  <label htmlFor="settings-font">{t.settings.fontFamily}</label>
-                  <input
-                    id="settings-font"
-                    type="text"
-                    value={fontDraft}
-                    placeholder={props.ghosttyFont}
-                    maxLength={FONT_FAMILY_MAX}
-                    spellCheck={false}
-                    autoComplete="off"
-                    onChange={(event) => setFontDraft(event.target.value)}
-                    onBlur={commitFont}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.nativeEvent.isComposing) commitFont();
-                    }}
+                  <div className="settings-row">
+                    <span>{t.settings.fontFamily}</span>
+                    <button
+                      type="button"
+                      className="link-button"
+                      disabled={families.length === 0}
+                      onClick={() => onChange({ fontFamily: "" })}
+                    >
+                      {t.fontPicker.reset}
+                    </button>
+                  </div>
+                  <FontPicker
+                    families={families}
+                    ghosttyFont={props.ghosttyFont}
+                    onChange={(next) => onChange({ fontFamily: next.join(", ") })}
                   />
                   <p className="settings-hint">{t.settings.fontFamilyHint(props.ghosttyFont)}</p>
+                  {font && (
+                    <div className="font-preview" style={{ fontFamily: font.stack, fontSize: font.size }} aria-hidden>
+                      <span className="font-preview-dir">{"\u{f07c} ~/westerm"}</span>{" "}
+                      <span className="font-preview-branch">{"\u{e0a0} main"}</span> ❯ ls -la{"\n"}
+                      한글 日本語 中文 0O 1lI {"{} => != ->"}
+                    </div>
+                  )}
                 </div>
                 <div className="settings-row stacked">
                   <label className="settings-check" htmlFor="settings-resume-agents">

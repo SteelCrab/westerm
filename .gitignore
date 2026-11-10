@@ -4,3 +4,7 @@ logs
 *.log
 native/target
 dist-app
+dist-npm
+dist-npm.tmp
+westerm-*.tgz
+pistacrab-westerm-*.tgz

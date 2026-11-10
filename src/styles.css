@@ -2771,6 +2771,244 @@ body.resizing-sidebar .pane-layer {
   margin-left: auto;
 }
 
+/* Settings ▸ Terminal ▸ Font: the ordered font list, the search for
+   installed fonts below it, and a preview in the stack the terminals use. */
+/* The panel scrolls; the list and the preview keep their height, or the
+   column would squash them (and the search inside) to fit. */
+.settings-panel > .settings-row,
+.font-picker,
+.font-preview {
+  flex-shrink: 0;
+}
+
+.font-picker {
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.font-stack {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.font-row,
+.font-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.font-row {
+  min-height: 34px;
+  padding: 3px 6px 3px 8px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+}
+
+.font-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.font-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.font-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.font-row.empty {
+  padding-left: 12px;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.font-grip {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.font-order {
+  flex: none;
+  min-width: 12px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.font-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-row .font-name {
+  font-weight: 500;
+}
+
+.font-tag {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.font-tag.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.font-sample {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.font-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.font-add:hover {
+  background: var(--accent-soft);
+}
+
+.font-add:disabled {
+  background: transparent;
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.font-add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.font-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.font-search-bar:focus-within {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Beats `.settings-row input[type="text"]`: no box and the UI font here. */
+.font-search-bar input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.font-search-bar input:focus-visible {
+  outline: none;
+}
+
+.font-search-bar .settings-check {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.font-options {
+  max-height: 196px;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.font-option {
+  height: 28px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.font-option .font-name {
+  flex: none;
+  max-width: 55%;
+}
+
+.font-option[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.font-option[aria-disabled="true"] {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.font-added {
+  flex: none;
+  color: var(--ok);
+}
+
+.font-search-note,
+.font-search-count {
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.font-search-count {
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.font-preview {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--pane-bg);
+  color: var(--text);
+  line-height: 1.35;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.font-preview-dir {
+  color: var(--ok);
+}
+
+.font-preview-branch {
+  color: var(--accent);
+}
+
 /* Settings ▸ Appearance ▸ Color theme: a preview in the theme's own
    colors, and its name below in the window's. */
 .color-themes {

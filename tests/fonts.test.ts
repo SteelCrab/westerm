@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cjkFallbacks, clampFontSize, fontStack, terminalFont } from "../src/terminal/fonts.ts";
+import { cjkFallbacks, clampFontSize, cssFamily, fontStack, isGenericFamily, terminalFont } from "../src/terminal/fonts.ts";
 
 test("font stack puts the user font first, then Nerd Font icons and Hangul", () => {
   const stack = fontStack(["D2Coding"]);
@@ -38,4 +38,12 @@ test("CJK fallbacks put the UI language's fonts first and keep the others", () =
   assert.deepEqual([...cjkFallbacks("ja")].sort(), [...cjkFallbacks("ko")].sort(), "every script stays covered");
   const stack = fontStack(["Menlo"], "zh");
   assert.ok(stack.indexOf("PingFang SC") < stack.indexOf("Apple SD Gothic Neo"));
+});
+
+test("generic CSS families are told apart from font names", () => {
+  assert.ok(isGenericFamily("monospace"));
+  assert.ok(isGenericFamily("UI-Monospace"));
+  assert.ok(!isGenericFamily("Menlo"));
+  assert.equal(cssFamily("monospace"), "monospace");
+  assert.equal(cssFamily("JetBrains Mono"), '"JetBrains Mono"');
 });
