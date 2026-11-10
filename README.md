@@ -10,6 +10,14 @@
 
 ## Install
 
+With npm (Node.js 22 or later):
+
+```bash
+npm install -g @pistacrab/westerm
+```
+
+Or run `npx @pistacrab/westerm`. Update the npm installation with `npm install -g @pistacrab/westerm@latest`.
+
 macOS and Linux:
 
 ```bash

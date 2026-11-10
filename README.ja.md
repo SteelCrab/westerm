@@ -10,6 +10,14 @@
 
 ## インストール
 
+npm（Node.js 22 以降）：
+
+```bash
+npm install -g @pistacrab/westerm
+```
+
+`npx @pistacrab/westerm` で直接実行することもできます。npm でインストールした場合は `npm install -g @pistacrab/westerm@latest` で更新します。
+
 macOS、Linux:
 
 ```bash

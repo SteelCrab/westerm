@@ -163,3 +163,39 @@ jobs:
           foreach ($name in 'conpty.dll', 'OpenConsole.exe') {
             if (-not (Test-Path (Join-Path $env:WESTERM_INSTALL_DIR $name))) { throw "install.ps1 did not install $name" }
           }
+
+  npm-publish:
+    needs: verify
+    if: github.repository == 'SteelCrab/westerm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm run test:npm
+      - run: npm run pack:npm
+      - run: npm run test:npm-install
+      - name: Publish the verified tarball to npm
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          published_versions=$(npm view @pistacrab/westerm versions --json)
+          if jq -e --arg version "$version" 'index($version) != null' <<< "$published_versions" > /dev/null; then
+            echo "@pistacrab/westerm@$version is already published"
+            exit 0
+          fi
+
+          tag_args=()
+          if [[ "$version" == *-* ]]; then
+            tag_args=(--tag next)
+          fi
+          npm publish "./pistacrab-westerm-$version.tgz" --access public "${tag_args[@]}"

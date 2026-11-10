@@ -1,0 +1,31 @@
+name: npm package
+
+on:
+  push:
+    paths: ["npm/**", "scripts/*npm*.mjs", "tests/npm-package.test.mjs", "package.json", ".github/workflows/npm.yml"]
+  pull_request:
+    paths: ["npm/**", "scripts/*npm*.mjs", "tests/npm-package.test.mjs", "package.json", ".github/workflows/npm.yml"]
+
+permissions:
+  contents: read
+
+# Test packaging against an existing release even before a new tag is published.
+env:
+  WESTERM_NPM_VERSION: "0.4.1"
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run test:npm
+      - run: npm run pack:npm
+      - run: npm run test:npm-install

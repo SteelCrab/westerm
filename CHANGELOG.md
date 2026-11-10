@@ -6,6 +6,7 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ### Added
 
+- Install with `npm install -g @pistacrab/westerm` or run `npx @pistacrab/westerm` (Node.js 22 or later). The npm package includes the verified release executables for macOS, Linux, and Windows, with no install scripts or compiler required.
 - Settings ▸ Terminal ▸ Font picks from the fonts installed on this computer. The fonts form an ordered list (up to 8): search to add one, drag or Alt+↑/↓ to reorder, and see a preview in the stack the terminals use. Fonts with your language's script or Nerd Font icons are tagged, and names that are not installed can still be typed in.
 
 ## [0.4.1] - 2026-11-09
