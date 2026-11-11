@@ -77,6 +77,15 @@ impl Lang {
             Lang::Zh => "插件面板不支持你的 Shell".to_owned(),
         }
     }
+
+    pub fn plugin_launch_expired(self) -> String {
+        match self {
+            Lang::Ko => "이 콘솔은 만료되었습니다. Databases 패널에서 다시 여세요".to_owned(),
+            Lang::En => "This console expired. Open it again from the Databases panel.".to_owned(),
+            Lang::Ja => "このコンソールは期限切れです。Databases パネルからもう一度開いてください".to_owned(),
+            Lang::Zh => "此控制台已过期。请从 Databases 面板重新打开".to_owned(),
+        }
+    }
 }
 
 #[cfg(test)]

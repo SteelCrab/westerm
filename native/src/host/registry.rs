@@ -16,6 +16,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::session::{self, Command, Handle, Restored, Resuming, Spec};
 use super::store::SessionStore;
+use crate::plugins::LaunchError;
 use crate::protocol::{AttachMode, AttachRequest, ServerMessage, SessionKind};
 use crate::spawn::{shell_kind, LaunchSpec};
 use crate::state_dir::home_dir;
@@ -139,9 +140,16 @@ impl Registry {
         // quoted here, before the shell starts: a shell it cannot be quoted for
         // opens no pane. Only the host knows its shell (a remote host's too).
         let plugin = request.plugin.as_ref().filter(|_| brand_new_shell);
-        let Ok(plugin_command) = plugin.map(|launch| launch.command(shell_kind())).transpose() else {
-            refuse(ws, request.lang.plugin_shell_unsupported());
-            return;
+        let plugin_command = match plugin.map(|launch| launch.command(shell_kind())).transpose() {
+            Ok(command) => command,
+            Err(LaunchError::Expired) => {
+                refuse(ws, request.lang.plugin_launch_expired());
+                return;
+            }
+            Err(_) => {
+                refuse(ws, request.lang.plugin_shell_unsupported());
+                return;
+            }
         };
         self.serial += 1;
         let spec = Spec { id: request.id.clone(), launch, pixels: request.pixels, agent, plugin_command };

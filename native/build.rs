@@ -32,6 +32,7 @@ const HOST_SOURCES: &[&str] = &[
     "src/host/agent.rs",
     "src/plugins/mod.rs",
     "src/plugins/docker.rs",
+    "src/plugins/db.rs",
     "src/plugins/external.rs",
 ];
 
