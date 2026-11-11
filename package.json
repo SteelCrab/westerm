@@ -27,7 +27,7 @@
     "@wterm/ghostty": "^0.5.9",
     "@wterm/react": "^0.5.9",
     "lucide-react": "^1.70.0",
-    "markdown-it": "^14.3.3",
+    "markdown-it": "^15.0.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "uqr": "0.1.3"
