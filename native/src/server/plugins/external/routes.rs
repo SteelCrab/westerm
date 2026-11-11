@@ -1373,7 +1373,7 @@ mod tests {
     #[tokio::test]
     async fn run_answers_bad_bodies_and_failures() {
         let env = Env::new();
-        env.install_from_index("0.3.1", &["kubectl", "helm"]).await;
+        env.install_from_index("0.3.1", &["kubectl", "westerm-no-such-tool"]).await;
         env.fake("kubectl", "echo boom >&2\nexit 2").await;
         // Not JSON from the page, a bad shape, too big: 400.
         let ok = json!({ "program": "kubectl", "args": [], "cwd": null }).to_string();
@@ -1388,10 +1388,10 @@ mod tests {
         // A program that fails still answers 200 with its code.
         let (status, body) = read(send(headers(true), ok).await).await;
         assert_eq!((status, body), (StatusCode::OK, json!({ "code": 2, "stdout": "", "stderr": "boom\n" })));
-        // A granted program that is not on the PATH: 502.
-        let (status, body) = env.run(ID, json!({ "program": "helm", "args": [] })).await;
+        // A granted program that is not on the PATH: 502. (Not helm: CI machines have it.)
+        let (status, body) = env.run(ID, json!({ "program": "westerm-no-such-tool", "args": [] })).await;
         assert_eq!(status, StatusCode::BAD_GATEWAY);
-        assert!(body["error"].as_str().unwrap().contains("helm"), "{body}");
+        assert!(body["error"].as_str().unwrap().contains("westerm-no-such-tool"), "{body}");
         let response = send(headers(true), "{}".into()).await;
         assert_eq!(response.headers()["cache-control"], "no-store");
     }

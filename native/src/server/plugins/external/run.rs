@@ -198,7 +198,8 @@ mod tests {
     #[tokio::test]
     async fn a_missing_program_is_not_found() {
         let dir = tempfile::tempdir().unwrap();
-        let result = run_capped("kubectl", &[], dir.path(), &login(dir.path(), &[]), LIMIT, CAP).await;
+        // Not kubectl: CI machines have it in /usr/bin.
+        let result = run_capped("westerm-no-such-tool", &[], dir.path(), &login(dir.path(), &[]), LIMIT, CAP).await;
         assert_eq!(result, Err(RunError::NotFound));
     }
 
