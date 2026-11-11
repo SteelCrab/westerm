@@ -1,5 +1,7 @@
 # Install
 
+On Windows, the [desktop app](#desktop-app) is the recommended way to install.
+
 ## npm
 
 Requires Node.js 22 or later:
@@ -89,7 +91,7 @@ Use a current stable Rust toolchain and your platform's C compiler and linker. T
 
 Update with `cargo install westerm --locked`. The built-in `westerm update` instead replaces the executable with a GitHub release build.
 
-On Windows, Cargo installs the executable without Microsoft's `conpty.dll` and `OpenConsole.exe`. Windows' built-in ConPTY drops Kitty graphics. Use npm or the GitHub release for the bundled Windows files.
+On Windows, Cargo installs the executable without Microsoft's `conpty.dll` and `OpenConsole.exe`. Windows' built-in ConPTY drops Kitty graphics. Use the desktop app, npm, or the GitHub release for the bundled Windows files.
 
 ## Platforms
 
