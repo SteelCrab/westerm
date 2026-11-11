@@ -10,7 +10,7 @@ use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum::extract::{DefaultBodyLimit, Path, Query, RawQuery, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 
@@ -30,6 +30,7 @@ pub(super) fn routes() -> Router<Shared> {
             get(docs_get).put(docs_put).post(docs_post).layer(DefaultBodyLimit::max(super::docs::MAX_BODY_BYTES)),
         )
         .route("/remote/{target}/api/agents/history", get(agents_history_get))
+        .route("/remote/{target}/api/images", post(images_post).layer(DefaultBodyLimit::max(super::images::MAX_BODY_BYTES)))
 }
 
 /// The target from the path, when the Host header is one of this dashboard's
@@ -65,7 +66,13 @@ async fn forward(state: &Shared, target: &str, method: &str, path: &str, body: O
         Ok(opened) => opened,
         Err(status) => return status.into_response(),
     };
-    let Some((status, body)) = http1::exchange(opened.stream, method, path, body).await else {
+    // A picture is a large body: it may take longer than a layout request.
+    let answer = if path == super::images::PATH {
+        http1::exchange_with_timeout(opened.stream, method, path, body, std::time::Duration::from_secs(35)).await
+    } else {
+        http1::exchange(opened.stream, method, path, body).await
+    };
+    let Some((status, body)) = answer else {
         drop_link(state, target, opened.link);
         return StatusCode::BAD_GATEWAY.into_response();
     };
@@ -127,6 +134,18 @@ async fn agents_history_get(State(state): State<Shared>, Path(target): Path<Stri
         Ok(target) => forward(&state, &target, "GET", &history_path(query), None).await,
         Err(status) => status.into_response(),
     }
+}
+
+/// A picture pasted or dropped on a pane of a remote window: the server saves it, where the pane's program runs.
+async fn images_post(State(state): State<Shared>, Path(target): Path<String>, headers: HeaderMap, body: Bytes) -> Response {
+    let target = match checked_target(&state, &headers, &target) {
+        Ok(target) => target,
+        Err(status) => return status.into_response(),
+    };
+    if !is_json(&headers) || !origin_allowed(&state, &headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    forward(&state, &target, "POST", super::images::PATH, Some(&body)).await
 }
 
 /// A docs pane of a remote window reads the server's files.
@@ -259,5 +278,24 @@ mod tests {
         let mut no_origin = page_headers();
         no_origin.remove(header::ORIGIN);
         assert_eq!(docs_change(&state, "prod", "file", "PUT", &no_origin, b"{}").await.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Refusals answer before any link to the server is opened.
+    #[tokio::test]
+    async fn pictures_come_from_the_dashboards_own_page_only() {
+        let state: Shared = Arc::new(test_state(&["http://127.0.0.1:4317"]));
+        let post = |target: &str, headers: HeaderMap| images_post(State(state.clone()), Path(target.to_owned()), headers, Bytes::from_static(b"{}"));
+        let mut evil = page_headers();
+        evil.insert(header::HOST, "evil.example:4317".parse().unwrap());
+        assert_eq!(post("prod", evil).await.status(), StatusCode::FORBIDDEN);
+        let mut no_origin = page_headers();
+        no_origin.remove(header::ORIGIN);
+        assert_eq!(post("prod", no_origin).await.status(), StatusCode::FORBIDDEN);
+        let mut form = page_headers();
+        form.insert(header::CONTENT_TYPE, "text/plain".parse().unwrap());
+        assert_eq!(post("prod", form).await.status(), StatusCode::FORBIDDEN);
+        assert_eq!(post("not a target", page_headers()).await.status(), StatusCode::BAD_REQUEST);
+        // The own page, with no link to the server up.
+        assert_eq!(post("prod", page_headers()).await.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }
