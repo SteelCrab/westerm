@@ -1,0 +1,71 @@
+# Dependabot version updates: one pull request a week for each group below.
+# Security updates need no entry here; they are on in the repository settings.
+version: 2
+
+updates:
+  # The web UI and its build tools (package.json).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # The dashboard patches wterm's internals (src/terminal/): review these alone.
+      wterm:
+        patterns:
+          - "@wterm/*"
+      npm:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@wterm/*"
+        update-types:
+          - minor
+          - patch
+
+  # westerm itself: the dashboard server and the PTY host.
+  - package-ecosystem: cargo
+    directory: /native
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      cargo-native:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # The desktop app (Tauri).
+  - package-ecosystem: cargo
+    directory: /desktop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      cargo-desktop:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # The actions the workflows use.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - "*"
