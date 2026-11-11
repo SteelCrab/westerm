@@ -10,6 +10,16 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 - Cargo packaging for `westerm`: the crate includes the built web UI and license, and can be installed without Node.js. A separate CI check installs the packaged crate and verifies its embedded web files on macOS, Linux, and Windows. Windows Cargo installs use the system ConPTY; the bundled ConPTY files remain available through npm and the GitHub releases.
 - Tunnel: the cloud button in the activity bar starts a Cloudflare Quick Tunnel and shows its `https://<name>.trycloudflare.com` address, a QR code, and a 6-digit access code. Another device's browser opens the address, enters the code, and uses the same workspaces, tabs, and shells. Wrong codes lock logins and 20 stop the tunnel; **Stop tunnel** ends every device's access. The computer stays awake while the tunnel is on, and a tunnel with no device for 12 hours stops by itself. It needs `cloudflared`; the panel shows the install command when it is missing.
 
+## [0.4.3] - 2026-11-10
+
+### Changed
+
+- The focused pane is easier to see. It now has a 2px accent line with a soft halo, instead of a faint 1px border. The terminal keeps its size.
+
+### Fixed
+
+- The window could extend below the browser's bottom edge, cutting off the lowest panes, their prompts, and the activity bar's bottom buttons. This happened when the sidebar list (folders, agents, past conversations) was taller than the window. The list now scrolls inside the sidebar.
+
 ## [0.4.2] - 2026-11-10
 
 ### Added
@@ -151,7 +161,8 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/SteelCrab/westerm/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/SteelCrab/westerm/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/SteelCrab/westerm/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SteelCrab/westerm/compare/v0.3.0...v0.4.0
