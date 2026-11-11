@@ -10,6 +10,8 @@
 
 ## Install
 
+**Windows:** use the [desktop app](#desktop-app). Download [`westerm-windows-app-setup.exe`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-windows-app-setup.exe) and run it.
+
 ### npm
 
 Requires Node.js 22 or later.
@@ -51,7 +53,7 @@ irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 Download the installer for your platform from [Releases](https://github.com/SteelCrab/westerm/releases/latest):
 
 - macOS: open `westerm-macos-app.dmg` and drag **westerm** onto the Applications folder.
-- Windows: run `westerm-windows-app-setup.exe`.
+- Windows (recommended): run `westerm-windows-app-setup.exe`.
 - Linux: install `westerm-linux-app-<arch>.deb` or `.rpm`.
 
 Other ways, and how to allow the app's first open on macOS: [docs/install.md](docs/install.md).
