@@ -4,6 +4,8 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-11-11
+
 ### Fixed
 
 - Windows: `westerm.exe` did not start on a Windows without the Visual C++ runtime. It stopped with "VCRUNTIME140.dll was not found". This affected the desktop app (it runs `westerm.exe`), the install script, the npm package, and the archive. The runtime is now inside `westerm.exe`.
@@ -165,7 +167,8 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.5...HEAD
+[0.4.5]: https://github.com/SteelCrab/westerm/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/SteelCrab/westerm/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/SteelCrab/westerm/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/SteelCrab/westerm/compare/v0.4.1...v0.4.2
