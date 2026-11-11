@@ -95,7 +95,7 @@ fn strip_verbatim(text: &str) -> String {
 }
 
 /// A path as the page shows and sends it back.
-fn shown_path(path: &Path) -> String {
+pub(super) fn shown_path(path: &Path) -> String {
     let text = path.to_string_lossy();
     if cfg!(windows) { strip_verbatim(&text) } else { text.into_owned() }
 }

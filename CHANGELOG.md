@@ -4,6 +4,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Images for AI agents: paste an image (Cmd/Ctrl+V) or drop image files on a shell pane, and Claude Code, Codex, and other agent CLIs get them as attachments. westerm saves each image (PNG, JPEG, GIF, or WebP, up to 10 MB) in its state directory on the computer that runs the shell and pastes the file's path, as a native terminal does for a dropped file. It works in remote windows too. Saved images are deleted after 7 days.
+
 ## [0.4.3] - 2026-11-10
 
 ### Changed

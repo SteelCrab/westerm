@@ -9,6 +9,7 @@ import { KINDS } from "../kinds.tsx";
 import { installAltScreenImages } from "./alt-screen-images.ts";
 import { installImageRepaintCache } from "./image-repaint.ts";
 import { installCommandKeys } from "./command-keys.ts";
+import { installImageInput, type ImageNotice } from "./image-input.ts";
 import { PtyConnection, type ConnectionEvent } from "./connection.ts";
 import { PIXELS_SETTING, pixelCodecFor } from "./pixel-update.ts";
 import { PixelSurface } from "./pixel-surface.ts";
@@ -45,6 +46,10 @@ export interface TerminalViewProps {
   onTitle: (title: string) => void;
   onFocus: () => void;
 }
+
+/** The picture notices that say why nothing was pasted, and how long they show. */
+const IMAGE_PROBLEMS: readonly ImageNotice[] = ["tooLarge", "notImage", "failed", "unsupported"];
+const IMAGE_PROBLEM_MS = 4000;
 
 /** Content size in CSS pixels, excluding padding, as Kitty clients expect. */
 function ptySize(wt: WTerm): PtySize {
@@ -119,6 +124,9 @@ export function TerminalView(props: TerminalViewProps) {
   const connectionRef = useRef<PtyConnection | null>(null);
   const wtermRef = useRef<WTerm | null>(null);
   const uninstallKeysRef = useRef<(() => void) | null>(null);
+  const uninstallImagesRef = useRef<(() => void) | null>(null);
+  // A picture dragged over the pane, on its way to the server, or refused.
+  const [imageNotice, setImageNotice] = useState<ImageNotice | null>(null);
   // A pixel app's picture, made on its first pixel update.
   const pixelsRef = useRef<PixelSurface | null>(null);
   const visibleRef = useRef(visible);
@@ -130,6 +138,7 @@ export function TerminalView(props: TerminalViewProps) {
   useEffect(
     () => () => {
       uninstallKeysRef.current?.();
+      uninstallImagesRef.current?.();
       connectionRef.current?.close({ end: takeEnding(sessionId) });
       pixelsRef.current?.dispose();
       pixelsRef.current = null;
@@ -140,6 +149,13 @@ export function TerminalView(props: TerminalViewProps) {
   useEffect(() => {
     if (focused && keyboardFree()) terminalRef.current?.focus();
   }, [focused, focusNonce]);
+
+  // A refusal goes away by itself; "drop" and "sending" end with their cause.
+  useEffect(() => {
+    if (imageNotice === null || !IMAGE_PROBLEMS.includes(imageNotice)) return;
+    const timer = setTimeout(() => setImageNotice(null), IMAGE_PROBLEM_MS);
+    return () => clearTimeout(timer);
+  }, [imageNotice]);
 
   // Live theme and light/dark switch: repaints history and keeps app color overrides.
   const colorsRef = useRef(colors);
@@ -163,6 +179,15 @@ export function TerminalView(props: TerminalViewProps) {
       uninstallKeysRef.current = installCommandKeys(wt, (sequence) =>
         connectionRef.current?.sendInput(sequence),
       );
+      uninstallImagesRef.current?.();
+      setImageNotice(null);
+      uninstallImagesRef.current = installImageInput(wt, {
+        // An ssh pane's program runs on another computer, and a pixel app
+        // takes no paths: neither can read a picture this server saved.
+        enabled: kind === "shell",
+        paste: (text) => (wt as unknown as { input?: { sendPaste?: (text: string) => void } }).input?.sendPaste?.(text),
+        notify: setImageNotice,
+      });
       connectionRef.current?.close({ end: false });
       // A new connection starts the pixel app again, with a new picture.
       pixelsRef.current?.dispose();
@@ -224,6 +249,7 @@ export function TerminalView(props: TerminalViewProps) {
   if (!core) return <div className="pane-message">{t.pane.coreLoading}</div>;
 
   return (
+    <>
     <Terminal
       ref={terminalRef}
       className="pane-terminal"
@@ -239,5 +265,14 @@ export function TerminalView(props: TerminalViewProps) {
       onTitle={(title) => callbacks.current.onTitle(title)}
       onFocus={() => callbacks.current.onFocus()}
     />
+    {imageNotice && (
+      <div
+        className={`pane-notice${imageNotice === "drop" ? " drop" : IMAGE_PROBLEMS.includes(imageNotice) ? " problem" : ""}`}
+        role="status"
+      >
+        {t.pane.image[imageNotice]}
+      </div>
+    )}
+    </>
   );
 }

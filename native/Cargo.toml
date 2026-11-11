@@ -19,6 +19,8 @@ futures-util = "0.3.34"
 # Settings lists the fonts installed on this computer. Both are pure Rust:
 # fontdb finds the font files and names, ttf-parser reads widths and glyphs.
 fontdb = "0.24.0"
+# Saved pictures get names from the OS random source.
+getrandom = "0.3"
 # The docs pane lists Markdown files the way git sees them (.gitignore).
 ignore = "0.4"
 libc = "0.2.191"
@@ -46,7 +48,10 @@ core-foundation = "0.10.1"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes"] }
 
 [dev-dependencies]
+# Router tests send requests without a socket.
+http-body-util = "0.1"
 tempfile = "3.27.0"
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 lto = "thin"

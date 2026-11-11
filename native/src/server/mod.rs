@@ -9,6 +9,7 @@ mod docs;
 mod fonts;
 pub(crate) mod host_client;
 mod http1;
+mod images;
 mod remote;
 mod remote_window;
 mod updates;
@@ -128,6 +129,7 @@ pub async fn run(options: Options) -> std::io::Result<()> {
         .route("/ws/session", get(session))
         .merge(docs::routes())
         .merge(agents::routes())
+        .merge(images::routes())
         .merge(fonts::routes())
         .merge(remote_window::routes())
         .fallback(asset)
@@ -155,6 +157,7 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         .route("/ws/session", get(session))
         .merge(docs::routes())
         .merge(agents::routes())
+        .merge(images::routes())
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)
 }
