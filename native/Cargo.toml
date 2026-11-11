@@ -53,6 +53,11 @@ http-body-util = "0.1"
 tempfile = "3.27.0"
 tower = { version = "0.5", features = ["util"] }
 
+[build-dependencies]
+# Windows (MSVC): links the Visual C++ runtime into westerm.exe. A clean
+# Windows has no VCRUNTIME140.dll, and westerm.exe would not start there.
+static_vcruntime = "3.0"
+
 [profile.release]
 lto = "thin"
 strip = true

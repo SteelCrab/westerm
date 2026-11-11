@@ -4,6 +4,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows: `westerm.exe` did not start on a Windows without the Visual C++ runtime. It stopped with "VCRUNTIME140.dll was not found". This affected the desktop app (it runs `westerm.exe`), the install script, the npm package, and the archive. The runtime is now inside `westerm.exe`.
+
 ## [0.4.4] - 2026-11-11
 
 ### Added

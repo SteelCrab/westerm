@@ -70,6 +70,10 @@ jobs:
         run: cargo test --release --locked --target ${{ matrix.target }} --manifest-path native/Cargo.toml
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }} --manifest-path native/Cargo.toml
+      # A clean Windows has no Visual C++ runtime; westerm.exe must not need it.
+      - name: No Visual C++ runtime (Windows)
+        if: runner.os == 'Windows'
+        run: node scripts/check-windows-runtime.mjs native/target/${{ matrix.target }}/release/westerm.exe
 
       - name: Package (macOS, Linux)
         if: runner.os != 'Windows'
