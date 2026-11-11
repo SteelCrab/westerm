@@ -16,7 +16,7 @@ rust-version = "1.89"
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }
 # Kitty graphics payloads that pixel apps send inline.
-base64 = "0.22.1"
+base64 = "0.23.1"
 bytes = "1.12.1"
 # zlib payloads (o=z) from pixel apps, and compressed pixel updates for
 # remote windows. The default backend is pure Rust.
