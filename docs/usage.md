@@ -218,7 +218,7 @@ Each agent row shows the agent's logo, its name (as in the session list), how lo
 
 ## Plugins
 
-A plugin adds a panel to westerm. Docker is built in: installing it turns it on, and nothing is downloaded. Other plugins come from outside (the plugin list, a GitHub repository, a `.tar.gz` link, or a folder on your computer) and run in an isolated frame with only the permissions you confirm. See [External plugins](#external-plugins). To write one, see [Writing plugins](plugins.md).
+A plugin adds a panel to westerm. Docker and Databases are built in: installing one turns it on, and nothing is downloaded. Other plugins come from outside (the plugin list, a GitHub repository, a `.tar.gz` link, or a folder on your computer) and run in an isolated frame with only the permissions you confirm. See [External plugins](#external-plugins). To write one, see [Writing plugins](plugins.md).
 
 ### The plugin bar
 
@@ -241,7 +241,7 @@ A plugin adds a panel to westerm. Docker is built in: installing it turns it on,
 
 | Badge | Meaning |
 |---|---|
-| `built-in` | Part of westerm (Docker). |
+| `built-in` | Part of westerm (Docker, Databases). |
 | `verified` | Installed from the plugin list. |
 | `unverified` | Installed from a URL. |
 | `local` | Installed from a folder, for developing a plugin. |
@@ -345,6 +345,51 @@ Install **Docker** to see this computer's containers in the sidebar.
 - **Which `docker`**: a desktop app started from Finder gets a short PATH, without `/opt/homebrew/bin` or `DOCKER_HOST` from your `.zshrc`. So the server runs your login shell once the first time it checks Docker and keeps only `PATH`, `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH`, and `DOCKER_TLS_VERIFY`. It runs `docker` with them, so the list and the log and shell panes see the same Docker. If the shell takes more than 5 seconds, the server's own environment is used. Install and **Retry** read it again. On Windows the server's environment is used.
 - A `docker` call that takes more than 5 seconds counts as "Docker is not running" ("timed out"). Start, stop, restart, and remove wait up to 30 seconds, because Docker waits up to 10 seconds for a container to stop.
 - Not in this version: images, volumes, networks, `docker context` choice, remote engines, CPU and memory, compose up and down, and Docker in remote windows.
+
+### Databases
+
+Install **Databases** to browse PostgreSQL, MySQL/MariaDB, and SQLite databases from the sidebar.
+
+- **Header**: "Databases" and the number of saved connections. **＋** adds a connection, the refresh button reads the open levels and looks for connections again, and the ⋯ menu has **Forget all connections…** and **Uninstall…**.
+- **Tree**: connection → database → schema → tables and views (MySQL has no schema level; SQLite lists its tables at once). A level is read when you open it, and the first open connects. System databases and schemas are hidden. A table shows the database's own row estimate (none for SQLite). The filter keeps the tables and views whose name matches, among the levels already open.
+- **A connection row** shows its engine, name, `host:port` (or the SQLite file's folder), `ssh <host>` when it uses a tunnel, `RO` when it is read-only, its color, and a dot: green connected, yellow connecting, red failed (the error shows under the row), hollow not connected. Its menu has Connect or Disconnect, Open console, Edit…, Duplicate, Copy URL (without the password), and Delete… (asks once; the saved password goes too).
+- **A table or view**: click it to open a table pane. Its buttons open the table pane or a console, and its menu also copies its name or its `SELECT`.
+- **A password**: when the database asks for one and none is saved, the row asks for it. It is saved in the keychain (see below).
+
+#### Adding a connection
+
+- Paste a URL (`postgres://`, `postgresql://`, `mysql://`, `mariadb://`, `sqlite:`, or a file path) to fill in the fields; the password moves to its own field. Or fill in the fields: name, host, port, user, password, database, SSL mode, an SSH tunnel through a host of `~/.ssh/config`, a color, and **Read-only**. A SQLite connection has a file path only (`~/` works; the file is on the computer that runs westerm).
+- **New connections are read-only.** The database itself refuses writes: PostgreSQL runs with `default_transaction_read_only`, MySQL with `SET SESSION TRANSACTION READ ONLY`, and SQLite opens the file read-only. This stops mistakes, not people: SQL can turn it off. Turn **Read-only** off to write.
+- A red connection draws a red line at the top of its table panes, so a production database stands out.
+- **Test connection** connects without saving and shows the server version, or the error.
+- Passwords are kept in the keychain (macOS Keychain, Windows Credential Manager, the Secret Service on Linux), never in westerm's files. When the keychain cannot be used (a locked keychain, a server without a desktop session, Linux without a Secret Service), the password is kept in memory until westerm stops, and the dialog says so.
+- **SSH tunnels** use your `ssh` with keys or an agent only. A host that asks for a password or a second factor fails with "SSH needs a key or an agent for <host>".
+
+#### Found in your folders
+
+When the panel opens (and on refresh), westerm looks for connections in the folders of your shells: `DATABASE_URL` in `.env` and `.env.local`, SQLite files (`*.db`, `*.sqlite`, `*.sqlite3`) at the top of the folder, and running PostgreSQL, MySQL, and MariaDB containers in Docker (with the user, password, and database from the container's environment). **Add** opens the dialog filled in; nothing is saved until you press **Save**. Connections you already saved are not listed again.
+
+#### Table panes
+
+- A table pane shows an SQL box over a result grid. A pane opened from the tree runs `SELECT * FROM <table> LIMIT 100` once. Press **Run** (or ⌘↵ / Ctrl+Enter) to run the SQL again; **Cancel** stops it.
+- One statement per Run. Each Run starts a fresh database session, so a `BEGIN`, a `SET`, or a `USE` does not carry over to the next Run. Use a console for work that spans several statements.
+- At most 1000 rows and 8 MiB show; longer cells are cut at 64 KB and marked "(truncated)". A query stops after 30 seconds. Double-click a cell to see all of it, click a cell and press ⌘C / Ctrl+C to copy it, or **Copy as CSV** for the whole result.
+- The pane's SQL is saved with the layout, but not its result. **A restored pane does not run by itself**: it shows "Press Run to load", so opening the page never sends a query to a database.
+- When the plugin is not installed, the pane says "This pane needs the Databases plugin". When the connection was deleted, it says so and offers Close.
+
+#### Consoles
+
+The console button opens `psql`, `mysql` (or `mariadb`), or `sqlite3` as a shell session beside the focused pane, connected and read-only like the connection. It is a normal westerm shell: it stays when you close the window. The password never appears on the typed line or in your shell history; it waits in a private file in the state folder while westerm runs. The button is disabled, with the install command in its tooltip, when the program is missing. Consoles need macOS or Linux with a shell of the sh family or fish.
+
+- When westerm restarts (an update, for example), an open console stays, but a console through an SSH tunnel loses its connection, and the others cannot reconnect (`\c`). Open a new console.
+
+#### Badge
+
+The page reads the connection list every 10 seconds while the panel is open and every minute while it is closed (a hidden page reads nothing). The badge on the Databases button is the number of connections with a pool open; it is hidden at 0. An unused pool closes after 10 minutes.
+
+#### Uninstalling
+
+Uninstalling closes the pools and tunnels and removes the console password files. The saved connections and keychain entries stay, so installing again brings them back. **Forget all connections…** removes them all.
 
 ## terminal-browser and terminal-code
 
