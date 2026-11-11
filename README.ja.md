@@ -10,15 +10,39 @@
 
 ## インストール
 
-**Windows:** デスクトップアプリをおすすめします。[`westerm-windows-app-setup.exe`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-windows-app-setup.exe) をダウンロードして実行します。
+### デスクトップアプリ(おすすめ)
 
-npm（Node.js 22 以降）：
+いちばん簡単なインストール方法です。お使いのシステム用のファイルをダウンロードして開きます。ターミナル、Node.js、Rust は不要です。
+
+| システム | ダウンロード | インストール |
+|---|---|---|
+| macOS | [`westerm-macos-app.dmg`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-macos-app.dmg) | ファイルを開き、**westerm** をアプリケーションフォルダへドラッグします。 |
+| Windows | [`westerm-windows-app-setup.exe`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-windows-app-setup.exe) | ファイルを実行します。 |
+| Linux x64 | [`.deb`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-amd64.deb) · [`.rpm`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-x86_64.rpm) | パッケージをインストールします。 |
+| Linux arm64 | [`.deb`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-arm64.deb) · [`.rpm`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-aarch64.rpm) | パッケージをインストールします。 |
+
+次に **westerm** を開きます。ダッシュボードが専用ウィンドウで開きます。
+
+- macOS は初回の起動をブロックします。システム設定 ▸ プライバシーとセキュリティ ▸「このまま開く」で一度だけ許可します。
+- Windows SmartScreen が一度だけ確認することがあります。詳細情報 ▸ 実行 を選びます。
+
+アプリの詳細: [docs/install.md](docs/install.md#desktop-app)(英語)
+
+### コマンドライン
+
+`westerm` コマンドをインストールします。アプリのウィンドウはありません。サーバーで使うときや、ターミナルのほうが使いやすいときに使います。
+
+#### npm
+
+Node.js 22 以降が必要です。
 
 ```bash
 npm install -g @pistacrab/westerm
 ```
 
 `npx @pistacrab/westerm` で直接実行することもできます。npm でインストールした場合は `npm install -g @pistacrab/westerm@latest` で更新します。
+
+#### インストールスクリプト
 
 macOS、Linux:
 
@@ -32,15 +56,13 @@ Windows(PowerShell):
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS、Windows、Linux 用のデスクトップアプリは [Releases](https://github.com/SteelCrab/westerm/releases/latest) から取得します。
-
-- macOS: `westerm-macos-app.dmg` を開き、**westerm** をアプリケーションフォルダへドラッグします。
-- Windows(おすすめ): `westerm-windows-app-setup.exe` を実行します。
-- Linux: `westerm-linux-app-<arch>.deb` または `.rpm` をインストールします。
-
-ほかのインストール方法と、macOS でアプリの初回起動を許可する方法: [docs/install.md](docs/install.md)(英語)
+ほかのインストール方法: [docs/install.md](docs/install.md)(英語)
 
 ## 実行
+
+デスクトップアプリ: **westerm** を開きます。
+
+コマンドライン:
 
 ```bash
 westerm

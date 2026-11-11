@@ -10,15 +10,39 @@
 
 ## 설치
 
-**Windows:** 데스크톱 앱을 권장합니다. [`westerm-windows-app-setup.exe`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-windows-app-setup.exe)를 받아서 실행합니다.
+### 데스크톱 앱 (추천)
 
-npm 설치에는 Node.js 22 이상을 사용한다.
+가장 쉬운 설치 방법입니다. 내 시스템에 맞는 파일을 받아서 엽니다. 터미널, Node.js, Rust가 필요 없습니다.
+
+| 시스템 | 다운로드 | 설치 |
+|---|---|---|
+| macOS | [`westerm-macos-app.dmg`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-macos-app.dmg) | 파일을 열고 **westerm**을 응용 프로그램 폴더로 드래그합니다. |
+| Windows | [`westerm-windows-app-setup.exe`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-windows-app-setup.exe) | 파일을 실행합니다. |
+| Linux x64 | [`.deb`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-amd64.deb) · [`.rpm`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-x86_64.rpm) | 패키지를 설치합니다. |
+| Linux arm64 | [`.deb`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-arm64.deb) · [`.rpm`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-aarch64.rpm) | 패키지를 설치합니다. |
+
+그다음 **westerm**을 엽니다. 대시보드가 앱 창에서 열립니다.
+
+- macOS는 첫 실행을 막습니다. 시스템 설정 ▸ 개인정보 보호 및 보안 ▸ 그래도 열기에서 한 번 허용합니다.
+- Windows SmartScreen이 한 번 물을 수 있습니다. 추가 정보 ▸ 실행을 고릅니다.
+
+앱에 대한 자세한 내용: [docs/install.md](docs/install.md#desktop-app)
+
+### 명령줄
+
+`westerm` 명령을 설치합니다. 앱 창은 없습니다. 서버에서 쓰거나 터미널이 편할 때 씁니다.
+
+#### npm
+
+Node.js 22 이상이 필요합니다.
 
 ```bash
 npm install -g @pistacrab/westerm
 ```
 
-`npx @pistacrab/westerm`으로 바로 실행할 수도 있다. npm 설치본은 `npm install -g @pistacrab/westerm@latest`로 업데이트한다.
+`npx @pistacrab/westerm`으로 바로 실행할 수도 있습니다. npm 설치본은 `npm install -g @pistacrab/westerm@latest`로 업데이트합니다.
+
+#### 설치 스크립트
 
 macOS, Linux:
 
@@ -32,15 +56,13 @@ Windows(PowerShell):
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS, Windows, Linux 데스크톱 앱은 [Releases](https://github.com/SteelCrab/westerm/releases/latest)에서 받습니다.
-
-- macOS: `westerm-macos-app.dmg`를 열고 **westerm**을 응용 프로그램 폴더로 드래그합니다.
-- Windows(권장): `westerm-windows-app-setup.exe`를 실행합니다.
-- Linux: `westerm-linux-app-<arch>.deb` 또는 `.rpm`을 설치합니다.
-
-다른 설치 방법과 macOS에서 앱의 첫 실행을 허용하는 방법: [docs/install.md](docs/install.md)
+다른 설치 방법: [docs/install.md](docs/install.md)
 
 ## 실행
+
+데스크톱 앱: **westerm**을 엽니다.
+
+명령줄:
 
 ```bash
 westerm

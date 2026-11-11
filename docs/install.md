@@ -1,6 +1,6 @@
 # Install
 
-On Windows, the [desktop app](#desktop-app) is the recommended way to install.
+The [desktop app](#desktop-app) is the recommended and easiest way to install. The other ways install the command-line `westerm`.
 
 ## npm
 

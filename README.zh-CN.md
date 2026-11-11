@@ -10,15 +10,39 @@
 
 ## 安装
 
-**Windows：** 推荐使用桌面应用。下载 [`westerm-windows-app-setup.exe`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-windows-app-setup.exe) 并运行。
+### 桌面应用（推荐）
 
-使用 npm（需要 Node.js 22 或更高版本）：
+这是最简单的安装方式。下载适合你系统的文件并打开。不需要终端、Node.js 或 Rust。
+
+| 系统 | 下载 | 安装 |
+|---|---|---|
+| macOS | [`westerm-macos-app.dmg`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-macos-app.dmg) | 打开文件，把 **westerm** 拖到“应用程序”文件夹。 |
+| Windows | [`westerm-windows-app-setup.exe`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-windows-app-setup.exe) | 运行文件。 |
+| Linux x64 | [`.deb`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-amd64.deb) · [`.rpm`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-x86_64.rpm) | 安装软件包。 |
+| Linux arm64 | [`.deb`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-arm64.deb) · [`.rpm`](https://github.com/SteelCrab/westerm/releases/latest/download/westerm-linux-app-aarch64.rpm) | 安装软件包。 |
+
+然后打开 **westerm**。仪表板会在独立窗口中打开。
+
+- macOS 会阻止首次打开。在 系统设置 ▸ 隐私与安全性 ▸ 仍要打开 中允许一次。
+- Windows SmartScreen 可能会询问一次。选择 更多信息 ▸ 仍要运行。
+
+应用的更多说明：[docs/install.md](docs/install.md#desktop-app)（英语）
+
+### 命令行
+
+安装 `westerm` 命令，不带应用窗口。适合在服务器上使用，或者你更习惯终端时使用。
+
+#### npm
+
+需要 Node.js 22 或更高版本。
 
 ```bash
 npm install -g @pistacrab/westerm
 ```
 
 也可以直接运行 `npx @pistacrab/westerm`。通过 npm 安装后，使用 `npm install -g @pistacrab/westerm@latest` 更新。
+
+#### 安装脚本
 
 macOS、Linux：
 
@@ -32,15 +56,13 @@ Windows（PowerShell）：
 irm https://raw.githubusercontent.com/SteelCrab/westerm/main/install.ps1 | iex
 ```
 
-macOS、Windows、Linux 桌面应用请从 [Releases](https://github.com/SteelCrab/westerm/releases/latest) 下载：
-
-- macOS：打开 `westerm-macos-app.dmg`，把 **westerm** 拖到“应用程序”文件夹。
-- Windows（推荐）：运行 `westerm-windows-app-setup.exe`。
-- Linux：安装 `westerm-linux-app-<arch>.deb` 或 `.rpm`。
-
-其他安装方式，以及在 macOS 上允许应用首次打开的方法：[docs/install.md](docs/install.md)（英语）
+其他安装方式：[docs/install.md](docs/install.md)（英语）
 
 ## 运行
+
+桌面应用：打开 **westerm**。
+
+命令行：
 
 ```bash
 westerm
