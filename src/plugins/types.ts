@@ -32,11 +32,37 @@ export interface OpenShellOptions {
   reuse: boolean;
 }
 
+export interface OpenPaneOptions {
+  /** Which of the plugin's views the pane shows (`PluginPaneProps.view`). */
+  view: string;
+  title: string;
+  /** The pane's first state, as JSON; saved with the layout. */
+  data: unknown;
+  /** Focus the plugin's pane with this key in the workspace in view instead of opening one; null always opens. */
+  reuseKey: string | null;
+}
+
+/** What westerm hands a plugin's pane view. */
+export interface PluginPaneProps {
+  view: string;
+  data: unknown;
+  /** Replaces the pane's state; it is saved with the layout. */
+  setData(data: unknown): void;
+  setTitle(title: string): void;
+  focused: boolean;
+  /** Closes the pane. */
+  close(): void;
+}
+
 /** Everything a plugin may ask of westerm. Stable for the life of the plugin. */
 export interface PluginContext {
   /** reuse: focus the pane this launch opened before in this workspace, if any. */
   openShell(options: OpenShellOptions): void;
   openBrowser(url: string): void;
+  /** Opens a pane the plugin draws (`PluginInstance.PaneView`), beside the focused pane. */
+  openPane(options: OpenPaneOptions): void;
+  /** The folders of the shells in every workspace, once each, at most 32. */
+  folders(): string[];
   /** fetch() under /api/plugins/<id>; `path` starts with "/". */
   fetch(path: string, init?: RequestInit): Promise<Response>;
   /** Read the installed list again (a plugin route answered 404). */
@@ -53,6 +79,8 @@ export interface PluginInstance {
   setPanelOpen(open: boolean): void;
   dispose(): void;
   Panel: ComponentType;
+  /** Draws the plugin's panes; a plugin without panes leaves it out. */
+  PaneView?: ComponentType<PluginPaneProps>;
 }
 
 export interface WestermPlugin {

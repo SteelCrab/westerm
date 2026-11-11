@@ -73,6 +73,8 @@ function fakePlugin(id: string): Fake {
 const ctxFor = (id: string): PluginContext => ({
   openShell: noop,
   openBrowser: noop,
+  openPane: noop,
+  folders: () => [],
   fetch: () => Promise.reject(new Error(`no fetch for ${id}`)),
   refreshInstalled: noop,
   openManager: noop,
@@ -162,7 +164,7 @@ function bar(change: Partial<Parameters<typeof ActivityBar>[0]>) {
       null,
       createElement(ActivityBar, {
         sidebarOpen: false,
-        counts: { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0 },
+        counts: { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0, plugin: 0 },
         onLaunch: noop,
         onToggleSidebar: null,
         onOpenSettings: noop,

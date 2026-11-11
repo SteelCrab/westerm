@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef } from "react";
 import type { LucideIcon } from "lucide-react";
-import { stepIndex } from "../../uiHelpers.ts";
+import { stepIndex } from "../uiHelpers.ts";
 
 export interface MenuItem {
   label: string;

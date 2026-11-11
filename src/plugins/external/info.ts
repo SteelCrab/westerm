@@ -112,14 +112,21 @@ export function readInfo(value: unknown): ExternalInfo | null {
 }
 
 /** `GET /api/plugins`: every installed id, and the external plugins of the right shape. */
-export function parsePluginList(json: unknown): { installed: string[]; external: ExternalInfo[]; shellPanes: boolean } {
-  if (!isObject(json)) return { installed: [], external: [], shellPanes: false };
+export function parsePluginList(json: unknown): {
+  installed: string[];
+  external: ExternalInfo[];
+  shellPanes: boolean;
+  /** The built-in plugins of the server's build; null from a server that does not say. */
+  builtin: string[] | null;
+} {
+  if (!isObject(json)) return { installed: [], external: [], shellPanes: false, builtin: null };
   const installed = Array.isArray(json.installed) ? json.installed.filter((id): id is string => typeof id === "string") : [];
   const external = Array.isArray(json.external)
     ? json.external.map(readInfo).filter((info): info is ExternalInfo => info !== null)
     : [];
+  const builtin = Array.isArray(json.builtin) ? json.builtin.filter((id): id is string => typeof id === "string") : null;
   // Whether the server's login shell can take plugin panes (`openShell`).
-  return { installed, external, shellPanes: json.shellPanes === true };
+  return { installed, external, shellPanes: json.shellPanes === true, builtin };
 }
 
 /** The plugin's name and description in `locale`, or its own default text. */

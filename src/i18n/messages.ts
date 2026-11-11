@@ -32,7 +32,12 @@ const en = {
     editor: { name: "terminal-code", label: "terminal-code", hint: "Open the focused shell's folder in VS Code", paletteTitle: "New terminal-code" },
     ssh: { name: "SSH", label: "SSH", hint: "Connect to a host from ~/.ssh/config", paletteTitle: "Connect over SSH…" },
     docs: { name: "Docs", label: "Docs", hint: "Read and edit the Markdown files of the focused shell's folder", paletteTitle: "New docs pane" },
+    plugin: { name: "Plugin", label: "Plugin", hint: "A plugin's view", paletteTitle: "Plugin" },
   } as Record<PaneKind, KindText>,
+  pluginPane: {
+    missing: (name: string) => `This pane needs the ${name} plugin`,
+    close: "Close",
+  },
   docs: {
     root: "Root folder",
     rootHint: "Open another folder",
@@ -590,6 +595,11 @@ const ko: Messages = {
     editor: { name: "terminal-code", label: "terminal-code", hint: "포커스된 셸의 폴더를 VS Code로 엽니다", paletteTitle: "새 terminal-code" },
     ssh: { name: "SSH", label: "SSH", hint: "~/.ssh/config의 호스트에 접속합니다", paletteTitle: "SSH 연결…" },
     docs: { name: "문서", label: "문서", hint: "포커스된 셸 폴더의 Markdown 문서를 보고 고칩니다", paletteTitle: "새 문서 패널" },
+    plugin: { name: "플러그인", label: "플러그인", hint: "플러그인 화면", paletteTitle: "플러그인" },
+  },
+  pluginPane: {
+    missing: (name: string) => `이 패널을 보려면 ${name} 플러그인이 필요합니다`,
+    close: "닫기",
   },
   docs: {
     root: "루트 폴더",
@@ -1118,6 +1128,11 @@ const ja: Messages = {
     editor: { name: "terminal-code", label: "terminal-code", hint: "フォーカス中のシェルのフォルダを VS Code で開きます", paletteTitle: "新しい terminal-code" },
     ssh: { name: "SSH", label: "SSH", hint: "~/.ssh/config のホストに接続します", paletteTitle: "SSH で接続…" },
     docs: { name: "ドキュメント", label: "ドキュメント", hint: "フォーカス中のシェルのフォルダにある Markdown を表示・編集します", paletteTitle: "新しいドキュメントペイン" },
+    plugin: { name: "プラグイン", label: "プラグイン", hint: "プラグインの画面", paletteTitle: "プラグイン" },
+  },
+  pluginPane: {
+    missing: (name: string) => `このペインには ${name} プラグインが必要です`,
+    close: "閉じる",
   },
   docs: {
     root: "ルートフォルダ",
@@ -1646,6 +1661,11 @@ const zh: Messages = {
     editor: { name: "terminal-code", label: "terminal-code", hint: "用 VS Code 打开当前 Shell 所在的文件夹", paletteTitle: "新建 terminal-code" },
     ssh: { name: "SSH", label: "SSH", hint: "连接 ~/.ssh/config 中的主机", paletteTitle: "通过 SSH 连接…" },
     docs: { name: "文档", label: "文档", hint: "查看和编辑当前 Shell 所在文件夹中的 Markdown 文件", paletteTitle: "新建文档面板" },
+    plugin: { name: "插件", label: "插件", hint: "插件的视图", paletteTitle: "插件" },
+  },
+  pluginPane: {
+    missing: (name: string) => `此面板需要 ${name} 插件`,
+    close: "关闭",
   },
   docs: {
     root: "根文件夹",

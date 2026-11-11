@@ -48,6 +48,29 @@ export interface SavedDocs {
   mode: DocsMode;
 }
 
+/**
+ * A plugin pane: no process, only what its plugin draws. Like docs panes,
+ * plugin panes live outside `sessions` and `paneIds`, so a version from before
+ * them still reads the file and lays such a tab out as a grid.
+ */
+export interface SavedPluginPane {
+  id: string;
+  title: string;
+  /** User-set name, or null. */
+  name: string | null;
+  /** The plugin that draws the pane. */
+  plugin: string;
+  /** Which of the plugin's views. */
+  view: string;
+  /** A pane with the same plugin and key is focused instead of opened again. */
+  reuseKey: string | null;
+  /** The plugin's own state for the pane, as JSON. */
+  data: unknown;
+}
+
+/** The longest `JSON.stringify(data)` of a saved plugin pane. */
+export const PLUGIN_PANE_DATA_MAX = 16 * 1024;
+
 export interface SavedTab {
   id: string;
   /** The workspace that shows this tab. */
@@ -58,6 +81,8 @@ export interface SavedTab {
   paneIds: string[];
   /** The tab's docs panes in reading order. Files from before docs panes have none. */
   docIds?: string[];
+  /** The tab's plugin panes in reading order. Files from before plugin panes have none. */
+  pluginIds?: string[];
   /** Split tree of all the tab's panes; files from before split layouts have none and use grid order. */
   layout?: LayoutNode | null;
   focusedId: string | null;
@@ -124,6 +149,8 @@ export interface SavedDashboard {
   sessions: SavedSession[];
   /** Docs panes; a parsed file always has the list. */
   docs?: SavedDocs[];
+  /** Plugin panes; a parsed file always has the list. */
+  pluginPanes?: SavedPluginPane[];
   workspaces: SavedWorkspace[];
   activeWorkspaceId: string;
   /**
@@ -183,6 +210,33 @@ function parseDocs(value: unknown, sessionIds: ReadonlySet<string>): Map<string,
   return docs;
 }
 
+const MAX_PLUGIN_PANES = 128;
+const MAX_REUSE_KEY = 512;
+/** A built-in plugin id, or an external one (`author.name`). */
+const PLUGIN_ID = /^(?:[a-z][a-z0-9-]{0,31}|[a-z0-9-]{1,32}\.[a-z0-9-]{1,32})$/;
+const PLUGIN_VIEW = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** The file's plugin panes by id, or an empty map when any entry is broken. */
+function parsePluginPanes(value: unknown, takenIds: ReadonlySet<string>): Map<string, SavedPluginPane> {
+  const panes = new Map<string, SavedPluginPane>();
+  if (!Array.isArray(value) || value.length > MAX_PLUGIN_PANES) return panes;
+  for (const item of value as unknown[]) {
+    if (typeof item !== "object" || item === null) return new Map();
+    const raw = item as Record<string, unknown>;
+    const title = text(raw.title);
+    const name = raw.name == null ? null : text(raw.name);
+    const reuseKey = raw.reuseKey == null ? null : text(raw.reuseKey, MAX_REUSE_KEY);
+    const data = JSON.stringify(raw.data ?? null);
+    if (!isId(raw.id) || panes.has(raw.id) || takenIds.has(raw.id)) return new Map();
+    if (title === null || (raw.name != null && name === null) || (raw.reuseKey != null && reuseKey === null)) return new Map();
+    if (typeof raw.plugin !== "string" || !PLUGIN_ID.test(raw.plugin)) return new Map();
+    if (typeof raw.view !== "string" || !PLUGIN_VIEW.test(raw.view)) return new Map();
+    if (data.length > PLUGIN_PANE_DATA_MAX) return new Map();
+    panes.set(raw.id, { id: raw.id, title, name, plugin: raw.plugin, view: raw.view, reuseKey, data: raw.data ?? null });
+  }
+  return panes;
+}
+
 /**
  * Validates untrusted JSON into a consistent dashboard, or null. Every pane id
  * must name a session, every session must sit in exactly one tab, and focus
@@ -218,6 +272,8 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
 
   const docsById = parseDocs(raw.docs, sessionIds);
   const placedDocs = new Set<string>();
+  const pluginsById = parsePluginPanes(raw.pluginPanes, new Set([...sessionIds, ...docsById.keys()]));
+  const placedPlugins = new Set<string>();
 
   const tabs: Omit<SavedTab, "workspaceId">[] = [];
   /** Each tab's `workspaceId` as written, still unchecked. */
@@ -236,7 +292,8 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
     }
     // Docs ids that do not add up cost this tab its docs panes, not the file.
     const docIds = parseDocIds(tab.docIds, docsById, placedDocs);
-    const allIds = [...paneIds, ...docIds];
+    const pluginIds = parseDocIds(tab.pluginIds, pluginsById, placedPlugins);
+    const allIds = [...paneIds, ...docIds, ...pluginIds];
     const inTab = (id: unknown): string | null => (isId(id) && allIds.includes(id) ? id : null);
     const name = tab.name == null ? null : text(tab.name);
     if (tab.name != null && name === null) return null;
@@ -253,6 +310,7 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
       name,
       paneIds: order.filter((id) => sessionIds.has(id)),
       docIds: order.filter((id) => docsById.has(id)),
+      pluginIds: order.filter((id) => pluginsById.has(id)),
       layout,
       focusedId: inTab(tab.focusedId),
       maximizedId: inTab(tab.maximizedId),
@@ -268,13 +326,15 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
   const legacy = legacyRemoteIds.length > 0 ? { legacyRemoteIds } : {};
   // A docs pane in no tab is dropped.
   const docs = [...docsById.values()].filter((item) => placedDocs.has(item.id));
-  if (grouped) return { version: 1, activeTabId, sessions, docs, ...grouped, ...legacy };
+  const pluginPanes = [...pluginsById.values()].filter((item) => placedPlugins.has(item.id));
+  if (grouped) return { version: 1, activeTabId, sessions, docs, pluginPanes, ...grouped, ...legacy };
   return {
     version: 1,
     activeTabId,
     tabs: tabs.map((tab) => ({ ...tab, workspaceId: DEFAULT_WORKSPACE_ID })),
     sessions,
     docs,
+    pluginPanes,
     workspaces: [
       { id: DEFAULT_WORKSPACE_ID, name: null, activeTabId, icon: DEFAULT_WORKSPACE_ICON, color: positionColor(0) },
     ],
@@ -283,8 +343,8 @@ export function parseSavedDashboard(value: unknown): SavedDashboard | null {
   };
 }
 
-/** A tab's docs panes, each known and in no other tab; none when any is not. Marks them placed. */
-function parseDocIds(value: unknown, docs: ReadonlyMap<string, SavedDocs>, placed: Set<string>): string[] {
+/** A tab's docs or plugin panes, each known and in no other tab; none when any is not. Marks them placed. */
+function parseDocIds(value: unknown, docs: ReadonlyMap<string, unknown>, placed: Set<string>): string[] {
   if (!Array.isArray(value)) return [];
   const ids = value as unknown[];
   const fits = ids.every((id, index) => isId(id) && docs.has(id) && !placed.has(id) && ids.indexOf(id) === index);

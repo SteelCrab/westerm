@@ -20,11 +20,13 @@ import { UpdateButton, updateShown } from "./components/UpdateButton.tsx";
 import { useI18n } from "./i18n/index.tsx";
 import { RemoteWindowIcon } from "./kinds.tsx";
 import { closesManager, externalOpensPanel } from "./plugins/installed.ts";
+import { PaneHostContext } from "./plugins/paneHost.ts";
 import type { PluginButton } from "./plugins/PluginBar.tsx";
 import { PluginManager } from "./plugins/PluginManager.tsx";
 import { BUILTIN_PLUGINS } from "./plugins/registry.ts";
 import type { PluginContext, PluginStatus } from "./plugins/types.ts";
 import { usePlugins } from "./plugins/usePlugins.ts";
+import { planOpenPane, pluginFolders } from "./pluginPanes.ts";
 import {
   buildCommands,
   IS_MAC,
@@ -245,6 +247,11 @@ export function App({ tunnelPage = false }: AppProps = {}) {
         open("browser", url);
         closeDrawer();
       },
+      openPane: (options) => {
+        dispatch(planOpenPane(stateRef.current, id, options, newId("s"), layerAspect()));
+        closeDrawer();
+      },
+      folders: () => pluginFolders(stateRef.current),
       fetch: (path, init) => fetch(`/api/plugins/${id}${path}`, init),
       refreshInstalled: () => refreshPlugins.current(),
       openManager: () => setManager({ selected: id }),
@@ -253,6 +260,10 @@ export function App({ tunnelPage = false }: AppProps = {}) {
   );
   const plugins = usePlugins(pluginContext, controls.plugins);
   refreshPlugins.current = plugins.refresh;
+  const paneHost = useMemo(
+    () => ({ instances: plugins.instances, registry: plugins.registry }),
+    [plugins.instances, plugins.registry],
+  );
 
   // A new tab starts with a shell, like a terminal app's new tab.
   const newTab = useCallback(() => {
@@ -495,7 +506,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
     [open, openWindow, t, windowsOnly],
   );
 
-  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0 } satisfies Record<PaneKind, number>;
+  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0, plugin: 0 } satisfies Record<PaneKind, number>;
   for (const session of state.sessions) counts[session.kind] += 1;
 
   // Top: the workspace menu and the tab bar; the sidebar slot opens only for
@@ -737,6 +748,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
           <RemoteBanner target={REMOTE_TARGET} stage={link.stage} />
         )}
         {font && loaded ? (
+          <PaneHostContext.Provider value={paneHost}>
           <PaneLayer
             state={state}
             font={font}
@@ -753,6 +765,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
             narrow={narrow}
             dispatch={dispatch}
           />
+          </PaneHostContext.Provider>
         ) : (
           <div className="workspace-empty">
             <p>{t.app.loadingConfig}</p>

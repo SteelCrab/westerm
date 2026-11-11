@@ -79,6 +79,8 @@ function fakeCtx(answer: (path: string, init?: RequestInit) => Answer = () => ne
   const ctx: PluginContext = {
     openShell: (options) => record.opened.push(options),
     openBrowser: (url) => record.browsed.push(url),
+    openPane: () => {},
+    folders: () => [],
     fetch: (path, init) => {
       record.fetched.push({ path, init });
       return Promise.resolve(answer(path, init));
@@ -353,8 +355,10 @@ test("the plugin list carries external plugins", () => {
   });
   assert.deepEqual(parsed.installed, ["docker", INFO.id]);
   assert.deepEqual(parsed.external, [INFO]);
-  assert.deepEqual(parsePluginList({ installed: ["docker"] }), { installed: ["docker"], external: [], shellPanes: false });
-  assert.deepEqual(parsePluginList(null), { installed: [], external: [], shellPanes: false });
+  assert.deepEqual(parsePluginList({ installed: ["docker"] }), { installed: ["docker"], external: [], shellPanes: false, builtin: null });
+  assert.deepEqual(parsePluginList(null), { installed: [], external: [], shellPanes: false, builtin: null });
+  // The built-in plugins of the server's build.
+  assert.deepEqual(parsePluginList({ installed: [], builtin: ["docker", 7] }).builtin, ["docker"]);
   // Plugin panes only when the server says its shell takes them.
   assert.equal(parsePluginList({ installed: [], external: [], shellPanes: true }).shellPanes, true);
   assert.equal(parsePluginList({ installed: [], external: [], shellPanes: "yes" }).shellPanes, false);
@@ -635,7 +639,8 @@ test("a new version restarts the instance", () => {
 
 test("toggling a built-in plugin keeps the external plugins installed", async () => {
   const puts: unknown[] = [];
-  let list: unknown = { installed: [INFO.id], external: [INFO] };
+  // A server whose build has Docker only.
+  let list: unknown = { installed: [INFO.id], external: [INFO], builtin: ["docker"] };
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (_url: string, init?: RequestInit) => {
     if (init?.method === "PUT") {
@@ -679,7 +684,7 @@ test("toggling a built-in plugin keeps the external plugins installed", async ()
     // The same files keep the same plugin object; a new version makes a new one.
     await act(async () => plugins!.refresh());
     assert.equal(plugins!.registry[1], external);
-    list = { installed: [INFO.id], external: [{ ...INFO, version: "0.4.0" }] };
+    list = { installed: [INFO.id], external: [{ ...INFO, version: "0.4.0" }], builtin: ["docker"] };
     await act(async () => plugins!.refresh());
     assert.notEqual(plugins!.registry[1], external);
     assert.equal(plugins!.registry[1].version, "0.4.0");

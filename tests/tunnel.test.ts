@@ -220,7 +220,7 @@ function bar(change: Record<string, unknown>): string {
       null,
       createElement(ActivityBar, {
         sidebarOpen: false,
-        counts: { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0 },
+        counts: { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0, plugin: 0 },
         onLaunch: noop,
         onToggleSidebar: null,
         onOpenSettings: noop,
