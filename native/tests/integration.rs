@@ -645,8 +645,12 @@ async fn an_external_launch_types_the_quoted_command() {
     let (mut pane, ready) = attach_query(state.path(), &query).await;
     assert_eq!(ready["mode"], "new");
     // `env` finds the fake on PATH; every word is quoted.
-    pane.wait_for(r"'env' '--' 'kubectl' 'logs' 'it'\''s'").await;
     pane.wait_for("FAKE_KUBECTL logs it's").await;
+    // A long prompt (a CI machine's host name) makes the shell wrap the typed
+    // line, and readline marks each wrap with " \r". Without the marks the
+    // line is whole.
+    let typed = pane.output.replace(" \r", "");
+    assert!(typed.contains(r"'env' '--' 'kubectl' 'logs' 'it'\''s'"), "{typed:?}");
     assert_eq!(pane.output.matches("FAKE_KUBECTL").count(), 1, "typed once, not twice");
     pane.detach().await;
     stop_host(state.path(), host).await;
