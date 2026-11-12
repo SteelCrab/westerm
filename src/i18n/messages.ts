@@ -179,6 +179,14 @@ const en = {
     splitVertical: "Resize side-by-side panes",
     splitHorizontal: "Resize stacked panes",
     splitHint: "Drag to resize · double-click to split evenly",
+    image: {
+      drop: "Drop the image to send its path to this pane",
+      sending: "Sending the image…",
+      tooLarge: "The image is larger than 10 MB",
+      notImage: "Only PNG, JPEG, GIF, and WebP images can be sent",
+      failed: "Could not send the image",
+      unsupported: "Images can be sent to shell panes only",
+    },
   },
   notice: {
     reattached: "reconnected",
@@ -667,6 +675,14 @@ const ko: Messages = {
     splitVertical: "좌우 패널 크기 조절",
     splitHorizontal: "위아래 패널 크기 조절",
     splitHint: "끌어서 크기 조절 · 더블클릭하면 균등 분할",
+    image: {
+      drop: "이미지를 놓으면 이 패널에 경로를 붙여넣습니다",
+      sending: "이미지를 보내는 중…",
+      tooLarge: "이미지가 10MB보다 큽니다",
+      notImage: "PNG, JPEG, GIF, WebP 이미지만 보낼 수 있습니다",
+      failed: "이미지를 보내지 못했습니다",
+      unsupported: "이미지는 셸 패널에만 보낼 수 있습니다",
+    },
   },
   notice: {
     reattached: "다시 연결됨",
@@ -1139,6 +1155,14 @@ const ja: Messages = {
     splitVertical: "左右のパネルのサイズを調整",
     splitHorizontal: "上下のパネルのサイズを調整",
     splitHint: "ドラッグでサイズを調整 · ダブルクリックで均等に分割",
+    image: {
+      drop: "画像をドロップすると、このパネルにパスを貼り付けます",
+      sending: "画像を送信中…",
+      tooLarge: "画像が 10 MB を超えています",
+      notImage: "送信できるのは PNG、JPEG、GIF、WebP の画像だけです",
+      failed: "画像を送信できませんでした",
+      unsupported: "画像を送信できるのはシェルパネルだけです",
+    },
   },
   notice: {
     reattached: "再接続済み",
@@ -1611,6 +1635,14 @@ const zh: Messages = {
     splitVertical: "调整左右面板大小",
     splitHorizontal: "调整上下面板大小",
     splitHint: "拖动调整大小 · 双击平均分配",
+    image: {
+      drop: "松开即可将图片路径粘贴到此面板",
+      sending: "正在发送图片…",
+      tooLarge: "图片超过 10 MB",
+      notImage: "只能发送 PNG、JPEG、GIF 和 WebP 图片",
+      failed: "无法发送图片",
+      unsupported: "图片只能发送到 Shell 面板",
+    },
   },
   notice: {
     reattached: "已重新连接",

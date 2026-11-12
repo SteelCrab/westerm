@@ -32,6 +32,13 @@ const HOST_SOURCES: &[&str] = &[
 ];
 
 fn main() {
+    // Windows (MSVC): the Visual C++ runtime goes into the executable. A
+    // clean Windows has no VCRUNTIME140.dll, so westerm.exe would stop with a
+    // "DLL was not found" dialog. The Universal CRT stays a DLL: it is part
+    // of Windows. It does nothing for other targets. The desktop app's
+    // executable gets the same from tauri-build.
+    static_vcruntime::metabuild();
+
     let mut hasher = DefaultHasher::new();
     for file in HOST_SOURCES {
         println!("cargo:rerun-if-changed={file}");

@@ -6,7 +6,7 @@ keywords = ["terminal", "web", "pty", "session"]
 categories = ["command-line-utilities"]
 publish = ["crates-io"]
 include = ["/src/**", "/tests/**", "/build.rs", "/README.md", "/LICENSE", "/web-dist/**"]
-version = "0.4.3"
+version = "0.5.0"
 license = "MIT"
 repository = "https://github.com/SteelCrab/westerm"
 edition = "2024"
@@ -25,7 +25,8 @@ futures-util = "0.3.34"
 # Settings lists the fonts installed on this computer. Both are pure Rust:
 # fontdb finds the font files and names, ttf-parser reads widths and glyphs.
 fontdb = "0.24.0"
-# The tunnel's access code and cookie tokens come from the OS random source.
+# The tunnel's access code, cookie tokens, and the names of saved pictures
+# come from the OS random source.
 getrandom = "0.4"
 # The docs pane lists Markdown files the way git sees them (.gitignore).
 ignore = "0.4"
@@ -74,6 +75,11 @@ tower = { version = "0.5", features = ["util"] }
 [[test]]
 name = "tunnel"
 harness = false
+
+[build-dependencies]
+# Windows (MSVC): links the Visual C++ runtime into westerm.exe. A clean
+# Windows has no VCRUNTIME140.dll, and westerm.exe would not start there.
+static_vcruntime = "3.0"
 
 [profile.release]
 lto = "thin"

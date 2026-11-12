@@ -4,15 +4,33 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-12
+
 ### Added
 
 - Git sidebar: inspect the current repository, review diffs and recent commits (full messages, changed files, and per-file patches), stage or unstage files, and commit staged changes.
 - Cargo packaging for `westerm`: the crate includes the built web UI and license, and can be installed without Node.js. A separate CI check installs the packaged crate and verifies its embedded web files on macOS, Linux, and Windows. Windows Cargo installs use the system ConPTY; the bundled ConPTY files remain available through npm and the GitHub releases.
 - Tunnel: the cloud button in the activity bar starts a Cloudflare Quick Tunnel and shows its `https://<name>.trycloudflare.com` address, a QR code, and a 6-digit access code. Another device's browser opens the address, enters the code, and uses the same workspaces, tabs, and shells. Wrong codes lock logins and 20 stop the tunnel; **Stop tunnel** ends every device's access. The computer stays awake while the tunnel is on, and a tunnel with no device for 12 hours stops by itself. It needs `cloudflared`; the panel shows the install command when it is missing.
 
+### Changed
+
+- This version changes the PTY host, so open shells restart once when it starts (their screens are restored).
+
 ### Fixed
 
 - Windows: the agents sidebar lists each shell under its folder and shows the AI agent it runs. Before, every shell was under "Unknown folder" and no agent was found. Agents on Windows now also show their status on tabs and panes, and resume after a restart, as on macOS and Linux. PowerShell does not move its process on `cd`, so a shell with no agent stays under the folder it started in.
+
+## [0.4.5] - 2026-11-11
+
+### Fixed
+
+- Windows: `westerm.exe` did not start on a Windows without the Visual C++ runtime. It stopped with "VCRUNTIME140.dll was not found". This affected the desktop app (it runs `westerm.exe`), the install script, the npm package, and the archive. The runtime is now inside `westerm.exe`.
+
+## [0.4.4] - 2026-11-11
+
+### Added
+
+- Images for AI agents: paste an image (Cmd/Ctrl+V) or drop image files on a shell pane, and Claude Code, Codex, and other agent CLIs get them as attachments. westerm saves each image (PNG, JPEG, GIF, or WebP, up to 10 MB) in its state directory on the computer that runs the shell and pastes the file's path, as a native terminal does for a dropped file. It works in remote windows too. Saved images are deleted after 7 days.
 
 ## [0.4.3] - 2026-11-10
 
@@ -165,7 +183,10 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/SteelCrab/westerm/compare/v0.4.5...v0.5.0
+[0.4.5]: https://github.com/SteelCrab/westerm/compare/v0.4.4...v0.4.5
+[0.4.4]: https://github.com/SteelCrab/westerm/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/SteelCrab/westerm/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/SteelCrab/westerm/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/SteelCrab/westerm/compare/v0.4.0...v0.4.1
