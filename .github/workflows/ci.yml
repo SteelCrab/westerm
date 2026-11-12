@@ -66,6 +66,12 @@ jobs:
       # --locked: Cargo.lock must already match Cargo.toml.
       - run: cargo clippy --locked --all-targets --manifest-path native/Cargo.toml -- -D warnings
       - run: cargo test --locked --manifest-path native/Cargo.toml
+      # A clean Windows has no Visual C++ runtime; westerm.exe must not need it.
+      - name: No Visual C++ runtime (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cargo build --locked --manifest-path native/Cargo.toml
+          node scripts/check-windows-runtime.mjs native/target/debug/westerm.exe
       # The release build must succeed too (CONTRIBUTING.md); one system is enough.
       - name: Release build
         if: matrix.os == 'ubuntu-latest'
