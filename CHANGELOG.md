@@ -6,6 +6,7 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ### Added
 
+- Remote windows: hole punching. When the server sits behind a router that does not forward UDP, both ends now open a UDP path themselves and the window connects over QUIC instead of the SSH tunnel. Nothing needs to be set up. The header shows "QUIC · hole punching", and the tooltip of "SSH tunnel" says why QUIC was not used. By default, both ends ask two public STUN servers for their public address; set `WESTERM_REMOTE_STUN` to use other servers, or `WESTERM_REMOTE_STUN=off` to turn this off.
 - Agents sidebar: pull requests and worktrees. A folder in a Git repository shows the open pull request of its branch: the number, and the state of its checks (the count of failed checks, a ring while they run, a check mark when all passed). A press opens the pull request in a browser pane. A repository with more than one worktree shows as one entry: its folders sit under it, each named by its branch, and the worktrees without a shell are in a folded list, where an agent can start in one. Pull requests come from GitHub's `gh`; without it, or signed out, the sidebar shows worktrees only. It works on macOS, Linux, and Windows, in remote windows, and through the tunnel.
 
 ## [0.5.0] - 2026-11-12

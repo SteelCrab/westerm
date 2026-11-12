@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONFIG_PATH, isPermanentFailure, isSessionKind, SSH_HOSTS_PATH, WS_PATH } from "../shared/protocol.ts";
 import { parseSavedDashboard, WORKSPACE_PATH } from "../shared/workspace-file.ts";
+import { stageText, viaText } from "../src/components/RemoteConnect.tsx";
 import { MESSAGES } from "../src/i18n/messages.ts";
 import { remoteWindowCommands, sshCommands } from "../src/paletteCommands.tsx";
 import type { AppMessage } from "../src/appBridge.ts";
@@ -274,4 +275,28 @@ test("the link coming back retries the disconnected panes at once", () => {
 test("the saved file leaves out the parse-only legacy ids", () => {
   const state = dashboardReducer(createDashboard("w1", "t1"), { type: "open", id: "sa", kind: "shell" });
   assert.equal("legacyRemoteIds" in toSaved(state), false);
+});
+
+test("the badge tells a punched QUIC link from a direct one", () => {
+  const en = MESSAGES.en;
+  const ko = MESSAGES.ko;
+  const direct = { stage: "connected", via: "quic", killOnLogout: false } as const;
+  const punched = { ...direct, path: "punched" } as const;
+  const tunnel = { stage: "connected", via: "tunnel", killOnLogout: false, note: "QUIC: no answer; hole punching: no STUN answer on the server" } as const;
+  assert.equal(viaText(direct, en), "QUIC");
+  assert.equal(viaText(punched, en), "QUIC · hole punching");
+  assert.equal(viaText(punched, ko), "QUIC · 홀 펀칭");
+  assert.equal(viaText(punched, MESSAGES.ja), "QUIC · ホールパンチング");
+  assert.equal(viaText(punched, MESSAGES.zh), "QUIC · 打洞");
+  assert.equal(viaText(tunnel, ko), "SSH 터널");
+  // The tooltip adds why the tunnel is in use.
+  assert.equal(stageText(tunnel, en), "SSH tunnel · QUIC: no answer; hole punching: no STUN answer on the server");
+  assert.equal(stageText(punched, en), "QUIC · hole punching");
+  assert.equal(stageText({ ...punched, killOnLogout: true }, en), `QUIC · hole punching · ${en.remote.killOnLogout}`);
+});
+
+test("the link keeps how it got through", () => {
+  const state = linkReducer(INITIAL_LINK, { type: "remote", stage: "connected", via: "quic", killOnLogout: false, path: "punched" });
+  assert.deepEqual(state.stage, { stage: "connected", via: "quic", killOnLogout: false, path: "punched" });
+  assert.equal(state.connected, true);
 });

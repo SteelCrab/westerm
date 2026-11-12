@@ -465,7 +465,7 @@ A window for a Linux server: its tabs, workspaces, and shells live on the server
 
 - Open it from the activity bar (the server icon) or the command palette: pick a host from `~/.ssh/config` under "Open in a new window", or type `user@host`.
 - In a browser, it opens a new browser window. The browser may block it as a popup: allow popups for `127.0.0.1`. The window's address is `/?remote=<target>` on the dashboard, for example `http://127.0.0.1:4317/?remote=prod`. In the desktop app, it opens an app window; the window of each server remembers its size and position. Opening the same server again brings its window to the front.
-- The window title is `westerm — <target>`. The header shows the server name and how the window is connected: `QUIC`, or `SSH tunnel` when UDP does not get through.
+- The window title is `westerm — <target>`. The header shows the server name and how the window is connected: `QUIC`, `QUIC · hole punching` (the server's UDP port is not forwarded, see [Hole punching](#hole-punching)), or `SSH tunnel` when UDP does not get through. Hover over `SSH tunnel` to see why QUIC was not used.
 - The first time, a connecting screen shows the stages: checking the server, installing westerm, starting, connecting. westerm copies the same version of itself to `~/.local/bin/westerm` on the server over SSH and starts it there. The server needs no internet access.
 - Tabs, workspaces, and layout are saved on the server. Shells, terminal-browser, and terminal-code run on the server, started by your login shell there. Programs are found on the PATH of your interactive login shell on the server, so folders that `~/.zshrc` or a similar file adds (such as `~/.local/bin`) count. This applies once westerm next starts the server's host, for example after `westerm stop` there. Plain SSH panes and remote browsers opened inside a remote window run from the server too.
 - If terminal-browser or terminal-code is not installed on the server, its pane says so and shows the install command. Run the command on the server (for example in a shell pane of this window), then press **Restart**. westerm does not install it.
@@ -482,8 +482,19 @@ A window for a Linux server: its tabs, workspaces, and shells live on the server
 | Server | Linux on x86_64 or aarch64 |
 | Login | An SSH key or ssh-agent. Password and one-time-code logins are not supported. |
 | Host key | Already in `~/.ssh/known_hosts`. For a new server, connect once with a plain SSH pane and accept its key. |
-| Firewall | UDP 4317 open on the server (4318–4326 when another user's westerm holds 4317). Without it, westerm falls back to an SSH tunnel. |
+| Firewall | UDP 4317 open on the server (4318–4326 when another user's westerm holds 4317) gives a direct QUIC link. Without it, westerm tries hole punching, then an SSH tunnel. |
 | macOS, server on your LAN | Local Network access for the app that runs westerm: your terminal app, or the westerm app (System Settings ▸ Privacy & Security ▸ Local Network). Without it, macOS blocks UDP to local addresses and westerm uses the SSH tunnel. Servers on the internet do not need it. |
+
+### Hole punching
+
+- The server may sit behind a router that does not forward UDP. Then both ends send each other small UDP packets, and the routers open a path. westerm connects over QUIC on that path instead of the SSH tunnel. There is nothing to set up.
+- By default, both ends ask two public STUN servers for their public address: `stun.l.google.com:19302` and `stun.cloudflare.com:3478`. Those servers see the public IP of this computer and of the server. No terminal content, key, or session goes to them.
+- The two addresses are exchanged over the SSH connection that sets up the window.
+- westerm tries direct QUIC and the punched path together. Direct QUIC wins when both work. If neither works, westerm uses the SSH tunnel as before.
+- The login is the same as for direct QUIC: TLS 1.3 with a certificate on both sides, and the keys in `authorized_clients`.
+- It does not work behind a network that uses another port for each destination (a symmetric NAT), or where UDP is blocked. The window then uses the SSH tunnel.
+- A punched link does not survive sleep or a network change. The window sets up a new one over SSH. The shells keep running on the server.
+- To turn it off, set `WESTERM_REMOTE_STUN=off` on this computer. On a company network, check the network policy first: the STUN requests go to the public internet.
 
 ### Updating a server
 
@@ -500,7 +511,8 @@ A window for a Linux server: its tabs, workspaces, and shells live on the server
 
 | Variable | Where | Effect |
 |---|---|---|
-| `WESTERM_REMOTE_TRANSPORT` | this computer | `quic` or `tunnel`: use only that way. |
+| `WESTERM_REMOTE_TRANSPORT` | this computer | `quic` (direct or hole punched, never the tunnel), `punch` (hole punching only), or `tunnel`: use only that way. |
+| `WESTERM_REMOTE_STUN` | this computer | `off`: no STUN and no hole punching. Or up to four `host:port` STUN servers, comma separated; the server uses the same list. A value westerm cannot read also means off. |
 | `WESTERM_REMOTE_BINARY_DIR` | this computer | A folder with `westerm-<target>` Linux builds to install, for source builds. |
 | `WESTERM_RELEASES_URL` | this computer | Another copy of the GitHub releases, as for `install.sh`. |
 | `WESTERM_GATE_PORT` | the server | The gate's UDP port; `0` picks any free port. |

@@ -7,9 +7,11 @@ use crate::protocol::RemoteFailure;
 
 pub mod binary;
 pub mod manager;
+pub mod punch;
 pub mod quic;
 pub mod records;
 pub mod ssh;
+pub mod stage;
 #[cfg(unix)]
 pub mod tunnel;
 

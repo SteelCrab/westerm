@@ -23,7 +23,7 @@ Remote window (the same UI, opened with ?remote=<target>)
    ▼
 Local dashboard    westerm            keeps one link per server
    │  setup:  ssh <host> 'westerm remote-setup'  (install, start, exchange certificates)
-   │  link:   QUIC, UDP 4317 (or an ssh -L tunnel when UDP is blocked); one stream per request
+   │  link:   QUIC, UDP 4317 or a hole punched UDP path (or an ssh -L tunnel when UDP is blocked); one stream per request
    ▼
 Remote gate        westerm gate       on the Linux server; checks the client's certificate
    │  every authenticated stream is joined to the Unix socket dashboard.sock
@@ -54,8 +54,8 @@ PTY host on the server ─ shells, terminal-browser, terminal-code
 | `native/src/spawn.rs` | What a session runs: a login shell on macOS and Linux; PowerShell and argument lists on Windows |
 | `native/src/update.rs` | `westerm update`: finds, downloads, checks, and installs releases |
 | `native/src/i18n.rs` | Text the host writes into terminals (restore notice, errors) in four languages |
-| `native/src/remote/` | Remote window parts both ends share: certificates, the authorized client list, QUIC settings; and the server side: `westerm gate` (`gate.rs`), `westerm remote-dashboard` (`dashboard.rs`), `westerm remote-setup` (`setup.rs`), and the lock, record, and stop code the gate and the remote dashboard share (`daemon.rs`) |
-| `native/src/server/remote/` | The local dashboard's side of remote windows: ssh commands, the Linux build to install, saved connections, QUIC and tunnel links, and the per-server link driver (`manager.rs`) |
+| `native/src/remote/` | Remote window parts both ends share: certificates, the authorized client list, QUIC settings, STUN (`stun.rs`), and the types of hole punching (`punch.rs`); and the server side: `westerm gate` (`gate.rs`), `westerm remote-dashboard` (`dashboard.rs`), `westerm remote-setup` (`setup.rs`), the lock, record, and stop code the gate and the remote dashboard share (`daemon.rs`), and the gate's hole punching sockets (`punch_gate.rs`) |
+| `native/src/server/remote/` | The local dashboard's side of remote windows: ssh commands, the Linux build to install, saved connections, QUIC and tunnel links, hole punching and the race with direct QUIC (`punch.rs`), the stage a window sees (`stage.rs`), and the per-server link driver (`manager.rs`) |
 | `native/src/server/remote_window.rs` | The `/remote/<target>/…` routes: they pass the layout, ssh-hosts, and session requests over the server link |
 | `native/src/server/http1.rs` | Sends and reads one HTTP/1.1 request over a stream; the remote routes and the server dashboard use it |
 | `src/remoteWindow.ts`, `src/useRemoteLink.ts`, `src/components/RemoteConnect.tsx` | The window's side: the target and its URLs, the status stream, and the connecting screen |
@@ -158,7 +158,11 @@ PTY host           as above
   - The page asks the app for remote windows and updates through one Tauri command, `app_request`. A capability (`desktop/capabilities/dashboard.json`) allows it only for `http://127.0.0.1:*`, and the app also checks that the page is the dashboard on its port. The page gets no other Tauri API.
   - The app passes a remote window's target to the dashboard only when it is a valid ssh destination, as the dashboard checks it.
 - The layout file is checked by the server only for size (256 KiB) and basic shape; the UI validates the rest when it loads it.
-- **Remote windows** open a UDP port on the server: the gate. It is the only port westerm opens to a network.
+- **Remote windows** open a UDP port on the server: the gate. It is the only fixed port westerm opens to a network. Hole punching adds short-lived sockets (below).
+  - With hole punching, the gate opens one more UDP socket for each connection. It uses the same TLS settings and takes a connection only from the IP it was asked for. If no connection comes in 10 seconds, it closes the socket.
+  - Punch packets go only to the address that `remote-setup`, started over SSH, gave the gate, and only for up to 10 seconds. At most 8 sockets wait for a connection, and at most 32 are open in all.
+  - The control socket `gate.sock` is 0600.
+  - A forged STUN answer cannot let anyone in: the gate takes only clients with a listed certificate, and the client trusts only the certificate whose fingerprint came over SSH. At worst the connection fails, or a few packets go to a wrong address. A forged answer to this computer's query makes the gate send a few small punch packets there (at most about 50 in 10 seconds, no secret). A forged answer to the gate's query makes this computer send a few QUIC handshake packets there (for up to 4 seconds).
 - **Cloudflare tunnel** opens no port: cloudflared makes outbound connections only, and the tunnel listener is on `127.0.0.1` like the dashboard.
   - The tunnel listener exists only while a tunnel is on. Every request on it is a tunnel request, so no header can skip its checks: the Host must be the tunnel's own name (it has none before cloudflared gives the address), then the path must be on a fixed list, then the API paths need the cookie. Static page files and the login are public; `/api/terminal-config`, `/api/workspace`, `/api/ssh-hosts`, `/ws/session`, `/api/docs/…`, `/api/agents/history`, `/api/agents/worktrees`, and `/api/plugins/git/…` (the only plugin routes) need the cookie; every other `/api/…`, `/ws/…`, and `/remote/…` path is 404, so a new route is closed to the tunnel until it is listed.
   - The dashboard's own Origin checks hold there with the origin `https://<name>.trycloudflare.com`.

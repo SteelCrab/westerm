@@ -8,7 +8,7 @@ import { AgentPanel } from "./components/AgentPanel.tsx";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.tsx";
 import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
 import { PaneLayer } from "./components/PaneLayer.tsx";
-import { RemoteBanner, RemoteConnect, stageText } from "./components/RemoteConnect.tsx";
+import { RemoteBanner, RemoteConnect, stageText, viaText } from "./components/RemoteConnect.tsx";
 import { SessionList } from "./components/SessionList.tsx";
 import { TunnelPanel } from "./components/TunnelPanel.tsx";
 import { isCompact, SidebarResizer } from "./components/SidebarResizer.tsx";
@@ -736,7 +736,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
                   <span className="remote-badge-target">{REMOTE_TARGET}</span>
                   {link.stage?.stage === "connected" && (
                     <>
-                      <span className="remote-badge-via">{t.remote.via[link.stage.via]}</span>
+                      <span className="remote-badge-via">{viaText(link.stage, t)}</span>
                       {link.stage.killOnLogout && (
                         <TriangleAlert size={13} className="remote-badge-warn" role="img" aria-label={t.remote.killOnLogout} />
                       )}

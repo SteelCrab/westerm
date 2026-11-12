@@ -26,6 +26,9 @@ pub struct Record {
     /// older host instead of replacing it.
     #[serde(default)]
     pub declined: Option<String>,
+    /// The last connection came through a punched path: the saved gate does not answer directly.
+    #[serde(default)]
+    pub punched: bool,
 }
 
 /// `h-` + the destination, with every byte outside `[A-Za-z0-9.-]` as `_xx`.
@@ -123,7 +126,18 @@ mod tests {
             fingerprint: "ab".repeat(32),
             version: "westerm 0.2.0 (host rs-1)".into(),
             declined: None,
+            punched: false,
         }
+    }
+
+    #[test]
+    fn old_records_have_no_punched_flag() {
+        let old = r#"{"hostname":"h","port":4317,"fingerprint":"ab","version":"westerm 0.4.3 (host rs-1)","declined":null}"#;
+        let record: Record = serde_json::from_str(old).unwrap();
+        assert!(!record.punched);
+        let dir = tempfile::tempdir().unwrap();
+        save(dir.path(), "prod", &Record { punched: true, ..sample() }).unwrap();
+        assert!(load(dir.path(), "prod").unwrap().punched);
     }
 
     #[test]
