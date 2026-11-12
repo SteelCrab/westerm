@@ -60,9 +60,6 @@ export function AgentPanel(props: AgentPanelProps) {
   const folders = agentFolders(state);
   const elsewhere = elsewhereWaiting(state);
   const agentCount = folders.reduce((count, folder) => count + folder.agents.length, 0);
-  const shells = state.sessions.filter((session) => session.kind === "shell");
-  // No shell reports its folder: the host cannot see agents (Windows).
-  const unsupported = shells.length > 0 && shells.every((session) => session.place === null);
 
   const toggle = (key: string) =>
     setCollapsed((current) => {
@@ -119,7 +116,6 @@ export function AgentPanel(props: AgentPanelProps) {
           ))}
         </ul>
       )}
-      {!compact && unsupported && <p className="agents-platform">{t.agents.platform}</p>}
     </aside>
   );
 }

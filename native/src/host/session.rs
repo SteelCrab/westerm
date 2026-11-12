@@ -681,8 +681,20 @@ impl Session {
         (leader != self.pid).then_some(leader)
     }
 
-    /// ConPTY has no foreground process group.
-    #[cfg(not(unix))]
+    /// ConPTY has no foreground process group: the nearest process below the
+    /// shell that is an AI agent. The agent of the last poll stays while it
+    /// runs, so its command line is not read again.
+    #[cfg(windows)]
+    fn foreground_program(&self) -> Option<u32> {
+        let below = crate::process::below(self.pid);
+        let known = self.foreground.as_ref().filter(|seen| seen.record.is_some() && below.contains(&seen.pid));
+        if let Some(seen) = known {
+            return Some(seen.pid);
+        }
+        below.into_iter().find(|&pid| crate::process::process_args(pid).is_some_and(|argv| agent::identify(&argv).is_some()))
+    }
+
+    #[cfg(not(any(unix, windows)))]
     fn foreground_program(&self) -> Option<u32> {
         None
     }

@@ -9,6 +9,7 @@
   --text-faint: #5d6672;
   --accent: #6aa9ff;
   --accent-soft: rgba(106, 169, 255, 0.14);
+  --accent-halo: rgba(106, 169, 255, 0.22);
   --browser: #58d0a8;
   --browser-soft: rgba(88, 208, 168, 0.14);
   --editor: #a78bfa;
@@ -85,6 +86,7 @@
     --text-faint: #8a929d;
     --accent: #2f6fde;
     --accent-soft: rgba(47, 111, 222, 0.12);
+    --accent-halo: rgba(47, 111, 222, 0.18);
     --browser: #11906a;
     --browser-soft: rgba(17, 144, 106, 0.12);
     --editor: #7c4ddb;
@@ -139,6 +141,7 @@
   --text-faint: #8a929d;
   --accent: #2f6fde;
   --accent-soft: rgba(47, 111, 222, 0.12);
+  --accent-halo: rgba(47, 111, 222, 0.18);
   --browser: #11906a;
   --browser-soft: rgba(17, 144, 106, 0.12);
   --editor: #7c4ddb;
@@ -1480,12 +1483,19 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--pane-bg);
-  transition: border-color 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
+/* A 2px accent line plus a soft halo. The ring is drawn with box-shadow
+   outside the 1px border, so the terminal keeps its size. The 4px spread
+   fills half of the 8px gap and does not reach the next pane. */
 .pane.focused {
-  border-color: var(--border-strong);
-  box-shadow: 0 0 0 1px var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 0 4px var(--accent-halo);
 }
 
 /* A maximized pane covers the grid; the others keep their size underneath so
@@ -2929,15 +2939,6 @@ button {
   padding: 12px 14px;
   color: var(--text-faint);
   font-size: 12px;
-}
-
-.agents-platform {
-  flex: none;
-  margin: 0;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  color: var(--text-faint);
-  font-size: 11px;
 }
 
 /* Icons only: the waiting dot sits on the folder icon, like a session's status dot. */

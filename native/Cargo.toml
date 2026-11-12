@@ -6,7 +6,7 @@ keywords = ["terminal", "web", "pty", "session"]
 categories = ["command-line-utilities"]
 publish = ["crates-io"]
 include = ["/src/**", "/tests/**", "/build.rs", "/README.md", "/LICENSE", "/web-dist/**"]
-version = "0.4.2"
+version = "0.4.3"
 license = "MIT"
 repository = "https://github.com/SteelCrab/westerm"
 edition = "2024"
@@ -22,7 +22,7 @@ plugin-db = ["dep:keyring", "dep:sqlx", "dep:tokio-util", "dep:url"]
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }
 # Kitty graphics payloads that pixel apps send inline.
-base64 = "0.22.1"
+base64 = "0.23.1"
 bytes = "1.12.1"
 # zlib payloads (o=z) from pixel apps, and compressed pixel updates for
 # remote windows. The default backend is pure Rust.
@@ -32,7 +32,7 @@ futures-util = "0.3.34"
 # fontdb finds the font files and names, ttf-parser reads widths and glyphs.
 fontdb = "0.24.0"
 # The tunnel's access code and cookie tokens come from the OS random source.
-getrandom = "0.3"
+getrandom = "0.4"
 # The Databases plugin keeps passwords in the OS keychain. Linux uses the
 # Secret Service over a pure-Rust D-Bus (zbus), so static musl builds work.
 keyring = { version = "3.6", optional = true, default-features = false, features = ["apple-native", "windows-native", "async-secret-service", "async-io", "crypto-rust"] }
@@ -66,7 +66,17 @@ vt100 = "0.18.1"
 core-foundation = "0.10.1"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes", "Win32_System_Power"] }
+# Diagnostics, Threading, and Wdk read the programs in a shell: their
+# command lines, folders, and parents (src/process.rs).
+windows-sys = { version = "0.61.2", features = [
+    "Wdk_System_Threading",
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Pipes",
+    "Win32_System_Power",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 # Router tests send requests without a socket.

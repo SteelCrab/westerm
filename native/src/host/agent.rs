@@ -119,11 +119,19 @@ pub struct Seen {
     pub version: Option<String>,
 }
 
+/// The last part of a path, without the `.exe` of a Windows program.
 fn file_name(path: &str) -> &str {
-    path.rsplit(['/', '\\']).next().unwrap_or(path)
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    // get(): a name may end in a character of several bytes.
+    match name.len().checked_sub(4).and_then(|at| name.get(at..)) {
+        Some(end) if end.eq_ignore_ascii_case(".exe") => &name[..name.len() - 4],
+        _ => name,
+    }
 }
 
 fn named(path: &str) -> Option<AgentKind> {
+    // Windows paths, as npm's launchers write them: `...\npm/node_modules/@openai/codex/bin/codex.js`.
+    let path = &path.replace('\\', "/");
     if path.contains("@anthropic-ai/claude-code/") {
         return Some(AgentKind::Claude);
     }
@@ -524,6 +532,26 @@ mod tests {
         assert_eq!(identify(&argv("/bin/sh /tmp/bin/claude")).unwrap().program.as_deref(), Some("/tmp/bin/claude"));
         for other in ["vim", "node server.js", "cargo test", "claudette", "-zsh"] {
             assert_eq!(identify(&argv(other)), None, "{other}");
+        }
+    }
+
+    #[test]
+    fn finds_agents_in_windows_command_lines() {
+        let words = |words: &[&str]| words.iter().map(|word| (*word).to_owned()).collect::<Vec<_>>();
+        let native = identify(&words(&[r"C:\Users\me\.local\bin\claude.exe", "--model", "opus"]));
+        assert_eq!(native, Some(record(AgentKind::Claude, None, &["--model", "opus"])), "resumes by the name on PATH");
+        assert_eq!(identify(&words(&["codex.EXE"])).map(|r| r.kind), Some(AgentKind::Codex));
+        // npm's PowerShell launcher joins its folder and the script with a `/`.
+        let node = r"C:\Program Files\nodejs\node.exe";
+        let npm = words(&[node, r"C:\Users\me\AppData\Roaming\npm/node_modules/@google/gemini-cli/dist/index.js"]);
+        assert_eq!(identify(&npm), Some(record(AgentKind::Gemini, None, &[])));
+        let npm = words(&[node, r"C:\Users\me\AppData\Roaming\npm\node_modules\@openai\codex\bin\codex.js"]);
+        assert_eq!(identify(&npm), Some(record(AgentKind::Codex, None, &[])));
+        let packaged = r"C:\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe";
+        assert_eq!(identify(&words(&[packaged])), Some(record(AgentKind::Claude, None, &[])));
+        assert_eq!(identify(&words(&[r"C:\Program Files\Git\bin\bash.exe", r"C:\tools\claude"])).map(|r| r.kind), Some(AgentKind::Claude));
+        for other in [&[r"C:\WINDOWS\system32\cmd.exe", "/d", "/c", r"C:\npm\claude.cmd"][..], &["pwsh.exe", "-NoLogo"], &[node, "server.js"], &["é.exe"], &["éaé"], &[".exe"]] {
+            assert_eq!(identify(&words(other)), None, "{other:?}");
         }
     }
 
