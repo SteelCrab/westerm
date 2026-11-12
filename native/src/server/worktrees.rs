@@ -343,16 +343,17 @@ mod tests {
         let text = "worktree /Users/p/westerm\nHEAD b61efac0123456789\nbranch refs/heads/main\n\n\
                     worktree /Users/p/wt/pr-54\nHEAD 389f7650123456789\nbranch refs/heads/dependabot/npm/markdown-it\n\n\
                     worktree /Users/p/wt/loose\nHEAD 5ae5484fffffffff\ndetached\n\n";
+        // Windows writes these paths with `\`: native_path has its own test.
         assert_eq!(
             parse_worktrees(text),
             [
-                Worktree { path: "/Users/p/westerm".into(), branch: Some("main".into()), head: "b61efac".into() },
+                Worktree { path: native_path("/Users/p/westerm"), branch: Some("main".into()), head: "b61efac".into() },
                 Worktree {
-                    path: "/Users/p/wt/pr-54".into(),
+                    path: native_path("/Users/p/wt/pr-54"),
                     branch: Some("dependabot/npm/markdown-it".into()),
                     head: "389f765".into()
                 },
-                Worktree { path: "/Users/p/wt/loose".into(), branch: None, head: "5ae5484".into() },
+                Worktree { path: native_path("/Users/p/wt/loose"), branch: None, head: "5ae5484".into() },
             ]
         );
     }
@@ -364,7 +365,7 @@ mod tests {
                     worktree /srv/kept\nHEAD 2222222bbbbbbb\nbranch refs/heads/kept\nlocked on a usb stick\n";
         assert_eq!(
             parse_worktrees(text),
-            [Worktree { path: "/srv/kept".into(), branch: Some("kept".into()), head: "2222222".into() }]
+            [Worktree { path: native_path("/srv/kept"), branch: Some("kept".into()), head: "2222222".into() }]
         );
         assert_eq!(parse_worktrees(""), []);
     }
