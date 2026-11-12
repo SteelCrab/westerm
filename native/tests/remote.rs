@@ -55,18 +55,35 @@ impl ClientId {
 
 /// Runs `westerm remote-setup` as SSH would, and reads its report.
 fn setup(state: &Path, id: &ClientId, extra: &[&str]) -> serde_json::Value {
+    setup_env(state, id, extra, &[])
+}
+
+/// Like `setup`, with extra environment (the gate it starts inherits it).
+fn setup_env(state: &Path, id: &ClientId, extra: &[&str], env: &[(&str, &str)]) -> serde_json::Value {
+    setup_lines(state, id, extra, env, None)
+}
+
+/// Like `setup_env`, with `second_line` (a punch request) after the fingerprint line.
+fn setup_lines(state: &Path, id: &ClientId, extra: &[&str], env: &[(&str, &str)], second_line: Option<&str>) -> serde_json::Value {
     let mut child = Command::new(BIN)
         .arg("remote-setup")
         .args(extra)
         .env("WESTERM_STATE_DIR", state)
         .env("WESTERM_GATE_PORT", "0")
         .env("SHELL", "/bin/sh")
+        .envs(env.iter().copied())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child.stdin.take().unwrap().write_all(format!("{}\n", id.fingerprint).as_bytes()).unwrap();
+    let mut input = format!("{}\n", id.fingerprint);
+    if let Some(line) = second_line {
+        input.push_str(line);
+        input.push('\n');
+    }
+    // Dropping the handle closes stdin.
+    child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
     let output = child.wait_with_output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "remote-setup failed: {}{stdout}", String::from_utf8_lossy(&output.stderr));
@@ -116,6 +133,11 @@ impl ServerCertVerifier for AnyServer {
 /// A QUIC connection to the gate on `port`, whose certificate must have
 /// `expected` as its fingerprint.
 async fn quic(port: u16, id: &ClientId, expected: &str) -> Result<quinn::Connection, String> {
+    quic_to(([127, 0, 0, 1], port).into(), id, expected).await
+}
+
+/// Like `quic`, to any address.
+async fn quic_to(addr: SocketAddr, id: &ClientId, expected: &str) -> Result<quinn::Connection, String> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let algorithms = provider.signature_verification_algorithms;
     let mut tls = rustls::ClientConfig::builder_with_provider(provider)
@@ -129,7 +151,6 @@ async fn quic(port: u16, id: &ClientId, expected: &str) -> Result<quinn::Connect
     let crypto = quinn::crypto::rustls::QuicClientConfig::try_from(tls).unwrap();
     let mut endpoint = quinn::Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
     endpoint.set_default_client_config(quinn::ClientConfig::new(Arc::new(crypto)));
-    let addr: SocketAddr = ([127, 0, 0, 1], port).into();
     let connecting = endpoint.connect(addr, "westerm").map_err(|e| e.to_string())?;
     let connection = tokio::time::timeout(Duration::from_secs(5), connecting)
         .await
@@ -336,6 +357,272 @@ async fn the_gate_logs_a_stream_the_dashboard_refuses() {
 }
 
 // ---------------------------------------------------------------------------
+// Hole punching: the gate's control socket and its punched sockets.
+
+/// A STUN server on this machine. It answers with the sender's address,
+/// plus `lie` on the port; `silent` ones never answer. Counts requests and
+/// keeps their senders in order.
+struct FakeStun {
+    addr: SocketAddr,
+    hits: Arc<std::sync::atomic::AtomicUsize>,
+    senders: Arc<std::sync::Mutex<Vec<SocketAddr>>>,
+}
+
+impl FakeStun {
+    async fn start(lie: u16, silent: bool) -> Self {
+        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = socket.local_addr().unwrap();
+        let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let senders = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (counter, seen) = (hits.clone(), senders.clone());
+        tokio::spawn(async move {
+            let mut buffer = [0u8; 64];
+            while let Ok((size, from)) = socket.recv_from(&mut buffer).await {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                seen.lock().unwrap().push(from);
+                let SocketAddr::V4(from) = from else { continue };
+                if silent || size != 20 {
+                    continue;
+                }
+                // Built here, not with westerm's code: a success with one XOR-MAPPED-ADDRESS.
+                let mut answer = vec![0x01, 0x01, 0x00, 0x0C, 0x21, 0x12, 0xA4, 0x42];
+                answer.extend_from_slice(&buffer[8..20]);
+                answer.extend_from_slice(&[0x00, 0x20, 0x00, 0x08, 0x00, 0x01]);
+                answer.extend_from_slice(&(from.port().wrapping_add(lie) ^ 0x2112).to_be_bytes());
+                answer.extend_from_slice(&(u32::from(*from.ip()) ^ 0x2112_A442).to_be_bytes());
+                let _ = socket.send_to(&answer, from).await;
+            }
+        });
+        Self { addr, hits, senders }
+    }
+
+    fn server(&self) -> String {
+        self.addr.to_string()
+    }
+
+    fn hits(&self) -> usize {
+        self.hits.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn senders(&self) -> Vec<SocketAddr> {
+        self.senders.lock().unwrap().clone()
+    }
+}
+
+/// Asks the gate of `state` to punch, as remote-setup does: one JSON line each way on gate.sock.
+async fn ask_gate(state: &Path, peer: SocketAddr, stun: &[String]) -> serde_json::Value {
+    let mut socket = tokio::net::UnixStream::connect(state.join("gate.sock")).await.expect("the gate's control socket");
+    let request = serde_json::json!({ "peer": peer.to_string(), "stun": stun });
+    socket.write_all(format!("{request}\n").as_bytes()).await.unwrap();
+    let mut answer = String::new();
+    tokio::time::timeout(Duration::from_secs(5), socket.read_to_string(&mut answer)).await.expect("an answer in time").unwrap();
+    serde_json::from_str(answer.trim()).unwrap()
+}
+
+fn punched_addr(answer: &serde_json::Value) -> SocketAddr {
+    answer["addr"].as_str().unwrap_or_else(|| panic!("a punched address: {answer}")).parse().unwrap()
+}
+
+/// A UDP socket of this test that plays the dashboard's socket A.
+fn peer_socket() -> (std::net::UdpSocket, SocketAddr) {
+    let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let addr = socket.local_addr().unwrap();
+    (socket, addr)
+}
+
+// Multi-thread: `setup_lines` blocks this thread, and FakeStun must answer meanwhile.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_with_a_peer_reports_a_punched_address() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    let stun = FakeStun::start(0, false).await;
+    let (_peer, peer) = peer_socket();
+    let line = serde_json::json!({ "peer": peer.to_string(), "stun": [stun.server()] }).to_string();
+    // The first setup starts the gate; the punch must work in that same run.
+    let report = setup_lines(state.path(), &id, &[], &[], Some(&line));
+    let addr = punched_addr(&report["punch"]);
+    let connection = quic_to(addr, &id, report["fingerprint"].as_str().unwrap()).await.unwrap();
+    let (_pane, ready) = attach(&connection).await;
+    assert_eq!(ready["type"], "ready");
+}
+
+#[tokio::test]
+async fn setup_without_a_peer_reports_no_punch() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let report = setup(state.path(), &ClientId::new(), &[]);
+    assert!(report.get("punch").is_none(), "{report}");
+    let log = std::fs::read_to_string(state.path().join("gate.log")).unwrap();
+    assert!(!log.contains("punch for"), "{log}");
+}
+
+#[tokio::test]
+async fn a_peer_line_that_cannot_be_read_only_skips_the_punch() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    for line in ["garbage", r#"{"peer":"0.0.0.0:1","stun":["127.0.0.1:1"]}"#, r#"{"peer":"[::1]:5000","stun":["127.0.0.1:1"]}"#] {
+        let report = setup_lines(state.path(), &id, &[], &[], Some(line));
+        assert_eq!(report["punch"], serde_json::json!({ "skipped": "error" }), "{line}");
+        assert!(report["port"].as_u64().is_some(), "the rest of the report is there");
+    }
+}
+
+#[tokio::test]
+async fn a_silent_stun_server_costs_setup_at_most_a_second_and_a_half() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    setup(state.path(), &id, &[]); // starts the host, the dashboard and the gate
+    let started = Instant::now();
+    setup(state.path(), &id, &[]);
+    let plain = started.elapsed();
+    let silent = FakeStun::start(0, true).await;
+    let (_peer, peer) = peer_socket();
+    let line = serde_json::json!({ "peer": peer.to_string(), "stun": [silent.server()] }).to_string();
+    let started = Instant::now();
+    let report = setup_lines(state.path(), &id, &[], &[], Some(&line));
+    assert_eq!(report["punch"], serde_json::json!({ "skipped": "noStun" }));
+    assert!(started.elapsed() < plain + Duration::from_millis(1500), "{:?} after {plain:?}", started.elapsed());
+}
+
+#[tokio::test]
+async fn a_punched_socket_reaches_a_shell() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    let report = setup(state.path(), &id, &[]);
+    let stun = [FakeStun::start(0, false).await, FakeStun::start(0, false).await];
+    let (_peer, peer) = peer_socket();
+    let answer = ask_gate(state.path(), peer, &[stun[0].server(), stun[1].server()]).await;
+    assert_eq!(answer["waitMs"], 10_000);
+    let addr = punched_addr(&answer);
+    assert_ne!(addr.port(), port_of(&report), "a socket of its own, not the gate's port");
+    let connection = quic_to(addr, &id, report["fingerprint"].as_str().unwrap()).await.unwrap();
+    let (mut pane, ready) = attach(&connection).await;
+    assert_eq!(ready["type"], "ready");
+    pane.send(MARK_INPUT).await;
+    pane.wait_for("MARK_42").await;
+    let log = std::fs::read_to_string(state.path().join("gate.log")).unwrap();
+    assert!(log.contains(&format!("punch for {peer}: {addr}")), "{log}");
+}
+
+#[tokio::test]
+async fn a_punched_socket_refuses_unknown_clients() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    let report = setup(state.path(), &id, &[]);
+    let stun = FakeStun::start(0, false).await;
+    let (_peer, peer) = peer_socket();
+    let addr = punched_addr(&ask_gate(state.path(), peer, &[stun.server()]).await);
+    let fingerprint = report["fingerprint"].as_str().unwrap();
+    let stranger = ClientId::new();
+    // TLS 1.3 ends the client's handshake before the gate checks its
+    // certificate (as on the main port), so the refusal can also be a close
+    // right after: a connection the gate kept would stay open.
+    if let Ok(connection) = quic_to(addr, &stranger, fingerprint).await {
+        let closed = tokio::time::timeout(Duration::from_secs(5), connection.closed()).await;
+        assert!(matches!(closed, Ok(quinn::ConnectionError::ConnectionClosed(_))), "the gate closes an unknown client: {closed:?}");
+    }
+    assert!(quic_to(addr, &id, fingerprint).await.is_ok(), "a stranger does not use up the socket");
+}
+
+#[tokio::test]
+async fn a_punched_socket_refuses_other_addresses() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    let report = setup(state.path(), &id, &[]);
+    let stun = FakeStun::start(0, false).await;
+    // The peer is another address than the one this test connects from (127.0.0.1).
+    let addr = punched_addr(&ask_gate(state.path(), "127.0.0.2:5000".parse().unwrap(), &[stun.server()]).await);
+    assert!(quic_to(addr, &id, report["fingerprint"].as_str().unwrap()).await.is_err());
+}
+
+#[tokio::test]
+async fn stun_answers_that_differ_or_never_come_skip_the_punch() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    setup(state.path(), &ClientId::new(), &[]);
+    let (_peer, peer) = peer_socket();
+    let honest = FakeStun::start(0, false).await;
+    let lying = FakeStun::start(1, false).await;
+    assert_eq!(ask_gate(state.path(), peer, &[honest.server(), lying.server()]).await, serde_json::json!({ "skipped": "symmetric" }));
+    let silent = FakeStun::start(0, true).await;
+    let started = Instant::now();
+    assert_eq!(ask_gate(state.path(), peer, &[silent.server()]).await, serde_json::json!({ "skipped": "noStun" }));
+    assert!(started.elapsed() < Duration::from_millis(1500), "{:?}", started.elapsed());
+    assert!(silent.hits() >= 1, "the gate asked the silent server");
+    let log = std::fs::read_to_string(state.path().join("gate.log")).unwrap();
+    assert!(log.contains("skipped (symmetric)") && log.contains("skipped (noStun)"), "{log}");
+}
+
+#[tokio::test]
+async fn punch_packets_go_to_the_peer_only_and_stop() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    let report = setup_env(state.path(), &id, &[], &[("WESTERM_PUNCH_WAIT_MS", "600")]);
+    let stun = FakeStun::start(0, false).await;
+    let (socket, peer) = peer_socket();
+    let (bystander, _) = peer_socket();
+    socket.set_read_timeout(Some(Duration::from_millis(1500))).unwrap();
+    bystander.set_read_timeout(Some(Duration::from_millis(300))).unwrap();
+    let answer = ask_gate(state.path(), peer, &[stun.server()]).await;
+    assert_eq!(answer["waitMs"], 600);
+    let addr = punched_addr(&answer);
+    let mut buffer = [0u8; 64];
+    let (size, from) = socket.recv_from(&mut buffer).expect("a punch packet");
+    assert_eq!(from, addr, "from socket B");
+    assert_eq!(&buffer[..size], b"\0westerm");
+    assert!(bystander.recv_from(&mut buffer).is_err(), "nobody else gets one");
+    // After the wait, the packets stop and socket B is closed.
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    socket.set_read_timeout(Some(Duration::from_millis(1))).unwrap();
+    while socket.recv_from(&mut buffer).is_ok() {}
+    socket.set_read_timeout(Some(Duration::from_millis(500))).unwrap();
+    assert!(socket.recv_from(&mut buffer).is_err(), "no packet after the wait");
+    // With the real fingerprint: only a closed socket B makes this fail.
+    let late = quic_to(addr, &id, report["fingerprint"].as_str().unwrap()).await;
+    assert!(late.is_err(), "socket B is closed");
+}
+
+#[tokio::test]
+async fn a_new_request_for_the_same_peer_replaces_the_waiting_socket() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    let report = setup(state.path(), &id, &[]);
+    let fingerprint = report["fingerprint"].as_str().unwrap();
+    let stun = FakeStun::start(0, false).await;
+    let (_peer, peer) = peer_socket();
+    let first = punched_addr(&ask_gate(state.path(), peer, &[stun.server()]).await);
+    let second = punched_addr(&ask_gate(state.path(), peer, &[stun.server()]).await);
+    assert_ne!(first, second);
+    assert!(quic_to(first, &id, fingerprint).await.is_err(), "the first socket is closed");
+    assert!(quic_to(second, &id, fingerprint).await.is_ok());
+}
+
+/// Review Focus 4.
+#[tokio::test]
+async fn a_stopping_gate_tells_its_punched_clients() {
+    let state = state();
+    let _stop = StopHostOnDrop(state.path());
+    let id = ClientId::new();
+    let report = setup(state.path(), &id, &[]);
+    let stun = FakeStun::start(0, false).await;
+    let (_peer, peer) = peer_socket();
+    let addr = punched_addr(&ask_gate(state.path(), peer, &[stun.server()]).await);
+    let connection = quic_to(addr, &id, report["fingerprint"].as_str().unwrap()).await.unwrap();
+    signal(gate_pid(state.path()), "-TERM");
+    let closed = tokio::time::timeout(Duration::from_secs(2), connection.closed()).await;
+    assert!(matches!(closed, Ok(quinn::ConnectionError::ApplicationClosed(_))), "{closed:?}");
+    assert!(!state.path().join("gate.sock").exists(), "the control socket goes with the gate");
+}
+
+// ---------------------------------------------------------------------------
 // Through the dashboard, with a fake ssh.
 
 use futures_util::StreamExt;
@@ -353,10 +640,12 @@ const RESIZE: &str = r#"{"type":"resize","cols":80,"rows":24,"width":640,"height
 /// `-G` prints a config pointing at this machine; any other call runs its
 /// last argument (the remote command) here, as the "server" user. The
 /// server's sh reads `home/.shrc` (`$ENV`) only when interactive, as zsh
-/// reads `~/.zshrc`.
+/// reads `~/.zshrc`. `-L local:remote` (the SSH tunnel) links the two
+/// sockets: both ends are on this machine, and a connect follows the link.
 const FAKE_SSH: &str = r#"#!/bin/sh
 for last; do :; done
 case " $* " in *" -G "*) printf 'hostname 127.0.0.1\nport 22\nproxyjump none\n'; exit 0 ;; esac
+prev=; for arg; do [ "$prev" = "-L" ] && ln -sf "${arg##*:}" "${arg%:*}"; prev=$arg; done
 printf '%s\n' "$last" >> "$FAKE_ROOT/ssh.log"
 [ -n "$FAKE_SSH_DELAY" ] && sleep "$FAKE_SSH_DELAY"
 HOME="$FAKE_ROOT/home" PATH="$FAKE_ROOT/rbin:${FAKE_SERVER_PATH:-$PATH}" WESTERM_STATE_DIR="$FAKE_ROOT/rstate" \
@@ -412,6 +701,8 @@ impl FakeRemote {
         if let Some(delay) = ssh_delay {
             command.env("FAKE_SSH_DELAY", delay);
         }
+        // No STUN unless a test asks for it: tests never reach the public servers.
+        command.env("WESTERM_REMOTE_STUN", "off");
         command.envs(env.iter().copied());
         let server = Spawned(command.spawn().unwrap());
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -693,6 +984,114 @@ async fn a_lost_gate_comes_back_and_the_shell_is_reattached() {
     let (mut again, ready) = window_pane(fake.port, "fake", "sw1").await;
     assert_eq!(ready["mode"], "reattached");
     again.wait_for("MARK_42").await; // the screen comes back after "ready"
+}
+
+/// A dashboard that may only use a punched path, with two local STUN servers.
+async fn punch_only() -> (FakeRemote, [FakeStun; 2]) {
+    let stun = [FakeStun::start(0, false).await, FakeStun::start(0, false).await];
+    let servers = format!("{},{}", stun[0].server(), stun[1].server());
+    let fake = FakeRemote::start_with(None, &[("WESTERM_REMOTE_TRANSPORT", "punch"), ("WESTERM_REMOTE_STUN", &servers)]);
+    (fake, stun)
+}
+
+#[tokio::test]
+async fn a_window_connects_through_a_punched_path() {
+    let (fake, stun) = punch_only().await;
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    let connected = stage_named(&mut link, "connected").await;
+    assert_eq!(connected["via"], "quic");
+    assert_eq!(connected["path"], "punched");
+    assert!(connected.get("note").is_none(), "{connected}");
+    assert!(stun[0].hits() >= 2 && stun[1].hits() >= 2, "both ends asked both servers");
+    let (mut pane, _) = window_pane(fake.port, "fake", "sp1").await;
+    pane.send(MARK_INPUT).await;
+    pane.wait_for("MARK_42").await;
+    let record = std::fs::read_to_string(fake.path().join("lstate/remote/hosts/h-fake.json")).unwrap();
+    assert!(record.contains(r#""punched": true"#), "{record}");
+}
+
+#[tokio::test]
+async fn a_punched_link_that_drops_is_set_up_again_over_ssh() {
+    let (fake, _stun) = punch_only().await;
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    stage_named(&mut link, "connected").await;
+    assert_eq!(fake.count(SETUP), 1);
+    signal(gate_pid(&fake.path().join("rstate")), "-TERM");
+    // The saved gate is not tried: the record says the last link was punched.
+    let again = stage_named(&mut link, "connected").await;
+    assert_eq!(again["path"], "punched");
+    assert!(fake.count(SETUP) >= 2, "{}", fake.count(SETUP));
+}
+
+/// Review Focus 3: an offer too old to use (here: a gate that waits less than the margin) is asked for once more.
+#[tokio::test]
+async fn a_stale_offer_is_asked_for_again() {
+    let stun = FakeStun::start(0, false).await;
+    let env = [("WESTERM_REMOTE_TRANSPORT", "punch"), ("WESTERM_REMOTE_STUN", &*stun.server()), ("WESTERM_PUNCH_WAIT_MS", "900")];
+    let fake = FakeRemote::start_with(None, &env);
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    let connected = stage_named(&mut link, "connected").await;
+    assert_eq!(connected["path"], "punched");
+    assert!(fake.count(SETUP) >= 2, "remote-setup ran again for a new address: {}", fake.count(SETUP));
+}
+
+/// Review (fix round 1): an install can take longer than a NAT keeps an idle
+/// mapping, so the punch request after it comes from a new socket A.
+#[tokio::test]
+async fn an_install_is_followed_by_a_new_socket_a() {
+    let stun = FakeStun::start(0, false).await;
+    let fake = FakeRemote::start_with(None, &[("WESTERM_REMOTE_TRANSPORT", "punch"), ("WESTERM_REMOTE_STUN", &*stun.server())]);
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    let connected = stage_named(&mut link, "connected").await;
+    assert_eq!(connected["path"], "punched");
+    assert_eq!(fake.count(UPLOAD), 1, "this first connection installed westerm");
+    let log = std::fs::read_to_string(fake.path().join("rstate/gate.log")).unwrap();
+    let peer: SocketAddr = log
+        .lines()
+        .find_map(|line| line.strip_prefix("gate: punch for ")?.split_once(": ").map(|(peer, _)| peer.to_owned()))
+        .unwrap_or_else(|| panic!("a punch request: {log}"))
+        .parse()
+        .unwrap();
+    // The first sender is socket A from the probe, before the install.
+    let first = stun.senders()[0];
+    assert_ne!(peer, first, "the gate punched for the socket A made after the install");
+    assert!(stun.senders().contains(&peer), "and that socket asked STUN itself");
+}
+
+#[tokio::test]
+async fn direct_quic_is_used_when_both_ways_work() {
+    let stun = FakeStun::start(0, false).await;
+    let fake = FakeRemote::start_with(None, &[("WESTERM_REMOTE_STUN", &stun.server())]);
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    let connected = stage_named(&mut link, "connected").await;
+    assert_eq!(connected["via"], "quic");
+    assert!(connected.get("path").is_none(), "{connected}");
+    assert!(stun.hits() >= 2, "the punched path was prepared too");
+    let record = std::fs::read_to_string(fake.path().join("lstate/remote/hosts/h-fake.json")).unwrap();
+    assert!(record.contains(r#""punched": false"#), "{record}");
+}
+
+#[tokio::test]
+async fn with_stun_off_nothing_is_punched() {
+    // FakeRemote's default: WESTERM_REMOTE_STUN=off.
+    let fake = FakeRemote::start(None);
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    let connected = stage_named(&mut link, "connected").await;
+    assert_eq!(connected["via"], "quic");
+    assert!(connected.get("path").is_none());
+    let log = std::fs::read_to_string(fake.path().join("rstate/gate.log")).unwrap();
+    assert!(!log.contains("punch for"), "{log}");
+}
+
+#[tokio::test]
+async fn the_tunnel_says_why_quic_was_not_used() {
+    let stun = FakeStun::start(0, false).await;
+    let fake = FakeRemote::start_with(None, &[("WESTERM_REMOTE_TRANSPORT", "tunnel"), ("WESTERM_REMOTE_STUN", &*stun.server())]);
+    let (mut link, _) = open_link(fake.port, "fake").await;
+    let connected = stage_named(&mut link, "connected").await;
+    assert_eq!(connected["via"], "tunnel");
+    assert_eq!(connected["note"], "WESTERM_REMOTE_TRANSPORT=tunnel");
+    assert_eq!(stun.hits(), 0, "tunnel only: no STUN packet leaves");
 }
 
 /// The window's socket to the dashboard is fine, but the link to the server

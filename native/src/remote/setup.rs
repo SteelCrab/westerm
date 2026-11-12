@@ -1,6 +1,8 @@
 //! `westerm remote-setup [--replace-host]`: what a dashboard runs over SSH.
 //! It authorizes the dashboard's certificate (read from stdin), makes sure a
 //! host, a server dashboard and a gate run, and reports how to reach them as one JSON line.
+//! An optional second stdin line is a punch request: the running gate is asked
+//! to open a punched UDP socket, and its answer goes in the report.
 //!
 //! It never replaces a running host of another build on its own: that ends
 //! the programs in its shells, so the dashboard asks the user first and then
@@ -15,6 +17,8 @@ use std::time::Duration;
 use super::daemon::{Daemon, Record};
 use super::dashboard::{self, DashboardRecord};
 use super::gate::{self, GateRecord};
+use super::punch::{self, PunchAnswer, PunchRequest, SkipReason};
+use super::punch_gate;
 use super::report::{HostInfo, SetupReport, SETUP_VERSION};
 use super::{authorized, identity, remote_dir};
 use crate::host::HOST_BUILD;
@@ -23,12 +27,15 @@ use crate::state_dir::{private_file, state_dir};
 
 pub async fn run(replace_host: bool) -> io::Result<()> {
     let mut line = String::new();
-    io::stdin().lock().read_line(&mut line)?;
+    let mut stdin = io::stdin().lock();
+    stdin.read_line(&mut line)?;
     let fingerprint = line.trim();
     if !identity::is_fingerprint(fingerprint) {
         eprintln!("westerm: expected a client fingerprint on stdin");
         std::process::exit(2);
     }
+    // The caller closes stdin after writing, so this ends at the newline or at EOF.
+    let punch_input = read_punch_input(&mut stdin);
     let state = state_dir()?;
     let dir = remote_dir(&state)?;
     authorized::add(&dir.join("authorized_clients"), fingerprint)?;
@@ -49,6 +56,12 @@ pub async fn run(replace_host: bool) -> io::Result<()> {
     let gate = ensure_gate(&state).await?;
     // The gate made or loaded its identity before it wrote its record.
     let gate_identity = identity::load_or_create(&dir, "gate")?;
+    // A punch problem is only a `skipped` answer; it never fails the setup.
+    let punch = match punch_input {
+        PunchInput::None => None,
+        PunchInput::Unreadable => Some(PunchAnswer::Skipped { skipped: SkipReason::Error }),
+        PunchInput::Request(request) => Some(punch_gate::ask(&state, &request, punch_gate::ASK_TIMEOUT).await),
+    };
     let host = health(&state).await.ok_or_else(|| io::Error::other("the PTY host does not answer"))?;
     let report = SetupReport {
         v: SETUP_VERSION,
@@ -58,9 +71,28 @@ pub async fn run(replace_host: bool) -> io::Result<()> {
         dashboard: dashboard::socket_path(&state).display().to_string(),
         host: HostInfo { build: host.build, protocol: host.protocol, sessions: host.sessions },
         kill_on_logout: kill_on_logout(),
+        punch,
     };
     println!("{}", serde_json::to_string(&report).map_err(io::Error::other)?);
     Ok(())
+}
+
+/// The optional second stdin line.
+enum PunchInput {
+    /// No second line: an older dashboard, or one that does not punch.
+    None,
+    /// A line that is no request the gate may act on.
+    Unreadable,
+    Request(PunchRequest),
+}
+
+fn read_punch_input(stdin: &mut impl BufRead) -> PunchInput {
+    let mut line = String::new();
+    match stdin.read_line(&mut line) {
+        Ok(0) => PunchInput::None,
+        Ok(_) => punch::parse_request(line.trim()).map_or(PunchInput::Unreadable, PunchInput::Request),
+        Err(_) => PunchInput::Unreadable,
+    }
 }
 
 /// The running server dashboard when it is this build; otherwise a new one,

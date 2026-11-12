@@ -345,7 +345,7 @@ async fn link_status(mut socket: WebSocket, state: Shared, target: String) {
                     return;
                 }
                 let Some(stage) = watch.stages.borrow_and_update().clone() else { continue };
-                if socket.send(Message::Text(ServerMessage::Remote(stage).to_json().into())).await.is_err() {
+                if socket.send(Message::Text(stage.to_json().into())).await.is_err() {
                     return;
                 }
             }

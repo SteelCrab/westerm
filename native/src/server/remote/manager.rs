@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 use std::io;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -18,15 +19,19 @@ use tokio::sync::{oneshot, watch, Notify, OnceCell};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::binary::{self, InstallPlan};
+use super::punch::{self, Candidate, Ways, Won, DIRECT_GRACE, PUNCH_HANDSHAKE_TIMEOUT};
 use super::quic::{self, QuicLink};
 use super::ssh::{self, Probe, Resolved};
+use super::stage::{LinkStage, QuicPath};
 #[cfg(unix)]
 use super::tunnel::{self, Tunnel};
 use super::{records, Failure, HostStream};
 use crate::host::HOST_BUILD;
 use crate::protocol::{is_id, RemoteFailure, RemoteStage, RemoteVia, PROTOCOL};
 use crate::remote::identity::{self, Identity};
+use crate::remote::punch::{PunchAnswer, PunchRequest};
 use crate::remote::report::{parse_report, HostInfo, SetupReport};
+use crate::remote::stun::{self, StunConfig};
 use crate::remote::{remote_dir, HANDSHAKE_TIMEOUT};
 use crate::update;
 
@@ -149,7 +154,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 struct Target {
     slot: tokio::sync::Mutex<Option<Slot>>,
-    stages: watch::Sender<Option<RemoteStage>>,
+    stages: watch::Sender<Option<LinkStage>>,
     decision: Mutex<Option<oneshot::Sender<bool>>>,
     /// The saved gate failed: skip the fast path once.
     stale: AtomicBool,
@@ -233,7 +238,7 @@ impl Target {
 /// A window watching a server's link. While one exists, the link is kept
 /// up; `stages` shows where it is, the current stage first.
 pub struct Watch {
-    pub stages: watch::Receiver<Option<RemoteStage>>,
+    pub stages: watch::Receiver<Option<LinkStage>>,
     target: Arc<Target>,
 }
 
@@ -269,8 +274,8 @@ pub struct RemoteManager {
     links: AtomicU64,
 }
 
-fn publish(target: &Target, stage: RemoteStage) {
-    target.stages.send_replace(Some(stage));
+fn publish(target: &Target, stage: impl Into<LinkStage>) {
+    target.stages.send_replace(Some(stage.into()));
 }
 
 fn setup_failure(detail: impl Into<String>) -> Failure {
@@ -279,7 +284,58 @@ fn setup_failure(detail: impl Into<String>) -> Failure {
 
 /// A new link, and the "connected" stage to show once it is in the slot
 /// (a window that sees it may use the link at once).
-type Made = (Link, RemoteStage);
+type Made = (Link, LinkStage);
+
+/// Socket A, or why there is none. None: hole punching is not allowed
+/// (WESTERM_REMOTE_TRANSPORT), so nothing about it is said either.
+type SocketA = Option<Result<Candidate, String>>;
+
+/// A new socket A, when hole punching is allowed. Nothing is sent otherwise.
+async fn prepare(ways: Ways, stun: &StunConfig) -> SocketA {
+    if ways.punched { Some(punch::prepare(stun).await) } else { None }
+}
+
+/// What `remote-setup` sends to the gate: the address of socket A.
+fn punch_request(socket_a: &SocketA) -> Option<PunchRequest> {
+    match socket_a {
+        Some(Ok(candidate)) => Some(candidate.request()),
+        _ => None,
+    }
+}
+
+/// The saved gate may be tried without SSH: the record is from this version,
+/// and its last link was not punched (that gate does not answer directly).
+/// Not with `punch`: that setting is for testing the punched path only.
+fn fast_path_fits(record: &records::Record, local: &str, ways: Ways) -> bool {
+    let punch_only = ways.punched && !ways.direct;
+    record.version == local && !record.punched && !punch_only
+}
+
+/// The record's `punched` after a connection: which way won, or the old value when the tunnel carried it.
+fn punched_after(won: Option<Won>, before: bool) -> bool {
+    match won {
+        Some(won) => won == Won::Punched,
+        None => before,
+    }
+}
+
+/// The "connected" stage of a tunnel link, with why QUIC was not used.
+// Windows has no tunnel, as for `mod remote` in main.rs.
+#[cfg_attr(not(unix), allow(dead_code))]
+fn tunnel_stage(kill_on_logout: bool, direct: Option<&str>, punch: Option<&str>) -> LinkStage {
+    LinkStage {
+        stage: RemoteStage::Connected { via: RemoteVia::Tunnel, kill_on_logout },
+        path: None,
+        note: Some(punch::tunnel_note(direct, punch)),
+    }
+}
+
+/// The errors of what was tried, as one detail.
+fn joined<'a>(parts: impl IntoIterator<Item = Option<&'a str>>) -> String {
+    parts.into_iter().flatten().collect::<Vec<_>>().join("; ")
+}
+
+const PROXIED: &str = "the destination goes through a proxy, which UDP cannot follow";
 
 impl RemoteManager {
     pub fn new(state_dir: PathBuf) -> Self {
@@ -308,7 +364,7 @@ impl RemoteManager {
     /// The stages of `target`'s current or last connection attempt. A stage
     /// already published counts as new, so a window that joins a setup under
     /// way shows it (the replacement question, for one) at once.
-    pub fn stages(&self, target: &str) -> watch::Receiver<Option<RemoteStage>> {
+    pub fn stages(&self, target: &str) -> watch::Receiver<Option<LinkStage>> {
         let mut stages = self.target(target).stages.subscribe();
         if stages.borrow().is_some() {
             stages.mark_changed();
@@ -405,7 +461,7 @@ impl RemoteManager {
         let target = self.target(name);
         let mut slot = target.slot.lock().await;
         let identity = self.identity().await?;
-        self.setup(name, &identity::fingerprint(&identity.cert), true).await?;
+        self.setup(name, &identity::fingerprint(&identity.cert), true, None).await?;
         let dir = self.dir()?;
         if let Some(mut record) = records::load(&dir, name) {
             record.declined = None;
@@ -489,9 +545,15 @@ impl RemoteManager {
         ssh::parse_probe(&stdout).ok_or_else(|| setup_failure(format!("unexpected answer from the server: {}", stdout.trim())))
     }
 
-    async fn setup(&self, name: &str, fingerprint: &str, replace_host: bool) -> Result<SetupReport, Failure> {
+    /// `punch`: stdin line 2, so the gate punches towards socket A.
+    async fn setup(&self, name: &str, fingerprint: &str, replace_host: bool, punch: Option<&PunchRequest>) -> Result<SetupReport, Failure> {
         let command = if replace_host { ssh::SETUP_REPLACE } else { ssh::SETUP };
-        let stdout = ssh::run(name, command, Some(format!("{fingerprint}\n").into_bytes())).await?;
+        let mut stdin = format!("{fingerprint}\n");
+        if let Some(line) = punch.and_then(|punch| serde_json::to_string(punch).ok()) {
+            stdin.push_str(&line);
+            stdin.push('\n');
+        }
+        let stdout = ssh::run(name, command, Some(stdin.into_bytes())).await?;
         let report = parse_report(&stdout).ok_or_else(|| setup_failure(format!("unexpected answer from remote-setup: {}", stdout.trim())))?;
         // The tunnel passes this path to `ssh -L`, which reads ':' as a separator.
         if !report.dashboard.starts_with('/') || report.dashboard.contains([':', ' ', '\n']) {
@@ -502,15 +564,18 @@ impl RemoteManager {
 
     /// The saved gate, without SSH: when the record is from this version
     /// and the gate did not fail since. None when it does not answer.
+    /// A punched link is not tried: its saved gate does not answer directly,
+    /// and its punched socket is gone.
     async fn connect_fast(&self, name: &str, target: &Target) -> Option<Made> {
         if target.stale.load(Ordering::Relaxed) {
             return None;
         }
-        let record = records::load(&self.dir().ok()?, name).filter(|record| record.version == crate::version_line())?;
+        let ways = punch::ways_from(&std::env::var("WESTERM_REMOTE_TRANSPORT").unwrap_or_default());
+        let record = records::load(&self.dir().ok()?, name).filter(|record| fast_path_fits(record, &crate::version_line(), ways))?;
         let identity = self.identity().await.ok()?;
         publish(target, RemoteStage::Connecting);
         let link = QuicLink::connect(&identity, &record.hostname, record.port, &record.fingerprint, FAST_PATH_TIMEOUT).await.ok()?;
-        Some((Link::Quic(link), RemoteStage::Connected { via: RemoteVia::Quic, kill_on_logout: false }))
+        Some((Link::Quic(link), RemoteStage::Connected { via: RemoteVia::Quic, kill_on_logout: false }.into()))
     }
 
     /// The full setup over SSH: check the server, install this build if
@@ -521,9 +586,13 @@ impl RemoteManager {
         let identity = self.identity().await?;
         let local = crate::version_line();
         let saved = records::load(&dir, name);
+        let ways = punch::ways_from(&std::env::var("WESTERM_REMOTE_TRANSPORT").unwrap_or_default());
+        let stun = stun::config_from(std::env::var("WESTERM_REMOTE_STUN").ok().as_deref());
 
         publish(target, RemoteStage::Checking);
-        let probe = self.probe(name).await?;
+        // STUN runs alongside the probe, so it adds no wait before the setup;
+        // a failed probe shows at once.
+        let (probe, mut socket_a) = tokio::try_join!(self.probe(name), async { Ok(prepare(ways, &stun).await) })?;
         let unsupported = || Failure::new(RemoteFailure::Unsupported, format!("{} {}", probe.os, probe.arch));
         if probe.os != "Linux" {
             return Err(unsupported());
@@ -544,16 +613,25 @@ impl RemoteManager {
                     let reported = installed.unwrap_or_else(|| "nothing".to_owned());
                     return Err(setup_failure(format!("the uploaded westerm reports {reported}")));
                 }
+                // The install can outlast a NAT's idle mapping (30 s on many
+                // routers): the gate must punch towards a fresh socket A.
+                if let Some(Ok(_)) = socket_a {
+                    socket_a = prepare(ways, &stun).await;
+                }
             }
         }
 
         publish(target, RemoteStage::Starting);
         let fingerprint = identity::fingerprint(&identity.cert);
-        let mut report = self.setup(name, &fingerprint, false).await?;
+        let mut report = self.setup(name, &fingerprint, false, punch_request(&socket_a).as_ref()).await?;
+        let mut received = Instant::now();
         let mut declined = saved.as_ref().and_then(|record| record.declined.as_deref()) == Some(local.as_str());
         match host_plan(&report.host, HOST_BUILD, declined) {
             HostPlan::Use | HostPlan::Incompatible => {}
-            HostPlan::Replace => report = self.setup(name, &fingerprint, true).await?,
+            HostPlan::Replace => {
+                report = self.setup_again(name, &fingerprint, true, &mut socket_a, &stun).await?;
+                received = Instant::now();
+            }
             HostPlan::Ask { sessions } => {
                 // Waits for an answer even when no window watches: the next
                 // window to open shows the question.
@@ -561,7 +639,8 @@ impl RemoteManager {
                 *lock(&target.decision) = Some(answer);
                 publish(target, RemoteStage::Confirm { sessions });
                 if question.await.map_err(|_| setup_failure("the host question went unanswered"))? {
-                    report = self.setup(name, &fingerprint, true).await?;
+                    report = self.setup_again(name, &fingerprint, true, &mut socket_a, &stun).await?;
+                    received = Instant::now();
                 } else {
                     declined = true;
                 }
@@ -575,6 +654,8 @@ impl RemoteManager {
             fingerprint: report.fingerprint.clone(),
             version: local.clone(),
             declined: declined.then(|| local.clone()),
+            // Known after the transport below.
+            punched: saved.as_ref().is_some_and(|record| record.punched),
         };
         records::save(&dir, name, &record).map_err(|e| setup_failure(e.to_string()))?;
         if report.host.build != HOST_BUILD && report.host.protocol != PROTOCOL {
@@ -585,55 +666,115 @@ impl RemoteManager {
         }
 
         publish(target, RemoteStage::Connecting);
-        let link = self.transport(name, &identity, &resolved, &report, &dir).await?;
-        let via = match link {
-            Link::Quic(_) => RemoteVia::Quic,
-            #[cfg(unix)]
-            Link::Tunnel(_) => RemoteVia::Tunnel,
-        };
-        target.stale.store(false, Ordering::Relaxed);
-        Ok((link, RemoteStage::Connected { via, kill_on_logout: report.kill_on_logout }))
-    }
-
-    /// QUIC, or the SSH tunnel when UDP does not get through.
-    /// WESTERM_REMOTE_TRANSPORT=quic or =tunnel allows only that one.
-    async fn transport(
-        &self,
-        name: &str,
-        identity: &Identity,
-        resolved: &Resolved,
-        report: &SetupReport,
-        dir: &Path,
-    ) -> Result<Link, Failure> {
-        let only = std::env::var("WESTERM_REMOTE_TRANSPORT").unwrap_or_default();
-        let mut quic_error = None;
-        if only != "tunnel" && !resolved.proxied {
-            match QuicLink::connect(identity, &resolved.hostname, report.port, &report.fingerprint, HANDSHAKE_TIMEOUT).await {
-                Ok(link) => return Ok(Link::Quic(link)),
-                Err(failure) => quic_error = Some(failure.detail),
+        // Such as after the host question: the gate may have closed socket B
+        // by now. Asked again once; the second offer is used however old.
+        if let (Some(Ok(_)), Some(PunchAnswer::Ready { wait_ms, .. })) = (&socket_a, &report.punch)
+            && !punch::offer_fresh(received, *wait_ms, Instant::now())
+        {
+            socket_a = prepare(ways, &stun).await;
+            if let Some(request) = punch_request(&socket_a) {
+                match self.setup(name, &fingerprint, false, Some(&request)).await {
+                    Ok(again) => report.punch = again.punch,
+                    // Hole punching never fails a connection: the other ways stay.
+                    Err(failure) => socket_a = Some(Err(format!("hole punching: {}", failure.detail))),
+                }
             }
         }
-        if only == "quic" {
-            let detail = quic_error.unwrap_or_else(|| "the destination goes through a proxy, which UDP cannot follow".to_owned());
-            return Err(Failure::new(RemoteFailure::Transport, detail));
+        let (link, connected, won) = transport(name, &identity, &resolved, &report, &dir, ways, socket_a).await?;
+        let punched = punched_after(won, record.punched);
+        if punched != record.punched {
+            // The link is up: a record that cannot be saved only costs the fast path a try.
+            let _ = records::save(&dir, name, &records::Record { punched, ..record });
         }
-        #[cfg(unix)]
-        {
-            let socket = dir.join(format!("t-{}.sock", &identity::fingerprint(name.as_bytes())[..8]));
-            Tunnel::start(name, socket, &report.dashboard).await.map(Link::Tunnel).map_err(|tunnel| {
-                let detail = match quic_error {
-                    Some(quic) => format!("{quic}; {}", tunnel.detail),
-                    None => tunnel.detail,
-                };
-                Failure::new(RemoteFailure::Transport, detail)
-            })
+        target.stale.store(false, Ordering::Relaxed);
+        Ok((link, connected))
+    }
+
+    /// `remote-setup` once more (to replace the host), with a new socket A:
+    /// the old one's offer is not used, and the gate opens a new socket B.
+    async fn setup_again(
+        &self,
+        name: &str,
+        fingerprint: &str,
+        replace_host: bool,
+        socket_a: &mut SocketA,
+        stun: &StunConfig,
+    ) -> Result<SetupReport, Failure> {
+        // Without a socket A the reason stays: asking STUN again would only add a wait.
+        if let Some(Ok(_)) = socket_a {
+            *socket_a = Some(punch::prepare(stun).await);
         }
-        #[cfg(not(unix))]
-        {
-            let _ = (name, dir);
-            let quic = quic_error.unwrap_or_default();
-            Err(Failure::new(RemoteFailure::Transport, format!("{quic}; the SSH tunnel fallback needs macOS or Linux")))
+        self.setup(name, fingerprint, replace_host, punch_request(socket_a).as_ref()).await
+    }
+}
+
+/// Direct QUIC and the punched path at once (direct wins when both
+/// work), else the SSH tunnel. WESTERM_REMOTE_TRANSPORT limits the ways
+/// (`ways_from`). Also says which QUIC way won; None for the tunnel.
+async fn transport(
+    name: &str,
+    identity: &Identity,
+    resolved: &Resolved,
+    report: &SetupReport,
+    dir: &Path,
+    ways: Ways,
+    socket_a: SocketA,
+) -> Result<(Link, LinkStage, Option<Won>), Failure> {
+    let direct = (ways.direct && !resolved.proxied)
+        .then(|| QuicLink::connect(identity, &resolved.hostname, report.port, &report.fingerprint, HANDSHAKE_TIMEOUT));
+    // The punched try, or why there is none. A socket A not used closes here.
+    let (punched, not_tried) = match (socket_a, &report.punch) {
+        (None, _) => (None, None),
+        (Some(Err(reason)), _) => (None, Some(reason)),
+        (Some(Ok(candidate)), Some(PunchAnswer::Ready { addr, .. })) => {
+            let addr = SocketAddr::V4(*addr);
+            let fingerprint = &report.fingerprint;
+            let try_punched = async move {
+                let socket = candidate.into_socket().map_err(|e| Failure::new(RemoteFailure::Transport, format!("socket A: {e}")))?;
+                QuicLink::connect_on(socket, identity, addr, fingerprint, PUNCH_HANDSHAKE_TIMEOUT).await
+            };
+            (Some(try_punched), None)
         }
+        (Some(Ok(_)), answer) => (None, punch::skip_text(answer.as_ref()).map(str::to_owned)),
+    };
+    let (direct_error, punched_error) = match punch::race(direct, punched, DIRECT_GRACE).await {
+        Ok((link, won)) => {
+            let stage = RemoteStage::Connected { via: RemoteVia::Quic, kill_on_logout: report.kill_on_logout };
+            let path = (won == Won::Punched).then_some(QuicPath::Punched);
+            return Ok((Link::Quic(link), LinkStage { stage, path, note: None }, Some(won)));
+        }
+        Err((direct, punched)) => (direct.map(|failure| failure.detail), punched),
+    };
+    let punch_reason = not_tried.or_else(|| punched_error.map(|failure| format!("hole punching: {}", failure.detail)));
+    // What a user reads about direct QUIC: its error, or why it was allowed but not tried.
+    let direct_reason = || direct_error.clone().or_else(|| ways.direct.then(|| PROXIED.to_owned()));
+    if !ways.tunnel {
+        return Err(Failure::new(RemoteFailure::Transport, joined([direct_reason().as_deref(), punch_reason.as_deref()])));
+    }
+    #[cfg(unix)]
+    {
+        let socket = dir.join(format!("t-{}.sock", &identity::fingerprint(name.as_bytes())[..8]));
+        match Tunnel::start(name, socket, &report.dashboard).await {
+            Ok(tunnel) => {
+                let stage = tunnel_stage(report.kill_on_logout, direct_reason().as_deref(), punch_reason.as_deref());
+                eprintln!("> remote {name}: {}; using the SSH tunnel", stage.note.as_deref().unwrap_or_default());
+                Ok((Link::Tunnel(tunnel), stage, None))
+            }
+            Err(tunnel) => {
+                let detail = joined([direct_error.as_deref(), punch_reason.as_deref(), Some(&tunnel.detail)]);
+                Err(Failure::new(RemoteFailure::Transport, detail))
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (name, dir);
+        let quic = direct_error.unwrap_or_default();
+        let mut detail = format!("{quic}; the SSH tunnel fallback needs macOS or Linux");
+        if let Some(punch) = punch_reason {
+            detail = format!("{detail}; {punch}");
+        }
+        Err(Failure::new(RemoteFailure::Transport, detail))
     }
 }
 
@@ -707,7 +848,7 @@ mod tests {
         publish(&manager.target("prod"), RemoteStage::Confirm { sessions: 2 });
         let mut stages = manager.stages("prod");
         assert!(stages.has_changed().unwrap(), "the current stage counts as new");
-        assert_eq!(*stages.borrow_and_update(), Some(RemoteStage::Confirm { sessions: 2 }));
+        assert_eq!(*stages.borrow_and_update(), Some(LinkStage::from(RemoteStage::Confirm { sessions: 2 })));
         let fresh = manager.stages("other");
         assert!(!fresh.has_changed().unwrap(), "nothing to show yet");
     }
@@ -763,5 +904,65 @@ mod tests {
         assert_eq!(host_plan(&host("rs-old", 1, 2), "rs-a", false), HostPlan::Ask { sessions: 2 });
         assert_eq!(host_plan(&host("rs-old", PROTOCOL, 2), "rs-a", true), HostPlan::Use);
         assert_eq!(host_plan(&host("rs-old", PROTOCOL + 1, 2), "rs-a", true), HostPlan::Incompatible);
+    }
+
+    /// Review Focus 5: after the user forwards the port, direct QUIC wins and the fast path comes back.
+    #[test]
+    fn a_direct_win_clears_the_punched_flag() {
+        assert!(punched_after(Some(Won::Punched), true));
+        assert!(punched_after(Some(Won::Punched), false));
+        assert!(!punched_after(Some(Won::Direct), true));
+        // The tunnel carried the link: what the record said stays.
+        assert!(punched_after(None, true));
+        assert!(!punched_after(None, false));
+    }
+
+    /// Rule 10: a punched record's gate does not answer directly, so the fast path skips it.
+    #[test]
+    fn the_fast_path_skips_a_punched_record() {
+        let local = "westerm 0.4.3 (host rs-1)";
+        let record = records::Record {
+            hostname: "h".into(),
+            port: 4317,
+            fingerprint: "ab".repeat(32),
+            version: local.into(),
+            declined: None,
+            punched: false,
+        };
+        let all = punch::ways_from("");
+        assert!(fast_path_fits(&record, local, all));
+        assert!(!fast_path_fits(&records::Record { punched: true, ..record.clone() }, local, all));
+        assert!(!fast_path_fits(&record, "westerm 0.4.4 (host rs-2)", all), "a record of another version");
+    }
+
+    /// `punch` tests the punched path, so the saved direct gate is not tried;
+    /// every other setting keeps the fast path as before.
+    #[test]
+    fn the_fast_path_follows_the_transport_setting() {
+        let local = "westerm 0.4.3 (host rs-1)";
+        let record = records::Record {
+            hostname: "h".into(),
+            port: 4317,
+            fingerprint: "ab".repeat(32),
+            version: local.into(),
+            declined: None,
+            punched: false,
+        };
+        for setting in ["", "quic", "tunnel", "other"] {
+            assert!(fast_path_fits(&record, local, punch::ways_from(setting)), "{setting:?}");
+        }
+        assert!(!fast_path_fits(&record, local, punch::ways_from("punch")));
+    }
+
+    /// What a window is told when neither QUIC way worked and the tunnel carries the link.
+    #[test]
+    fn a_tunnel_link_tells_both_reasons() {
+        let stage = tunnel_stage(false, Some("no QUIC answer from 49.171.219.140:4317 within 3 s (is UDP 4317 open?)"), Some("hole punching: no STUN answer on this computer"));
+        assert_eq!(stage.stage, RemoteStage::Connected { via: RemoteVia::Tunnel, kill_on_logout: false });
+        assert_eq!(stage.path, None);
+        assert_eq!(
+            stage.note.as_deref(),
+            Some("QUIC: no QUIC answer from 49.171.219.140:4317 within 3 s (is UDP 4317 open?); hole punching: no STUN answer on this computer")
+        );
     }
 }

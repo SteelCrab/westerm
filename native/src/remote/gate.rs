@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use tokio::net::UnixStream;
 
 use super::daemon::{self, Daemon, Record};
+use super::punch_gate::{self, Limits, Puncher};
 use super::{dashboard, identity, remote_dir, tls, DEFAULT_PORT, PORT_SPAN};
+use crate::ipc;
 
 /// What a running gate wrote to `gate.json` in its state directory.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -75,7 +77,20 @@ pub async fn run(state: &Path) -> io::Result<()> {
     let identity = identity::load_or_create(&dir, "gate")?;
     let config = tls::server_config(&identity, dir.join("authorized_clients")).map_err(io::Error::other)?;
     let ports = ports_from(std::env::var("WESTERM_GATE_PORT").ok().as_deref());
-    let (endpoint, port) = bind_first(config, &ports)?;
+    let (endpoint, port) = bind_first(config.clone(), &ports)?;
+    // Before the record: whoever sees gate.json may ask for a punch at once.
+    let control = punch_gate::socket_path(state);
+    let puncher = match ipc::bind_socket(&control) {
+        Ok(listener) => {
+            let puncher = Puncher::new(config, state.to_path_buf(), Limits::from_env());
+            tokio::spawn(puncher.clone().serve(listener));
+            Some(puncher)
+        }
+        Err(error) => {
+            eprintln!("gate: no control socket, so no hole punching: {error}");
+            None
+        }
+    };
     let version = crate::version_line();
     GATE.write_record(state, &GateRecord { pid: std::process::id(), port, version: version.clone() })?;
     println!("gate {version} listening on UDP {port} (pid {})", std::process::id());
@@ -85,10 +100,23 @@ pub async fn run(state: &Path) -> io::Result<()> {
         signal = daemon::termination() => signal,
     };
     println!("gate stopping ({reason})");
+    // No new punch requests while the punched sockets close.
+    if puncher.is_some() {
+        let _ = std::fs::remove_file(&control);
+    }
     endpoint.close(0u32.into(), b"gate stopping");
     // The close reaches the clients only while the endpoint runs; without it
-    // they notice at their idle timeout. A client that never answers costs 1 s.
-    let _ = tokio::time::timeout(Duration::from_secs(1), endpoint.wait_idle()).await;
+    // they notice at their idle timeout. A client that never answers costs 1 s,
+    // for the main port and the punched sockets together.
+    let main = async {
+        let _ = tokio::time::timeout(Duration::from_secs(1), endpoint.wait_idle()).await;
+    };
+    let punched = async {
+        if let Some(puncher) = &puncher {
+            puncher.close_all().await;
+        }
+    };
+    tokio::join!(main, punched);
     // gate.json goes before the lock: whoever waits for the lock may start
     // a new gate, which writes its own record.
     GATE.remove_record(state);
@@ -106,19 +134,25 @@ async fn accept(endpoint: quinn::Endpoint, state: PathBuf) {
         let state = state.clone();
         tokio::spawn(async move {
             let Ok(connection) = incoming.await else { return };
-            while let Ok((send, recv)) = connection.accept_bi().await {
-                let socket = dashboard::socket_path(&state);
-                tokio::spawn(async move {
-                    let mut dashboard = match UnixStream::connect(&socket).await {
-                        Ok(dashboard) => dashboard,
-                        Err(error) => {
-                            eprintln!("gate: {} refused a stream: {error}", socket.display());
-                            return;
-                        }
-                    };
-                    let _ = tokio::io::copy_bidirectional(&mut tokio::io::join(recv, send), &mut dashboard).await;
-                });
-            }
+            serve_connection(connection, state).await;
+        });
+    }
+}
+
+/// Joins each stream of `connection` to the server dashboard's socket, until
+/// the connection ends. The main port and the punched sockets share it.
+pub(super) async fn serve_connection(connection: quinn::Connection, state: PathBuf) {
+    while let Ok((send, recv)) = connection.accept_bi().await {
+        let socket = dashboard::socket_path(&state);
+        tokio::spawn(async move {
+            let mut dashboard = match UnixStream::connect(&socket).await {
+                Ok(dashboard) => dashboard,
+                Err(error) => {
+                    eprintln!("gate: {} refused a stream: {error}", socket.display());
+                    return;
+                }
+            };
+            let _ = tokio::io::copy_bidirectional(&mut tokio::io::join(recv, send), &mut dashboard).await;
         });
     }
 }

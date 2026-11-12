@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::punch::PunchAnswer;
+
 pub const SETUP_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -21,6 +23,9 @@ pub struct SetupReport {
     /// The server ends a user's processes at logout and lingering is off.
     #[serde(rename = "killOnLogout")]
     pub kill_on_logout: bool,
+    /// The punched address, when the dashboard asked for one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub punch: Option<PunchAnswer>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -50,6 +55,7 @@ mod tests {
             dashboard: "/s/dashboard.sock".into(),
             host: HostInfo { build: "rs-1".into(), protocol: 1, sessions: 2 },
             kill_on_logout: false,
+            punch: None,
         }
     }
 
@@ -61,6 +67,17 @@ mod tests {
         assert_eq!(parse_report(&json.replace("\"v\":2", "\"v\":3")), None, "another report version");
         assert_eq!(parse_report("garbage"), None);
         assert_eq!(parse_report(""), None);
+    }
+
+    #[test]
+    fn the_report_carries_the_punch_answer_only_when_asked() {
+        let plain = serde_json::to_string(&sample()).unwrap();
+        assert!(!plain.contains("punch"), "{plain}");
+        assert_eq!(parse_report(&plain).unwrap().punch, None);
+        let ready = PunchAnswer::Ready { addr: "49.171.219.140:56256".parse().unwrap(), wait_ms: 10_000 };
+        let json = serde_json::to_string(&SetupReport { punch: Some(ready.clone()), ..sample() }).unwrap();
+        assert!(json.contains(r#""punch":{"addr":"49.171.219.140:56256","waitMs":10000}"#), "{json}");
+        assert_eq!(parse_report(&json).unwrap().punch, Some(ready));
     }
 
     #[test]

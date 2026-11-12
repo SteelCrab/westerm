@@ -14,9 +14,13 @@ pub mod dashboard;
 #[cfg(unix)]
 pub mod gate;
 pub mod identity;
+pub mod punch;
+#[cfg(unix)]
+pub mod punch_gate;
 pub mod report;
 #[cfg(unix)]
 pub mod setup;
+pub mod stun;
 pub mod tls;
 
 /// TLS application protocol: the dashboard ↔ host rules carried over QUIC.
