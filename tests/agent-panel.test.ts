@@ -147,6 +147,16 @@ test("folder labels", () => {
   assert.deepEqual(folderLabel("/"), { name: "/", parent: "" });
 });
 
+test("folder labels of Windows paths keep the backslash", () => {
+  assert.deepEqual(folderLabel("C:\\Users\\p"), { name: "~", parent: "" });
+  assert.deepEqual(folderLabel("C:\\Users\\p\\westerm"), { name: "westerm", parent: "~\\" });
+  assert.deepEqual(folderLabel("D:\\work\\westerm\\native"), { name: "native", parent: "westerm\\" });
+  assert.deepEqual(folderLabel("D:\\work"), { name: "work", parent: "D:\\" });
+  assert.deepEqual(folderLabel("C:\\"), { name: "C:\\", parent: "" });
+  assert.deepEqual(folderLabel("\\\\server\\share\\x"), { name: "x", parent: "share\\" });
+  assert.deepEqual(folderLabel("C:\\Users"), { name: "Users", parent: "C:\\" });
+});
+
 const flags = (change: Partial<SidebarFlags>): SidebarFlags => ({
   layout: "top",
   narrow: false,
@@ -463,17 +473,15 @@ test("the panel lists folders, branches, agents, and start buttons", () => {
   assert.match(html, /Folders/);
   assert.match(html, /1 agent\b/);
   assert.match(html, /aria-expanded="true"/, "folders start expanded");
-  assert.doesNotMatch(html, /Agents show on macOS and Linux/, "shells report their place");
   // "Start here" can hide when the panel is narrow: the buttons' group keeps it as its name.
   assert.match(html, /<span class="agents-none-text">No agents<\/span>/);
   assert.match(html, /<span class="agents-start-label" aria-hidden="true">Start here<\/span>/);
   assert.match(html, /role="group" aria-label="Start here"/);
 });
 
-test("the panel names the unknown folder and the platform without places", () => {
+test("the panel names the unknown folder of a shell without a place", () => {
   const html = panel(reduce(createDashboard("w1", "t1"), { type: "open", id: "a", kind: "shell" }));
   assert.match(html, /Unknown folder/);
-  assert.match(html, /Agents show on macOS and Linux/);
   assert.doesNotMatch(html, /Start Claude Code here/, "no folder to start in");
 });
 

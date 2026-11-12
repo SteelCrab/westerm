@@ -50,8 +50,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -76,7 +76,7 @@ jobs:
             # "<sum>  <name>", also where sha256sum marks binary files with "*".
             $sum "$file" | sed 's/ \*/  /' > "$file.sha256"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: app-${{ matrix.target }}
           path: westerm-*-app*

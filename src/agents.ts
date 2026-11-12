@@ -31,12 +31,18 @@ export interface AgentFolder {
 /** How soon an agent needs the user: lower comes first. */
 const URGENCY: Record<AgentDisplay, number> = { waiting: 0, done: 1, working: 2, idle: 3 };
 
-/** `/Users/p/westerm` is `{ name: "westerm", parent: "~/" }`; the parent is the folder one level up. */
+/**
+ * `/Users/p/westerm` is `{ name: "westerm", parent: "~/" }`; the parent is the folder one level up.
+ * A Windows path keeps its `\`: `C:\Users\p\westerm` is `{ name: "westerm", parent: "~\" }`.
+ */
 export function folderLabel(path: string): { name: string; parent: string } {
-  const parts = homeShort(path).split("/").filter(Boolean);
-  if (parts.length === 0) return { name: "/", parent: "" };
+  const separator = /^[A-Za-z]:\\|^\\\\/.test(path) ? "\\" : "/";
+  const parts = homeShort(path).split(separator).filter(Boolean);
+  if (parts.length === 0) return { name: separator, parent: "" };
   const name = parts[parts.length - 1];
-  return { name, parent: parts.length > 1 ? `${parts[parts.length - 2]}/` : "" };
+  // A drive alone is its root folder: `C:\`.
+  if (parts.length === 1) return { name: name.endsWith(":") ? name + separator : name, parent: "" };
+  return { name, parent: parts[parts.length - 2] + separator };
 }
 
 /** The shells of the workspace in view, grouped by folder in the order panes first show each. */

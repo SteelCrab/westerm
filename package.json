@@ -1,6 +1,6 @@
 {
   "name": "westerm",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -26,7 +26,7 @@
     "@wterm/dom": "^0.5.9",
     "@wterm/ghostty": "^0.5.9",
     "@wterm/react": "^0.5.9",
-    "lucide-react": "^1.68.0",
+    "lucide-react": "^1.70.0",
     "markdown-it": "^14.3.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -42,7 +42,7 @@
     "happy-dom": "^21.0.4",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.6"
   },
   "description": "Web Session Terminal: a web terminal whose sessions survive closed tabs, restarts, and reboots. Built on wterm."
 }

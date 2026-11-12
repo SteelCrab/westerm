@@ -1,6 +1,9 @@
-//! Current directory of a process: proc_pidinfo on macOS, /proc on Linux.
-//! Windows has no public API for another process's directory; a new editor
-//! then opens the home folder.
+//! Current directory of a process: proc_pidinfo on macOS, /proc on Linux,
+//! the process's own record (PEB) on Windows.
+//!
+//! PowerShell keeps its location to itself: `cd` does not move the process.
+//! So a PowerShell shell reads as the folder it started in. A program it
+//! starts, such as an AI agent, does start in its location.
 
 use std::path::PathBuf;
 
@@ -39,14 +42,19 @@ pub fn process_cwd(pid: u32) -> Option<PathBuf> {
     std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(windows)]
+pub fn process_cwd(pid: u32) -> Option<PathBuf> {
+    crate::process::windows::current_directory(pid)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 pub fn process_cwd(_pid: u32) -> Option<PathBuf> {
     None
 }
 
 #[cfg(test)]
 mod tests {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[test]
     fn reads_this_process_directory() {
         let here = std::env::current_dir().unwrap();
