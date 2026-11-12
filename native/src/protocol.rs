@@ -7,6 +7,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Lang;
+use crate::plugins::PluginLaunch;
 
 /// Output flow control: the host pauses reading a PTY while this many bytes
 /// wait for the browser's acknowledgment, and resumes below the low mark.
@@ -379,6 +380,8 @@ pub struct AttachRequest {
     pub cwd: Option<String>,
     /// Type this agent's command into a new shell.
     pub launch: Option<Launch>,
+    /// Type this plugin's command into a new shell.
+    pub plugin: Option<PluginLaunch>,
     pub size: PtySize,
     /// UI language for text the host writes (restore notice, errors).
     pub lang: Lang,
@@ -428,7 +431,18 @@ impl AttachRequest {
             None if conversation.is_some() => return None,
             None => None,
         };
+        // `plugin`, `action`, and `target` come together: a plugin launch is
+        // for a new shell and reads `target` as its own, never as an ssh destination.
+        // An external plugin's target is its argv as JSON (plugins/external.rs).
+        let plugin = match (query.get("plugin"), query.get("action")) {
+            (Some(plugin), Some(action)) if kind == SessionKind::Shell && launch.is_none() => {
+                Some(PluginLaunch::parse(plugin, action, query.get("target")?)?)
+            }
+            (None, None) => None,
+            _ => return None,
+        };
         let target = match query.get("target") {
+            Some(_) if plugin.is_some() => None,
             Some(raw) => Some(normalize_ssh_target(raw)?),
             None => None,
         };
@@ -448,7 +462,7 @@ impl AttachRequest {
         };
         let resume = query.get("resume").map(String::as_str) != Some("off");
         let pixels = query.get("pixels").and_then(|codec| PixelCodec::parse(codec));
-        Some(Self { id, kind, url, target, cwd_from, cwd, launch, size, lang, window, resume, pixels })
+        Some(Self { id, kind, url, target, cwd_from, cwd, launch, plugin, size, lang, window, resume, pixels })
     }
 
     /// The same request as a query string, from validated fields only.
@@ -479,6 +493,11 @@ impl AttachRequest {
             if let Some(conversation) = &launch.conversation {
                 pairs.push(("conversation", conversation.clone()));
             }
+        }
+        if let Some(plugin) = &self.plugin {
+            pairs.push(("plugin", plugin.plugin().to_owned()));
+            pairs.push(("action", plugin.action().to_owned()));
+            pairs.push(("target", plugin.target()));
         }
         if let Some(window) = &self.window {
             pairs.push(("window", window.clone()));
@@ -682,6 +701,72 @@ mod tests {
         let place = Place { cwd: "/w".into(), branch: Some("main".into()) };
         assert_eq!(ServerMessage::Place { place: Some(place) }.to_json(), r#"{"type":"place","place":{"cwd":"/w","branch":"main"}}"#);
         assert_eq!(ServerMessage::Place { place: None }.to_json(), r#"{"type":"place","place":null}"#);
+    }
+
+    #[test]
+    fn attach_checks_plugin_launches() {
+        let with = |extra: &[(&str, &str)]| {
+            let mut q = shell_query();
+            for (k, v) in extra {
+                q.insert((*k).to_owned(), (*v).to_owned());
+            }
+            AttachRequest::from_query(&q)
+        };
+        let ok = with(&[("plugin", "docker"), ("action", "logs"), ("target", "0123456789ab")]).unwrap();
+        assert_eq!(
+            ok.plugin.as_ref().map(|p| (p.plugin(), p.action(), p.target())),
+            Some(("docker", "logs", "0123456789ab".to_owned()))
+        );
+        assert!(ok.target.is_none(), "the plugin target is not an ssh destination");
+        let query = ok.to_query();
+        assert!(query.contains("plugin=docker&action=logs&target=0123456789ab"), "{query}");
+        assert_eq!(query.matches("target=").count(), 1, "{query}");
+        let shell = with(&[("plugin", "docker"), ("action", "shell"), ("target", "0123456789ab"), ("cwd", "/work")]).unwrap();
+        assert_eq!(shell.cwd.as_deref(), Some("/work"));
+        assert!(with(&[]).unwrap().plugin.is_none());
+        for bad in [
+            vec![("plugin", "docker"), ("action", "logs")],
+            vec![("plugin", "docker"), ("target", "0123456789ab")],
+            vec![("action", "logs"), ("target", "0123456789ab")],
+            vec![("plugin", "nope"), ("action", "logs"), ("target", "0123456789ab")],
+            vec![("plugin", "docker"), ("action", "rm"), ("target", "0123456789ab")],
+            vec![("plugin", "docker"), ("action", "logs"), ("target", "x;rm -rf ~")],
+            vec![("plugin", "docker"), ("action", "logs"), ("target", "0123456789ab"), ("agent", "claude")],
+            vec![("plugin", "docker"), ("action", "logs"), ("target", "0123456789ab"), ("kind", "browser")],
+            vec![("plugin", "docker"), ("action", "logs"), ("target", "0123456789ab"), ("kind", "ssh")],
+        ] {
+            assert!(with(&bad).is_none(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn attach_reads_external_launches() {
+        let argv = r#"["kubectl","get","pods"]"#;
+        let query = format!("{}&plugin=k8s-tools.kubernetes&action=run&target={}", to_pairs(&shell_query()), percent_encode(argv));
+        let request = AttachRequest::from_query(&parse_query(&query)).unwrap();
+        let plugin = request.plugin.as_ref().unwrap();
+        assert_eq!((plugin.plugin(), plugin.action(), plugin.target().as_str()), ("k8s-tools.kubernetes", "run", argv));
+        assert!(request.target.is_none(), "the argv is not an ssh destination");
+        let again = AttachRequest::from_query(&parse_query(&request.to_query())).unwrap();
+        assert_eq!(again.plugin, request.plugin);
+        assert_eq!(again.to_query(), request.to_query());
+        let path = format!("{}&plugin=k8s-tools.kubernetes&action=run&target={}", to_pairs(&shell_query()), percent_encode(r#"["/bin/sh"]"#));
+        assert!(AttachRequest::from_query(&parse_query(&path)).is_none());
+    }
+
+    fn to_pairs(query: &HashMap<String, String>) -> String {
+        query.iter().map(|(key, value)| format!("{key}={}", percent_encode(value))).collect::<Vec<_>>().join("&")
+    }
+
+    /// A query string as the server reads it: split on `&` and `=`, then decoded.
+    fn parse_query(query: &str) -> HashMap<String, String> {
+        query
+            .split('&')
+            .map(|pair| {
+                let (key, value) = pair.split_once('=').unwrap();
+                (percent_decode(key), percent_decode(value))
+            })
+            .collect()
     }
 
     #[test]

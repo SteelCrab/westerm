@@ -2,10 +2,9 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { TriangleAlert } from "lucide-react";
 import type { AgentLaunch, PaneKind } from "../shared/protocol.ts";
 import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts";
-import { anyWaiting, pressPanel, sidebarView, type SidebarFlags, type SidebarPanel } from "./agents.ts";
+import { anyWaiting, effectivePanel, pressPanel, sidebarView, type SidebarFlags, type SidebarPanel } from "./agents.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { AgentPanel } from "./components/AgentPanel.tsx";
-import { GitPanel } from "./components/GitPanel.tsx";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.tsx";
 import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
 import { PaneLayer } from "./components/PaneLayer.tsx";
@@ -19,6 +18,15 @@ import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { UpdateButton, updateShown } from "./components/UpdateButton.tsx";
 import { useI18n } from "./i18n/index.tsx";
 import { RemoteWindowIcon } from "./kinds.tsx";
+import { closesManager, externalOpensPanel } from "./plugins/installed.ts";
+import { PaneHostContext } from "./plugins/paneHost.ts";
+import type { PluginButton } from "./plugins/PluginBar.tsx";
+import { PluginManager } from "./plugins/PluginManager.tsx";
+import { BUILTIN_PLUGINS } from "./plugins/registry.ts";
+import type { PluginContext, PluginStatus } from "./plugins/types.ts";
+import { usePlugins } from "./plugins/usePlugins.ts";
+import { planOpenPane, pluginFolders } from "./pluginPanes.ts";
+import { pluginPlace } from "./pluginPlace.ts";
 import {
   buildCommands,
   IS_MAC,
@@ -29,7 +37,7 @@ import {
   sshCommands,
   urlCommands,
 } from "./paletteCommands.tsx";
-import { openRemoteWindow, REMOTE_TARGET } from "./remoteWindow.ts";
+import { openRemoteWindow, pluginPath, REMOTE_TARGET } from "./remoteWindow.ts";
 import { useRemoteLink } from "./useRemoteLink.ts";
 import { useSshHosts } from "./useSshHosts.ts";
 import { terminalColors } from "./colorThemes.ts";
@@ -50,6 +58,7 @@ import {
   activeTab,
   activeWorkspace,
   createDashboard,
+  findOpenedBy,
   focusedShellId,
   newDocsPane,
   paneToward,
@@ -80,8 +89,11 @@ const pickCommands = (commands: PaletteCommand[], windowsOnly: boolean) =>
 /** A local window's layout needs no link. */
 const LOCAL_LINK = { ready: true, reconnects: 0 };
 
+/** A plugin button before its instance reports a status. */
+const NO_STATUS: PluginStatus = { badge: null, alert: false };
+
 interface AppProps {
-  /** This page came through a Cloudflare tunnel: no tunnel, remote window, or update controls. */
+  /** This page came through a Cloudflare tunnel: no tunnel, remote window, update, or plugin controls. */
   tunnelPage?: boolean;
 }
 
@@ -123,7 +135,8 @@ export function App({ tunnelPage = false }: AppProps = {}) {
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const [savedPanel, setPanel] = useSidebarPanel();
   // Only this computer's own dashboard updates westerm, opens remote windows,
-  // and runs tunnels. A remote window shares this page's storage, so a
+  // runs tunnels, and manages plugins (elsewhere only the ones that run
+  // everywhere show). A remote window shares this page's storage, so a
   // remembered tunnel panel does not apply there.
   const controls = pageControls(REMOTE_TARGET !== null, tunnelPage);
   const tunnelAllowed = controls.tunnel;
@@ -140,6 +153,8 @@ export function App({ tunnelPage = false }: AppProps = {}) {
   const { t, locale, setLocale } = useI18n();
   const [settings, changeSettings] = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The plugin manager, with the plugin it shows first (null: the first in the list).
+  const [manager, setManager] = useState<{ selected: string | null } | null>(null);
   const fontOverride = useMemo(() => parseFamilies(settings.fontFamily), [settings.fontFamily]);
   const { font, sizeOverridden, ghosttyFont, changeSize, resetSize } = useTerminalFont(locale, fontOverride);
   // A remote window does not update westerm: the server follows this one.
@@ -217,6 +232,40 @@ export function App({ tunnelPage = false }: AppProps = {}) {
     [dispatch, closeDrawer],
   );
 
+  // What a plugin may ask of westerm. Each instance gets its own context once;
+  // its functions read the current state through refs, so they never go stale.
+  const refreshPlugins = useRef(() => {});
+  const pluginContext = useCallback(
+    (id: string): PluginContext => ({
+      openShell: ({ action, target, cwd, name, reuse }) => {
+        const plugin = { plugin: id, action, target };
+        const found = reuse ? findOpenedBy(stateRef.current, plugin) : null;
+        if (found) dispatch({ type: "focus", id: found });
+        else dispatch({ type: "open", id: newId("s"), kind: "shell", cwd, plugin, name, aspect: layerAspect() });
+        closeDrawer();
+      },
+      openBrowser: (url) => {
+        open("browser", url);
+        closeDrawer();
+      },
+      openPane: (options) => {
+        dispatch(planOpenPane(stateRef.current, id, options, newId("s"), layerAspect()));
+        closeDrawer();
+      },
+      folders: () => pluginFolders(stateRef.current),
+      fetch: (path, init) => fetch(pluginPath(id, path), init),
+      refreshInstalled: () => refreshPlugins.current(),
+      openManager: () => setManager({ selected: id }),
+    }),
+    [dispatch, open, closeDrawer],
+  );
+  const plugins = usePlugins(pluginContext, controls.plugins);
+  refreshPlugins.current = plugins.refresh;
+  const paneHost = useMemo(
+    () => ({ instances: plugins.instances, registry: plugins.registry }),
+    [plugins.instances, plugins.registry],
+  );
+
   // A new tab starts with a shell, like a terminal app's new tab.
   const newTab = useCallback(() => {
     dispatch({ type: "newTab", id: newId("t") });
@@ -253,7 +302,8 @@ export function App({ tunnelPage = false }: AppProps = {}) {
       if (placed.where === "sidebar") {
         setSidebar(true);
         // Tab and session names are edited in the sessions list. The sessions
-        // list and the agents panel have the workspace menu; Git and the tunnel panel do not.
+        // list and the agents panel have the workspace menu; the tunnel panel
+        // and plugin panels do not.
         if (placed.kind !== "workspace" || panel !== "agents") setPanel(null);
       }
       setRenaming(placed);
@@ -399,6 +449,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
         newVersion: controls.updates && update.status?.newer ? (update.status.latest ?? null) : null,
         showUpdate: () => setUpdateOpen(true),
         openSettings: () => setSettingsOpen(true),
+        openPlugins: controls.plugins ? () => setManager({ selected: null }) : null,
       }),
       ...(REMOTE_TARGET === null ? [] : remoteWindowCommands(REMOTE_TARGET, t)),
       ...(tunnelAllowed
@@ -456,24 +507,86 @@ export function App({ tunnelPage = false }: AppProps = {}) {
     [open, openWindow, t, windowsOnly],
   );
 
-  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0 } satisfies Record<PaneKind, number>;
+  const counts = { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0, plugin: 0 } satisfies Record<PaneKind, number>;
   for (const session of state.sessions) counts[session.kind] += 1;
 
-  // Top: the workspace menu and the tab bar; the sidebar slot opens for
-  // agents or Git. Sidebar: both in the sidebar, no tab bar; the header
-  // stays only for the update button. The sidebar slot shows the sessions
-  // list, agents, or Git (agents.ts sidebarView).
+  // Top: the workspace menu and the tab bar; the sidebar slot opens only for
+  // a panel (agents, the tunnel, or a plugin's). Sidebar: both in the
+  // sidebar, no tab bar; the header stays only for the update button. The
+  // sidebar slot shows the sessions list or one of those panels (agents.ts
+  // sidebarView). A remembered plugin panel counts only while installed.
   const onTop = layout === "top";
-  const sidebarFlags: SidebarFlags = { layout, narrow, sidebarOpen, drawerOpen, panel };
+  const sidebarFlags: SidebarFlags = {
+    layout,
+    narrow,
+    sidebarOpen,
+    drawerOpen,
+    panel: effectivePanel(panel, plugins.installed),
+  };
+  const sidebarFlagsRef = useRef(sidebarFlags);
+  sidebarFlagsRef.current = sidebarFlags;
+  const panelRef = useRef(panel);
+  panelRef.current = panel;
   const view = sidebarView(sidebarFlags);
   const sidebarShown = view !== null;
-  const togglePanel = (which: SidebarPanel) => {
-    const next = pressPanel(sidebarFlags, which);
+  const togglePanel = (pressed: SidebarPanel) => {
+    const next = pressPanel(sidebarFlagsRef.current, pressed);
     setPanel(next.panel);
     setSidebarOpen(next.sidebarOpen);
     setDrawerOpen(next.drawerOpen);
   };
+  // Installing opens the plugin's panel and closes the manager so the panel
+  // shows; uninstalling closes the panel if it is open and keeps the manager.
+  // The new list may or may not have rendered yet when the change resolves.
+  const closeManager = () => {
+    setManager(null);
+    setFocusNonce((value) => value + 1);
+  };
+  const setPluginInstalled = async (id: string, on: boolean) => {
+    const ok = await plugins.setInstalled(id, on);
+    const pluginPanel: SidebarPanel = `plugin:${id}`;
+    if (ok && on && sidebarView(sidebarFlagsRef.current) !== pluginPanel) togglePanel(pluginPanel);
+    if (ok && !on && panelRef.current === pluginPanel) setPanel(null);
+    if (closesManager(ok, on)) closeManager();
+    return ok;
+  };
+  // An external plugin changed on the server: read the list again first, so
+  // a new plugin's instance exists before its panel opens. Only a plugin
+  // that was not installed before opens its panel and closes the manager.
+  const externalRef = useRef(plugins.external);
+  externalRef.current = plugins.external;
+  const externalChanged = async (id: string, installed: boolean) => {
+    const known = externalRef.current.some((info) => info.id === id);
+    await plugins.refresh();
+    const pluginPanel: SidebarPanel = `plugin:${id}`;
+    if (externalOpensPanel(installed, known)) {
+      if (sidebarView(sidebarFlagsRef.current) !== pluginPanel) togglePanel(pluginPanel);
+      closeManager();
+    }
+    if (!installed && panelRef.current === pluginPanel) setPanel(null);
+  };
+  useEffect(() => {
+    for (const [id, instance] of plugins.instances) instance.setPanelOpen(view === `plugin:${id}`);
+  }, [plugins.instances, view]);
+  const pluginButtons = plugins.registry
+    .filter(({ id }) => plugins.installed?.includes(id))
+    .map((plugin): PluginButton => {
+      const status = plugins.statuses[plugin.id] ?? NO_STATUS;
+      return {
+        id: plugin.id,
+        label: plugin.text[locale].name,
+        icon: plugin.icon,
+        iconUrl: plugin.iconUrl,
+        external: plugin.external !== undefined,
+        note: status.note,
+        status,
+        pressed: view === `plugin:${plugin.id}`,
+      };
+    });
+  const PluginPanel = view?.startsWith("plugin:") ? plugins.instances.get(view.slice("plugin:".length))?.Panel : undefined;
   const compact = !narrow && isCompact(sidebarWidth);
+  // Where the user is, for a plugin's panel that follows it.
+  const place = useMemo(() => pluginPlace(state), [state]);
   // A remote window always shows its server in the header.
   const headerShown = onTop || REMOTE_TARGET !== null || (controls.updates && updateShown(update.status, updateOpen));
 
@@ -500,14 +613,13 @@ export function App({ tunnelPage = false }: AppProps = {}) {
         agentsOpen={view === "agents"}
         agentsWaiting={anyWaiting(state)}
         onToggleAgents={() => togglePanel("agents")}
-        gitOpen={view === "git"}
-        onToggleGit={() => togglePanel("git")}
+        plugins={pluginButtons}
+        onTogglePlugin={(id) => togglePanel(`plugin:${id}`)}
+        onOpenPlugins={controls.plugins ? () => setManager({ selected: null }) : null}
       />
       {sidebarShown && (
         <div className="sidebar-slot">
-          {view === "git" ? (
-            <GitPanel key={activeWorkspace(state).id} compact={compact} state={state} />
-          ) : view === "tunnel" ? (
+          {view === "tunnel" ? (
             <TunnelPanel
               status={tunnel.status}
               onStart={tunnel.start}
@@ -536,6 +648,8 @@ export function App({ tunnelPage = false }: AppProps = {}) {
               onStart={startAgent}
               compact={compact}
             />
+          ) : view.startsWith("plugin:") ? (
+            PluginPanel && <PluginPanel key={view} compact={compact} place={place} />
           ) : (
             <SessionList
               state={state}
@@ -633,6 +747,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
           <RemoteBanner target={REMOTE_TARGET} stage={link.stage} />
         )}
         {font && loaded ? (
+          <PaneHostContext.Provider value={paneHost}>
           <PaneLayer
             state={state}
             font={font}
@@ -649,6 +764,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
             narrow={narrow}
             dispatch={dispatch}
           />
+          </PaneHostContext.Provider>
         ) : (
           <div className="workspace-empty">
             <p>{t.app.loadingConfig}</p>
@@ -675,6 +791,17 @@ export function App({ tunnelPage = false }: AppProps = {}) {
             setSettingsOpen(false);
             setFocusNonce((value) => value + 1);
           }}
+        />
+      )}
+      {manager && (
+        <PluginManager
+          builtins={BUILTIN_PLUGINS}
+          external={plugins.external}
+          installed={plugins.installed ?? []}
+          selected={manager.selected}
+          onSetInstalled={setPluginInstalled}
+          onExternalChanged={externalChanged}
+          onClose={closeManager}
         />
       )}
       {palette === "commands" && (

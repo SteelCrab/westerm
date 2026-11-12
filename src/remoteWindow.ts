@@ -25,6 +25,15 @@ export function serverPath(path: string, target: string | null = REMOTE_TARGET):
 }
 
 /**
+ * Where a plugin's panel reaches its own server route, `/api/plugins/<id><path>`:
+ * on the server, through `/remote/<target>`, in a remote window.
+ */
+export function pluginPath(id: string, path: string, target: string | null = REMOTE_TARGET): string {
+  const base = target !== null ? `/remote/${encodeURIComponent(target)}` : "";
+  return `${base}/api/plugins/${id}${path}`;
+}
+
+/**
  * A pane closed while its socket is down cannot send `close` to the server.
  * The local dashboard then keeps the session id and ends it on the server at
  * the next connection. `readyState`: the WebSocket's; 2 closing, 3 closed.

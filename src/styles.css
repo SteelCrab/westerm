@@ -18,6 +18,9 @@
   --ssh-soft: rgba(240, 163, 94, 0.16);
   --docs: #f07fba;
   --docs-soft: rgba(240, 127, 186, 0.14);
+  /* The Databases plugin (src/plugins/db/). */
+  --db: #4cc9d6;
+  --db-soft: rgba(76, 201, 214, 0.14);
   /* AI agents: Claude Code's mark; Gemini CLI's blue; Codex's follows --text. */
   --agent-claude: #e08a65;
   --agent-gemini: #3186ff;
@@ -92,6 +95,8 @@
     --ssh-soft: rgba(194, 106, 26, 0.12);
     --docs: #c2407f;
     --docs-soft: rgba(194, 64, 127, 0.12);
+    --db: #0e8a96;
+    --db-soft: rgba(14, 138, 150, 0.12);
     --agent-claude: #c2603d;
     --agent-gemini: #165fd6;
     --ok: #23a058;
@@ -145,6 +150,8 @@
   --ssh-soft: rgba(194, 106, 26, 0.12);
   --docs: #c2407f;
   --docs-soft: rgba(194, 64, 127, 0.12);
+  --db: #0e8a96;
+  --db-soft: rgba(14, 138, 150, 0.12);
   --agent-claude: #c2603d;
   --agent-gemini: #165fd6;
   --ok: #23a058;
@@ -341,7 +348,7 @@ button {
   position: absolute;
   left: calc(100% + 10px);
   top: 50%;
-  z-index: 20;
+  z-index: 62;
   padding: 4px 8px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
@@ -363,7 +370,62 @@ button {
   transform: translate(0, -50%);
 }
 
-/* ---- Git sidebar --------------------------------------------- */
+/* The plugin bar: installed plugins and the puzzle button, just above the
+   bottom group. The auto margin takes the free space of the column. */
+.plugin-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: auto 0 6px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-button[aria-pressed="true"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* A plugin asks for attention: a red dot at the lower right. */
+.plugin-alert {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.plugin-button[aria-pressed="true"] .plugin-alert {
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+
+/* An external plugin's SVG, drawn as an image. */
+.plugin-icon {
+  display: block;
+  object-fit: contain;
+}
+
+/* Installed from outside westerm: a small yellow mark at the upper left. */
+.plugin-external {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.plugin-button[aria-pressed="true"] .plugin-external {
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+
+/* ---- Git plugin panel ---------------------------------------- */
 
 .git-panel {
   min-height: 0;
@@ -2021,7 +2083,7 @@ button {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 40;
+  z-index: 62;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2913,6 +2975,556 @@ button {
   margin: 0;
 }
 
+/* ---- Docker plugin panel (src/plugins/docker) -------------------------- */
+
+/* Reuses the session panel's frame, tree rows, counts, and guide lines. */
+.docker-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.docker-logo {
+  flex: none;
+  color: var(--accent);
+}
+
+.docker-title {
+  font-weight: 600;
+}
+
+.docker-engine {
+  color: var(--text-muted);
+}
+
+.docker-version {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.docker-refresh {
+  margin-left: auto;
+}
+
+.docker-filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 8px 8px 4px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-faint);
+}
+
+.docker-filter:focus-within {
+  border-color: var(--accent);
+}
+
+.docker-filter input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.docker-filter-count {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.docker-panel .tree {
+  padding-top: 0;
+}
+
+.docker-group-node + .docker-group-node {
+  margin-top: 4px;
+}
+
+.docker-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+
+.docker-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.docker-group-toggle {
+  gap: 6px;
+}
+
+.docker-group-icon {
+  flex: none;
+  color: var(--accent);
+}
+
+.docker-project {
+  font-weight: 600;
+}
+
+.docker-dir {
+  margin-left: 6px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.docker-count.failed {
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+/* Hover buttons sit over the right end of the row, like the agents panel's. */
+.docker-actions {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  display: flex;
+  gap: 2px;
+  padding-left: 4px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.docker-group:hover .docker-actions,
+.docker-group:focus-within .docker-actions,
+.docker-row:hover .docker-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.docker-actions .icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (hover: none) {
+  .docker-actions {
+    position: static;
+    background: transparent;
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Container rows have two lines: dot, name, and state; then the image. */
+.docker-row {
+  align-items: flex-start;
+}
+
+.docker-select {
+  align-items: flex-start;
+  gap: 8px;
+  height: auto;
+  min-height: 28px;
+  padding: 5px 0;
+  color: var(--text);
+}
+
+.docker-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+
+.docker-dot.running {
+  background: var(--ok);
+}
+
+.docker-dot.warn {
+  background: var(--warn);
+}
+
+.docker-dot.failed {
+  background: var(--danger);
+}
+
+.docker-dot.stopped {
+  border: 1.5px solid var(--text-faint);
+}
+
+.docker-dot.busy {
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border: 1.5px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: agent-turn 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docker-dot.busy {
+    border-color: var(--accent);
+    animation: none;
+  }
+}
+
+.docker-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.docker-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 17px;
+}
+
+.docker-health,
+.docker-exit {
+  flex: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.docker-health {
+  color: var(--ok);
+}
+
+.docker-health.unhealthy {
+  color: var(--warn);
+}
+
+.docker-exit {
+  color: var(--danger);
+}
+
+.docker-image {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The port chips at the right end; the hover buttons hang off their left
+   edge (right: 100%), so they never cover a chip and the chips never move. */
+.docker-tail {
+  position: relative;
+  display: flex;
+  flex: none;
+  max-width: 45%;
+}
+
+.docker-row .docker-actions {
+  right: 100%;
+  margin-right: 4px;
+}
+
+.docker-ports {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 5px;
+}
+
+.docker-port {
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--browser);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.docker-port:hover {
+  background: var(--browser-soft);
+}
+
+.docker-port:focus-visible,
+.docker-confirm button:focus-visible,
+.docker-menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Remove asks on a line under the row. */
+.docker-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 2px 4px 19px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.docker-confirm-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.docker-confirm button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.docker-confirm .docker-confirm-remove {
+  border-color: transparent;
+  background: var(--danger);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+/* A failed action: Docker's first line, the rest on hover. */
+.docker-error {
+  margin: 0 2px 4px 19px;
+  overflow: hidden;
+  color: var(--danger);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docker-none {
+  margin: 0;
+  padding: 8px 14px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* No CLI, engine down, no containers. */
+.docker-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.docker-empty-icon {
+  color: var(--text-faint);
+}
+
+.docker-empty p {
+  max-width: 100%;
+  margin: 0;
+}
+
+.docker-empty-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.docker-empty-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docker-install {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.docker-install code {
+  max-width: 100%;
+  padding: 4px 8px;
+  overflow-x: auto;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.docker-install-link {
+  color: var(--accent);
+}
+
+/* The context menu and the header's ⋯ menu. */
+.docker-menu {
+  position: fixed;
+  z-index: 62;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 16px 40px -12px var(--shadow);
+  font-size: 12px;
+}
+
+.docker-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.docker-menu-item svg {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.docker-menu-item:hover:not(:disabled),
+.docker-menu-item:focus-visible {
+  background: var(--surface-2);
+}
+
+.docker-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.docker-menu-item.danger,
+.docker-menu-item.danger svg {
+  color: var(--danger);
+}
+
+.docker-menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+
+/* ---- External plugin panel (src/plugins/external) ---------------------- */
+
+/* Every plugin iframe lives in this layer under <body> and is never moved
+   (a moved iframe reloads). Above the narrow sidebar drawer (.sidebar-slot,
+   60) and below the dialogs (.remote-connect 90, .palette-backdrop 100,
+   .settings-backdrop 110). Popovers that can open over a plugin panel sit at
+   62 or more. */
+.plugin-frames {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 61;
+  width: 0;
+  height: 0;
+}
+
+/* Laid over the panel's slot (frame.ts sets the box). */
+.plugin-frame {
+  position: fixed;
+  display: block;
+  border: 0;
+  background: var(--surface);
+}
+
+.plugin-frame[hidden] {
+  display: none;
+}
+
+.plugin-panel-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.plugin-panel-icon {
+  flex: none;
+  color: var(--accent);
+}
+
+.plugin-panel-title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.plugin-external-tag {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.plugin-panel-version {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.plugin-panel-more {
+  margin-left: auto;
+}
+
+/* The space the iframe covers. */
+.plugin-frame-slot {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.plugin-stopped {
+  margin: 0;
+  padding: 24px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
 
 /* ---- Rename fields --------------------------------------------------- */
 
@@ -3050,7 +3662,7 @@ body.resizing-sidebar .pane-layer {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: 62;
   width: min(340px, calc(100vw - 32px));
   display: flex;
   flex-direction: column;
@@ -3338,6 +3950,425 @@ body.resizing-sidebar .pane-layer {
 
 .settings-foot .settings-hint {
   margin-left: auto;
+}
+
+/* ---- Plugin manager (the Settings dialog frame) ----------------------- */
+
+.plugin-manager {
+  width: min(760px, 100%);
+}
+
+.plugin-manager .settings-body {
+  height: min(480px, calc(100vh - 8vh - 120px));
+  border-bottom: 0;
+}
+
+.plugin-manager-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The left column: Installed | Browse, search, the list, and the install link. */
+.plugin-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+  min-height: 0;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+}
+
+.plugin-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Two or more buttons that pick one: the tabs, URL | Folder. */
+.plugin-segmented {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+}
+
+.plugin-segmented button {
+  flex: 1;
+  height: 26px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.plugin-segmented button:hover {
+  color: var(--text);
+}
+
+.plugin-segmented button[aria-pressed="true"] {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.plugin-segmented button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.plugin-search,
+.plugin-address {
+  flex: none;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.plugin-address {
+  font-family: var(--term-font-family, ui-monospace, monospace);
+}
+
+.plugin-search:focus-visible,
+.plugin-address:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.plugin-list-failed {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.plugin-list-failed .button {
+  height: 26px;
+}
+
+.plugin-install-from {
+  flex: none;
+  padding: 6px 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-install-from:hover {
+  background: var(--accent-soft);
+}
+
+.plugin-install-from:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.plugin-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-list button:hover {
+  background: var(--surface-2);
+}
+
+.plugin-list button[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.plugin-list button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.plugin-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.plugin-icon.large {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+}
+
+/* An external plugin's own SVG, drawn as an image only. */
+.plugin-icon img {
+  display: block;
+}
+
+/* built-in · verified · unverified · local */
+.plugin-badge {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 15px;
+  vertical-align: 1px;
+}
+
+.plugin-badge.verified {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.plugin-badge.unverified {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.plugin-badge.local {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.plugin-update-tag {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.plugin-list-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.plugin-list-name {
+  font-weight: 600;
+}
+
+/* The description on one line; the details show all of it. */
+.plugin-list-description {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-installed {
+  flex: none;
+  color: var(--ok);
+}
+
+.plugin-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.plugin-detail-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-detail-name h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.plugin-detail-head .button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.plugin-failed {
+  margin: 0;
+  color: var(--danger);
+}
+
+.plugin-description {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.plugin-can {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.plugin-permissions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* An external plugin's permissions: the risk at the end of each line. */
+.plugin-permissions.risks li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plugin-risk {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.plugin-risk.high {
+  background: var(--ws-red-soft);
+  color: var(--danger);
+}
+
+.plugin-risk.medium {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.plugin-risk.low {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.plugin-source {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.plugin-source-value {
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.plugin-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.plugin-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--text);
+}
+
+.plugin-trust {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.plugin-trust input {
+  flex: none;
+  margin: 3px 0 0;
+}
+
+/* The install screens: a form down the panel, the buttons at the end. */
+.plugin-install {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plugin-install h3 {
+  margin: 0;
+}
+
+.plugin-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* "Uninstall …?" and "Update …?": asked inside the panel, not a browser dialog. */
+.plugin-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.plugin-confirm p {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
+.plugin-actions .button:disabled,
+.plugin-confirm .button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Narrow windows: the list goes above the details. */
+@media (max-width: 560px) {
+  .plugin-side {
+    width: auto;
+    max-height: 45vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
 }
 
 /* Settings ▸ Terminal ▸ Font: the ordered font list, the search for
@@ -3933,6 +4964,17 @@ body.resizing-rows .pane {
     gap: 2px;
   }
 
+  .plugin-bar {
+    flex-direction: row;
+    gap: 2px;
+    margin: 0 4px 0 auto;
+    padding: 0 4px;
+    border-top: 0;
+    border-bottom: 0;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+
   .activity-button {
     width: 36px;
     height: 36px;
@@ -3969,6 +5011,845 @@ body.resizing-rows .pane {
   .pane-detail {
     display: none;
   }
+}
+
+/* ---- Databases plugin ------------------------------------------------- */
+
+.db-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.db-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.db-logo {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--db);
+  border-radius: 6px;
+  background: var(--db-soft);
+  color: var(--db);
+}
+
+.db-title {
+  font-weight: 600;
+}
+
+.db-sub {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.db-header .db-sub {
+  flex: 1;
+}
+
+.db-filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 8px 8px 4px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-faint);
+}
+
+.db-filter:focus-within {
+  border-color: var(--db);
+}
+
+.db-filter input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.db-tree {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 4px 6px 8px;
+  list-style: none;
+}
+
+.db-tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.db-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 6px;
+}
+
+.db-row:hover {
+  background: var(--surface-2);
+}
+
+.db-toggle,
+.db-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.db-toggle:focus-visible,
+.db-open:focus-visible {
+  outline: 2px solid var(--db);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.db-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+
+.db-chevron.open {
+  transform: rotate(90deg);
+}
+
+.db-icon {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.db-leaf .db-icon {
+  color: var(--db);
+}
+
+.db-leaf .db-icon.db-view {
+  color: var(--text-faint);
+}
+
+.db-name {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-connection .db-name {
+  font-weight: 600;
+}
+
+.db-count,
+.db-quiet-tag {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.db-engine-mark {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.db-engine-postgres {
+  background: #6b9bd1;
+}
+
+.db-engine-mysql {
+  background: #e0a050;
+}
+
+.db-engine-sqlite {
+  background: #8fb6d8;
+}
+
+.db-color {
+  flex: none;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+}
+
+.db-color-gray {
+  background: var(--text-faint);
+}
+
+.db-color-green {
+  background: var(--ok);
+}
+
+.db-color-yellow {
+  background: var(--warn);
+}
+
+.db-color-red {
+  background: var(--danger);
+}
+
+.db-color-blue {
+  background: var(--accent);
+}
+
+.db-tag {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 9.5px;
+  line-height: 14px;
+}
+
+.db-tag-ssh {
+  border: 1px solid color-mix(in srgb, var(--ssh) 45%, transparent);
+  color: var(--ssh);
+}
+
+.db-tag-ro {
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  color: var(--warn);
+}
+
+.db-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 50%;
+}
+
+.db-dot-open {
+  background: var(--ok);
+}
+
+.db-dot-connecting {
+  background: var(--warn);
+}
+
+.db-dot-failed {
+  background: var(--danger);
+}
+
+.db-dot-idle {
+  border: 1.5px solid var(--text-faint);
+}
+
+.db-actions {
+  display: none;
+  flex: none;
+  gap: 1px;
+  padding-right: 2px;
+}
+
+.db-row:hover .db-actions,
+.db-row:focus-within .db-actions {
+  display: flex;
+}
+
+.db-actions .icon-button {
+  width: 22px;
+  height: 22px;
+}
+
+.db-quiet,
+.db-empty p {
+  margin: 4px 8px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.db-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 12px;
+  text-align: center;
+}
+
+.db-error {
+  margin: 2px 8px 4px;
+  color: var(--danger);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.db-row-error {
+  margin-left: 26px;
+}
+
+.db-failure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.db-failure .db-error {
+  margin-left: 0;
+}
+
+.db-password {
+  display: flex;
+  gap: 4px;
+  margin: 2px 4px 6px;
+}
+
+.db-password input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.db-confirm {
+  margin: 6px 8px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.db-confirm p {
+  margin: 0 0 8px;
+}
+
+.db-confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.db-notice {
+  margin: 4px 8px;
+}
+
+.db-found {
+  flex: none;
+  margin: 8px;
+  padding: 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 7px;
+}
+
+.db-found h3 {
+  margin: 0 0 4px 2px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.db-found ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.db-found-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  font-size: 11px;
+}
+
+.db-found-row .db-name {
+  flex: 1;
+}
+
+.db-found-add {
+  height: 20px;
+  padding: 0 8px;
+  font-size: 10.5px;
+}
+
+.db-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--backdrop);
+}
+
+.db-dialog {
+  width: min(460px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 18px 40px var(--shadow);
+  font-size: 12px;
+}
+
+.db-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--db);
+  font-weight: 600;
+}
+
+.db-dialog-header span {
+  flex: 1;
+  color: var(--text);
+}
+
+.db-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+}
+
+.db-engines {
+  display: flex;
+  gap: 4px;
+}
+
+.db-engine {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.db-engine.on {
+  border-color: var(--db);
+  background: var(--db-soft);
+  color: var(--text);
+}
+
+.db-field {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.db-field > span,
+.db-field > label,
+.db-host span {
+  color: var(--text-muted);
+}
+
+.db-field input,
+.db-field select {
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.db-field input:focus,
+.db-field select:focus {
+  border-color: var(--db);
+  outline: none;
+}
+
+.db-host {
+  grid-template-columns: minmax(0, 1fr) 76px;
+}
+
+.db-host label {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.db-host label + label {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.db-host label + label span {
+  display: none;
+}
+
+.db-password-row {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.db-password-row input {
+  flex: 1;
+}
+
+.db-field .db-note {
+  grid-column: 2;
+}
+
+.db-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.db-or {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.db-or::before,
+.db-or::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.db-colors {
+  display: flex;
+  gap: 6px;
+}
+
+.db-swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.db-swatch.on {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 3.5px var(--text);
+}
+
+.db-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.db-dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.db-spacer {
+  flex: 1;
+}
+
+.db-test {
+  font-size: 11px;
+}
+
+.db-test.ok {
+  color: var(--ok);
+}
+
+.db-test.failed {
+  color: var(--danger);
+}
+
+.db-table-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  border-top: 2px solid transparent;
+  background: var(--pane-bg);
+  font-size: 12px;
+}
+
+.db-table-pane.db-danger {
+  border-top-color: var(--danger);
+}
+
+.db-pane-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.db-pane-header .db-icon {
+  color: var(--db);
+}
+
+.db-pane-header .db-name {
+  font-weight: 600;
+}
+
+.db-sql {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.db-sql textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  max-height: 160px;
+  padding: 4px 6px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.db-sql textarea:focus {
+  border-color: var(--db);
+  outline: none;
+}
+
+.db-sql .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.db-too-long {
+  flex: none;
+  margin: 4px 8px 0;
+  color: var(--warn);
+}
+
+.db-result {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.db-result .db-quiet {
+  margin: 12px;
+}
+
+.db-result-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px;
+  color: var(--text-muted);
+}
+
+.db-result-notice p {
+  margin: 0;
+}
+
+.db-result-error {
+  margin: 12px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.db-result-error pre {
+  margin: 6px 0 0;
+  color: var(--text-faint);
+  white-space: pre-wrap;
+  font: 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.db-grid {
+  flex: 1;
+  overflow: auto;
+  outline: none;
+}
+
+.db-grid table {
+  border-collapse: collapse;
+  font: 11.5px/1.35 ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.db-grid th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 4px 10px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.db-type {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.db-grid td {
+  max-width: 360px;
+  overflow: hidden;
+  padding: 3px 10px;
+  border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.db-grid td.db-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.db-grid td.db-null {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.db-grid td.db-cell-on {
+  outline: 1px solid var(--db);
+  outline-offset: -1px;
+  background: var(--db-soft);
+}
+
+.db-cut {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.db-cell-popover {
+  position: absolute;
+  inset: 12px;
+  z-index: 2;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px var(--shadow);
+}
+
+.db-cell-popover .icon-button {
+  float: right;
+}
+
+.db-cell-popover pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.db-pane-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  height: 28px;
+  padding: 0 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.db-more-note {
+  color: var(--warn);
+}
+
+/* ---- Plugin pane ------------------------------------------------------- */
+
+/* A plugin pane whose plugin is not installed. */
+.plugin-pane-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 /* ---- Docs pane --------------------------------------------------------- */

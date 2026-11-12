@@ -2,7 +2,7 @@
 // folder, which view the sidebar slot shows, and past conversations.
 
 import type { AgentKind } from "../shared/protocol.ts";
-import { homeShort } from "./components/AgentCard.tsx";
+import { homeShort } from "./uiHelpers.ts";
 import { REMOTE_TARGET } from "./remoteWindow.ts";
 import {
   activeWorkspace,
@@ -73,8 +73,11 @@ export function agentFolders(state: Dashboard): AgentFolder[] {
   return [...folders.values()];
 }
 
-/** A panel that can take the sidebar slot instead of the sessions list. */
-export type SidebarPanel = "agents" | "git" | "tunnel";
+/**
+ * A panel that can take the sidebar slot instead of the sessions list:
+ * agents, the tunnel, or one plugin's (Git is a plugin).
+ */
+export type SidebarPanel = "agents" | "tunnel" | `plugin:${string}`;
 
 export type SidebarView = "sessions" | SidebarPanel | null;
 
@@ -107,6 +110,23 @@ export function pressPanel(o: SidebarFlags, which: SidebarPanel): SidebarFlags {
     sidebarOpen: o.sidebarOpen || o.layout === "sidebar",
     drawerOpen: o.narrow || o.drawerOpen,
   };
+}
+
+/** A built-in plugin's id (`docker`) or an external one's (`<author>.<name>`). */
+const PLUGIN_PANEL = /^plugin:[a-z0-9-]{1,32}(\.[a-z0-9-]{1,32})?$/;
+
+/** `saved` names a plugin panel that can exist. */
+export function isPluginPanel(saved: string): saved is `plugin:${string}` {
+  return PLUGIN_PANEL.test(saved);
+}
+
+/**
+ * The panel to show: a plugin panel needs its plugin in the installed list.
+ * `installed` is null while the list is being read.
+ */
+export function effectivePanel(panel: SidebarPanel | null, installed: readonly string[] | null): SidebarPanel | null {
+  if (panel === null || !panel.startsWith("plugin:")) return panel;
+  return installed?.includes(panel.slice("plugin:".length)) ? panel : null;
 }
 
 const isWaiting = (session: Session) => session.kind === "shell" && agentDisplay(session) === "waiting";

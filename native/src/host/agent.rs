@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{is_conversation_id, AgentKind, AgentState, AgentStatus, Launch};
+use crate::quote::{command_line, ShellKind};
+use crate::spawn::shell_kind;
 
 impl AgentKind {
     pub(crate) fn program(self) -> &'static str {
@@ -50,8 +52,10 @@ pub struct AgentRecord {
 }
 
 impl AgentRecord {
-    /// The command line typed into the restored shell.
-    pub fn resume_command(&self) -> String {
+    /// The command line typed into the restored shell, quoted for `shell`.
+    /// None when a saved word holds a control character: typing it would act
+    /// on the terminal before the shell reads the quotes.
+    pub fn resume_command(&self, shell: ShellKind) -> Option<String> {
         let mut words = vec![self.program.clone().unwrap_or_else(|| self.kind.program().to_owned())];
         match (self.kind, &self.session) {
             (AgentKind::Claude, Some(id)) => words.extend(["--resume".to_owned(), id.clone()]),
@@ -62,7 +66,7 @@ impl AgentRecord {
             (AgentKind::Gemini, None) => words.extend(["--resume".to_owned(), "latest".to_owned()]),
         }
         words.extend(self.args.iter().cloned());
-        words.iter().map(|word| shell_quote(word)).collect::<Vec<_>>().join(" ")
+        command_line(&words, shell).ok()
     }
 
     /// The model the kept flags name, if any.
@@ -90,11 +94,17 @@ pub fn launch_record(launch: &Launch) -> Option<AgentRecord> {
 /// The command line typed into a new shell to start an agent: a fresh
 /// conversation, or the one the launch names. Built from the launch alone,
 /// never from text the browser sent.
-pub fn launch_command(launch: &Launch) -> String {
+pub fn launch_command(launch: &Launch, shell: ShellKind) -> Option<String> {
     match launch_record(launch) {
-        Some(record) => record.resume_command(),
-        None => launch.kind.program().to_owned(),
+        Some(record) => record.resume_command(shell),
+        None => Some(launch.kind.program().to_owned()),
     }
+}
+
+/// How agent commands are quoted: by the login shell's rules, and by sh rules
+/// for a shell westerm does not know (nu, Windows), as before.
+pub fn resume_shell() -> ShellKind {
+    shell_kind().unwrap_or(ShellKind::Sh)
 }
 
 /// One look at the foreground program of a shell.
@@ -107,17 +117,6 @@ pub struct Seen {
     pub cwd: Option<String>,
     /// Its version, when it tells it.
     pub version: Option<String>,
-}
-
-/// A word as sh, bash, zsh, and fish read it literally.
-fn shell_quote(word: &str) -> String {
-    let plain = !word.is_empty()
-        && word.bytes().all(|b| b.is_ascii_alphanumeric() || b"_./:=@%+,-".contains(&b));
-    if plain {
-        word.to_owned()
-    } else {
-        format!("'{}'", word.replace('\'', r"'\''"))
-    }
 }
 
 /// The last part of a path, without the `.exe` of a Windows program.
@@ -455,7 +454,8 @@ impl Tracker {
                 since: same.filter(|old| old.status == seen.status).map_or(now, |old| old.since),
                 started: same.map_or(now, |old| old.started),
                 conversation: seen.record.session.clone(),
-                resume: seen.record.resume_command(),
+                // Empty for a record no shell may type: the card shows no command.
+                resume: seen.record.resume_command(resume_shell()).unwrap_or_default(),
                 cwd: seen.cwd.clone(),
                 version: seen.version.clone(),
                 model: seen.record.model().map(str::to_owned),
@@ -493,6 +493,7 @@ impl Tracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::quote::ShellKind;
 
     fn argv(line: &str) -> Vec<String> {
         line.split(' ').map(str::to_owned).collect()
@@ -522,7 +523,7 @@ mod tests {
         assert_eq!(identify(&argv("claude")), Some(record(AgentKind::Claude, None, &[])));
         let path = identify(&argv("/Users/me/.local/bin/claude")).unwrap();
         assert_eq!(path.program.as_deref(), Some("/Users/me/.local/bin/claude"));
-        assert_eq!(path.resume_command(), "/Users/me/.local/bin/claude --continue");
+        assert_eq!(path.resume_command(ShellKind::Sh).unwrap(), "/Users/me/.local/bin/claude --continue");
         assert_eq!(identify(&argv("codex")).map(|r| r.kind), Some(AgentKind::Codex));
         let npm = argv("node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js --model opus");
         assert_eq!(identify(&npm), Some(record(AgentKind::Claude, None, &["--model", "opus"])));
@@ -599,7 +600,7 @@ mod tests {
         let line = argv("gemini -m gemini-2.5-pro --yolo -w feat -i \"fix it\" --include-directories ../lib \"start\"");
         let found = identify(&line).unwrap();
         assert_eq!(found, record(AgentKind::Gemini, None, &["-m", "gemini-2.5-pro", "--yolo", "--include-directories", "../lib"]));
-        assert_eq!(found.resume_command(), "gemini --resume latest -m gemini-2.5-pro --yolo --include-directories ../lib");
+        assert_eq!(found.resume_command(ShellKind::Sh).unwrap(), "gemini --resume latest -m gemini-2.5-pro --yolo --include-directories ../lib");
         assert_eq!(found.model(), Some("gemini-2.5-pro"));
         // A worktree name and a prompt with spaces are one word each.
         let quoted: Vec<String> = ["gemini", "--worktree", "feat", "-o", "json", "-d", "fix it", "-s"].map(str::to_owned).to_vec();
@@ -610,7 +611,7 @@ mod tests {
     fn gemini_reads_its_conversation_from_the_command_line() {
         let resume = identify(&argv(&format!("gemini --resume {ID}"))).unwrap();
         assert_eq!(resume.session.as_deref(), Some(ID));
-        assert_eq!(resume.resume_command(), format!("gemini --resume {ID}"));
+        assert_eq!(resume.resume_command(ShellKind::Sh).unwrap(), format!("gemini --resume {ID}"));
         let session = identify(&argv(&format!("gemini --session-id {ID} --yolo"))).unwrap();
         assert_eq!(session.session.as_deref(), Some(ID));
         assert_eq!(session.args, ["--yolo"]);
@@ -643,13 +644,15 @@ mod tests {
 
     #[test]
     fn resume_commands_quote_their_words() {
-        assert_eq!(record(AgentKind::Claude, Some(ID), &["--model", "opus"]).resume_command(), format!("claude --resume {ID} --model opus"));
-        assert_eq!(record(AgentKind::Claude, None, &[]).resume_command(), "claude --continue");
-        assert_eq!(record(AgentKind::Codex, None, &["-c", "model=\"o3\""]).resume_command(), "codex resume --last -c 'model=\"o3\"'");
-        assert_eq!(record(AgentKind::Codex, Some(ID), &[]).resume_command(), format!("codex resume {ID}"));
+        let sh = |record: AgentRecord| record.resume_command(ShellKind::Sh).unwrap();
+        assert_eq!(sh(record(AgentKind::Claude, Some(ID), &["--model", "opus"])), format!("claude --resume {ID} --model opus"));
+        assert_eq!(sh(record(AgentKind::Claude, None, &[])), "claude --continue");
+        assert_eq!(sh(record(AgentKind::Codex, None, &["-c", "model=\"o3\""])), "codex resume --last -c 'model=\"o3\"'");
+        assert_eq!(sh(record(AgentKind::Codex, Some(ID), &[])), format!("codex resume {ID}"));
         let tricky = record(AgentKind::Claude, None, &["--append-system-prompt", "it's $(rm -rf ~); `x`"]);
-        assert_eq!(tricky.resume_command(), r"claude --continue --append-system-prompt 'it'\''s $(rm -rf ~); `x`'");
-        assert_eq!(shell_quote(""), "''");
+        assert_eq!(tricky.resume_command(ShellKind::Sh).as_deref(), Some(r"claude --continue --append-system-prompt 'it'\''s $(rm -rf ~); `x`'"));
+        assert_eq!(tricky.resume_command(ShellKind::Fish).as_deref(), Some(r"claude --continue --append-system-prompt 'it\'s $(rm -rf ~); `x`'"));
+        assert_eq!(record(AgentKind::Claude, None, &["--x", "a\u{3}"]).resume_command(ShellKind::Sh), None);
         assert_eq!(record(AgentKind::Codex, None, &["-c", "x=1", "-m", "o3"]).model(), Some("o3"));
         assert_eq!(record(AgentKind::Claude, None, &["--model", "opus"]).model(), Some("opus"));
         let tricky = record(AgentKind::Claude, None, &["--append-system-prompt", "--model", "--verbose"]);
@@ -659,12 +662,12 @@ mod tests {
     #[test]
     fn launch_commands() {
         let launch = |kind, conversation: Option<&str>| Launch { kind, conversation: conversation.map(str::to_owned) };
-        assert_eq!(launch_command(&launch(AgentKind::Claude, None)), "claude");
-        assert_eq!(launch_command(&launch(AgentKind::Codex, None)), "codex");
-        assert_eq!(launch_command(&launch(AgentKind::Gemini, None)), "gemini");
-        assert_eq!(launch_command(&launch(AgentKind::Claude, Some(ID))), format!("claude --resume {ID}"));
-        assert_eq!(launch_command(&launch(AgentKind::Codex, Some(ID))), format!("codex resume {ID}"));
-        assert_eq!(launch_command(&launch(AgentKind::Gemini, Some(ID))), format!("gemini --resume {ID}"));
+        assert_eq!(launch_command(&launch(AgentKind::Claude, None), ShellKind::Sh).unwrap(), "claude");
+        assert_eq!(launch_command(&launch(AgentKind::Codex, None), ShellKind::Sh).unwrap(), "codex");
+        assert_eq!(launch_command(&launch(AgentKind::Gemini, None), ShellKind::Sh).unwrap(), "gemini");
+        assert_eq!(launch_command(&launch(AgentKind::Claude, Some(ID)), ShellKind::Sh).unwrap(), format!("claude --resume {ID}"));
+        assert_eq!(launch_command(&launch(AgentKind::Codex, Some(ID)), ShellKind::Sh).unwrap(), format!("codex resume {ID}"));
+        assert_eq!(launch_command(&launch(AgentKind::Gemini, Some(ID)), ShellKind::Sh).unwrap(), format!("gemini --resume {ID}"));
     }
 
     #[test]

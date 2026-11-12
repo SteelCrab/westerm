@@ -16,7 +16,7 @@ import { MAX_FONT_SIZE, MIN_FONT_SIZE, type TerminalFont } from "../terminal/fon
 import { cssColor, COLOR_THEMES, terminalColors, themeName } from "../colorThemes.ts";
 import type { ColorScheme, ThemeChoice } from "../theme.ts";
 import type { UpdateState } from "../useUpdate.ts";
-import { stepIndex } from "./WorkspaceMenu.tsx";
+import { stepIndex } from "../uiHelpers.ts";
 import { FontPicker } from "./FontPicker.tsx";
 
 interface SettingsDialogProps {

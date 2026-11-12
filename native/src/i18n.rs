@@ -67,6 +67,25 @@ impl Lang {
             Lang::Zh => format!("无法启动会话：{error}"),
         }
     }
+
+    /// A plugin pane asks for a shell whose quoting westerm does not know.
+    pub fn plugin_shell_unsupported(self) -> String {
+        match self {
+            Lang::Ko => "이 셸은 플러그인 패널을 지원하지 않습니다".to_owned(),
+            Lang::En => "Your shell is not supported for plugin panes".to_owned(),
+            Lang::Ja => "このシェルはプラグインのパネルに対応していません".to_owned(),
+            Lang::Zh => "插件面板不支持你的 Shell".to_owned(),
+        }
+    }
+
+    pub fn plugin_launch_expired(self) -> String {
+        match self {
+            Lang::Ko => "이 콘솔은 만료되었습니다. Databases 패널에서 다시 여세요".to_owned(),
+            Lang::En => "This console expired. Open it again from the Databases panel.".to_owned(),
+            Lang::Ja => "このコンソールは期限切れです。Databases パネルからもう一度開いてください".to_owned(),
+            Lang::Zh => "此控制台已过期。请从 Databases 面板重新打开".to_owned(),
+        }
+    }
 }
 
 #[cfg(test)]
