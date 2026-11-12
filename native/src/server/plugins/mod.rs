@@ -6,6 +6,7 @@
 
 mod docker;
 mod external;
+pub(super) mod git;
 mod login_env;
 
 use std::collections::HashMap;
@@ -65,8 +66,8 @@ fn poisoned() -> io::Error {
 }
 
 impl PluginState {
-    /// Reads `plugins.json`; a missing or broken file means nothing is
-    /// installed. Then reads the `plugin.json` of each external plugin.
+    /// Reads `plugins.json`; a missing or broken file means only the
+    /// default-on plugins. Then reads the `plugin.json` of each external plugin.
     pub(super) fn load(state_dir: &Path) -> Self {
         let path = state_dir.join("plugins.json");
         let file = std::fs::read(&path).map(|bytes| store::parse_plugins_file(&bytes)).unwrap_or_default();
@@ -211,7 +212,11 @@ pub(super) fn session_allowed(request: &AttachRequest, plugins: &PluginState) ->
 }
 
 pub(super) fn routes() -> Router<Shared> {
-    Router::new().route("/api/plugins", get(get_plugins).put(put_plugins)).merge(docker::routes()).merge(external::routes())
+    Router::new()
+        .route("/api/plugins", get(get_plugins).put(put_plugins))
+        .merge(git::routes())
+        .merge(docker::routes())
+        .merge(external::routes())
 }
 
 /// Starts the daily check for newer plugin versions.
@@ -272,11 +277,12 @@ mod tests {
     #[test]
     fn installed_lists_drop_unknown_ids_and_broken_files() {
         let read = |body: &[u8]| external::store::parse_plugins_file(body).installed;
-        assert_eq!(read(br#"{"installed":["docker","nope"]}"#), vec!["docker"]);
-        assert_eq!(read(br#"{"installed":["docker","docker"]}"#), vec!["docker"]);
-        assert!(read(b"{not json").is_empty());
-        assert!(read(b"").is_empty());
-        assert!(read(br#"{"installed":"docker"}"#).is_empty());
+        // Git is on by default, so every list starts with it.
+        assert_eq!(read(br#"{"installed":["docker","nope"]}"#), vec!["git", "docker"]);
+        assert_eq!(read(br#"{"installed":["docker","docker"]}"#), vec!["git", "docker"]);
+        assert_eq!(read(b"{not json"), vec!["git"]);
+        assert_eq!(read(b""), vec!["git"]);
+        assert_eq!(read(br#"{"installed":"docker"}"#), vec!["git"]);
     }
 
     #[test]
@@ -284,15 +290,36 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = PluginState::load(dir.path());
         assert!(!state.is_installed("docker"));
-        let kept = state.set_builtin(&["docker".into(), "nope".into()]).unwrap();
-        assert_eq!(kept, vec!["docker"]);
+        let kept = state.set_builtin(&["git".into(), "docker".into(), "nope".into()]).unwrap();
+        assert_eq!(kept, vec!["git", "docker"]);
         assert!(state.is_installed("docker"));
-        assert_eq!(state.installed(), vec!["docker"]);
+        assert_eq!(state.installed(), vec!["git", "docker"]);
         assert!(PluginState::load(dir.path()).is_installed("docker"), "read back from plugins.json");
-        assert_eq!(std::fs::read_to_string(dir.path().join("plugins.json")).unwrap(), r#"{"installed":["docker"]}"#);
-        state.set_builtin(&[]).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.path().join("plugins.json")).unwrap(), r#"{"installed":["git","docker"]}"#);
+        state.set_builtin(&["git".into()]).unwrap();
         assert!(!state.is_installed("docker"));
         assert!(!PluginState::load(dir.path()).is_installed("docker"));
+    }
+
+    #[test]
+    fn git_is_installed_until_the_user_turns_it_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = PluginState::load(dir.path());
+        assert_eq!(state.installed(), vec!["git"], "no plugins.json yet");
+        assert!(!dir.path().join("plugins.json").exists(), "reading the default writes nothing");
+
+        // A list without Git turns it off, and the file remembers that.
+        state.set_builtin(&["docker".into()]).unwrap();
+        assert!(!state.is_installed("git"));
+        assert_eq!(std::fs::read_to_string(dir.path().join("plugins.json")).unwrap(), r#"{"installed":["docker"],"off":["git"]}"#);
+        assert_eq!(PluginState::load(dir.path()).installed(), vec!["docker"], "it stays off after a restart");
+
+        state.set_builtin(&["git".into(), "docker".into()]).unwrap();
+        assert_eq!(PluginState::load(dir.path()).installed(), vec!["git", "docker"]);
+
+        // A file written before the Git plugin existed keeps Git on.
+        std::fs::write(dir.path().join("plugins.json"), r#"{"installed":["docker"]}"#).unwrap();
+        assert_eq!(PluginState::load(dir.path()).installed(), vec!["git", "docker"]);
     }
 
     #[cfg(unix)]
@@ -490,7 +517,7 @@ mod tests {
         assert_eq!(
             list().await,
             json!({
-                "installed": [K8S],
+                "installed": ["git", K8S],
                 "external": [{
                     "id": K8S, "version": "0.3.1", "name": "Kubernetes", "description": "See pods.",
                     "i18n": {}, "icon": "icon.svg", "panel": "panel.html",
@@ -513,7 +540,7 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
         let gone = shared(dir.path());
         let body: serde_json::Value = serde_json::from_str(&body_text(get_plugins(State(gone.clone()), page_headers(false)).await).await).unwrap();
-        assert_eq!(body["installed"], json!([]));
+        assert_eq!(body["installed"], json!(["git"]));
         assert_eq!(body["external"], json!([]));
         assert!(gone.plugins.external(K8S).is_some());
     }
@@ -525,14 +552,14 @@ mod tests {
         std::fs::remove_dir_all(dir.path().join("plugins").join(K8S)).unwrap();
         let broken = PluginState::load(dir.path());
         assert!(broken.external_infos().is_empty());
-        assert!(broken.installed().is_empty());
+        assert_eq!(broken.installed(), vec!["git"]);
         assert_eq!(broken.external(K8S).unwrap().version, "0.3.1", "the record is the truth");
         assert!(broken.is_installed(K8S));
 
         let (mut record, manifest) = k8s_package(dir.path(), &["helm"]);
         record.installed_at += 1;
         broken.put_external(record, manifest).unwrap();
-        assert_eq!(broken.installed(), vec![K8S]);
+        assert_eq!(broken.installed(), vec!["git", K8S]);
         assert_eq!(broken.external_infos().len(), 1);
         assert_eq!(broken.external(K8S).unwrap().granted.run, vec!["helm"]);
         assert_eq!(PluginState::load(dir.path()).external(K8S).unwrap().installed_at, 1_794_139_521_001);
@@ -546,7 +573,7 @@ mod tests {
         let (mut record, manifest) = k8s_package(dir.path(), &["kubectl"]);
         record.id = "other.plugin".into();
         assert_eq!(state.put_external(record, manifest).unwrap_err().kind(), io::ErrorKind::InvalidInput);
-        assert!(state.installed().is_empty());
+        assert_eq!(state.installed(), vec!["git"]);
         assert!(!dir.path().join("plugins.json").exists());
     }
 
@@ -573,7 +600,7 @@ mod tests {
         std::fs::create_dir(dir.path().join("plugins.json.tmp")).unwrap();
         assert!(state.set_builtin(&["docker".into()]).is_err());
         assert!(state.remove_external(K8S).is_err());
-        assert_eq!(state.installed(), vec![K8S]);
+        assert_eq!(state.installed(), vec!["git", K8S]);
         assert!(state.external(K8S).is_some());
     }
 
@@ -598,7 +625,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()["cache-control"], "no-store");
         let panes = shell_panes(crate::spawn::shell_kind());
-        assert_eq!(body_text(response).await, format!(r#"{{"external":[],"installed":[],"shellPanes":{panes}}}"#));
+        assert_eq!(body_text(response).await, format!(r#"{{"external":[],"installed":["git"],"shellPanes":{panes}}}"#));
 
         let response = put(page_headers(true), r#"{"installed":["docker","nope"]}"#).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);

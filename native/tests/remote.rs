@@ -740,7 +740,7 @@ async fn a_remote_window_saves_and_reads_the_servers_layout() {
 }
 
 #[tokio::test]
-async fn a_remote_git_sidebar_reads_diffs_and_stages_on_the_server() {
+async fn a_remote_git_panel_reads_diffs_and_stages_on_the_server() {
     let fake = FakeRemote::start(None);
     let (mut link, _) = open_link(fake.port, "fake").await;
     stages_until_connected(&mut link).await;
@@ -750,16 +750,16 @@ async fn a_remote_git_sidebar_reads_diffs_and_stages_on_the_server() {
     assert!(init.status.success());
     std::fs::write(repo.join("new file.txt"), "remote sidebar\n").unwrap();
     let query = format!("dir={}", repo.display());
-    let path = format!("/remote/fake/api/git/status?{query}");
+    let path = format!("/remote/fake/api/plugins/git/status?{query}");
     let (status, text) = http(fake.port, "GET", &path, None, true).await;
     assert_eq!(status, 200, "{text}");
     let status: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(status["files"][0]["index"], "?");
     let body = serde_json::json!({ "dir": repo, "action": "stage", "paths": ["new file.txt"] }).to_string();
-    assert_eq!(http(fake.port, "POST", "/remote/fake/api/git/action", Some(&body), false).await.0, 403);
-    let answer = http(fake.port, "POST", "/remote/fake/api/git/action", Some(&body), true).await;
+    assert_eq!(http(fake.port, "POST", "/remote/fake/api/plugins/git/action", Some(&body), false).await.0, 403);
+    let answer = http(fake.port, "POST", "/remote/fake/api/plugins/git/action", Some(&body), true).await;
     assert_eq!(answer.0, 200, "{}", answer.1);
-    let diff = format!("/remote/fake/api/git/diff?{query}&path=new%20file.txt&staged=true");
+    let diff = format!("/remote/fake/api/plugins/git/diff?{query}&path=new%20file.txt&staged=true");
     let answer = http(fake.port, "GET", &diff, None, true).await;
     assert_eq!(answer.0, 200, "{}", answer.1);
     assert!(answer.1.contains("+remote sidebar"), "{}", answer.1);
@@ -767,21 +767,21 @@ async fn a_remote_git_sidebar_reads_diffs_and_stages_on_the_server() {
         assert!(Command::new("git").arg("-C").arg(&repo).args(["config", key, value]).status().unwrap().success());
     }
     let commit = serde_json::json!({ "dir": repo, "action": "commit", "message": "Remote commit\n\nFull message" }).to_string();
-    let answer = http(fake.port, "POST", "/remote/fake/api/git/action", Some(&commit), true).await;
+    let answer = http(fake.port, "POST", "/remote/fake/api/plugins/git/action", Some(&commit), true).await;
     assert_eq!(answer.0, 200, "{}", answer.1);
     let status: serde_json::Value = serde_json::from_str(&http(fake.port, "GET", &path, None, true).await.1).unwrap();
     let hash = status["commits"][0]["hash"].as_str().unwrap();
-    let detail = format!("/remote/fake/api/git/commit?{query}&hash={hash}");
+    let detail = format!("/remote/fake/api/plugins/git/commit?{query}&hash={hash}");
     let answer = http(fake.port, "GET", &detail, None, true).await;
     assert_eq!(answer.0, 200, "{}", answer.1);
     let detail: serde_json::Value = serde_json::from_str(&answer.1).unwrap();
     assert_eq!(detail["message"], "Remote commit\n\nFull message");
     assert_eq!(detail["files"][0]["path"], "new file.txt");
-    let diff = format!("/remote/fake/api/git/commit-diff?{query}&hash={hash}&path=new%20file.txt");
+    let diff = format!("/remote/fake/api/plugins/git/commit-diff?{query}&hash={hash}&path=new%20file.txt");
     let answer = http(fake.port, "GET", &diff, None, true).await;
     assert_eq!(answer.0, 200, "{}", answer.1);
     assert!(answer.1.contains("+remote sidebar"), "{}", answer.1);
-    assert_eq!(http(fake.port, "GET", "/remote/fake/api/git/arbitrary", None, true).await.0, 404);
+    assert_eq!(http(fake.port, "GET", "/remote/fake/api/plugins/git/arbitrary", None, true).await.0, 404);
 }
 
 #[tokio::test]
@@ -823,7 +823,7 @@ async fn remote_window_routes_check_origin_and_host() {
     assert_eq!(http_with_host(fake.port, "GET", "/remote/fake/api/workspace", "evil.example:80").await.0, 403, "DNS rebinding");
     assert_eq!(http(fake.port, "GET", "/remote/-oProxyCommand=x/api/workspace", None, true).await.0, 400);
     // A page on another site can fire a GET at 127.0.0.1 (an <img>); it must not make ssh connect.
-    for path in ["/remote/fake/api/workspace", "/remote/fake/api/ssh-hosts", "/remote/fake/api/git/status?dir=/tmp", "/remote/fake/api/git/diff?dir=/tmp&path=a", "/remote/fake/api/git/commit?dir=/tmp&hash=abc1234", "/remote/fake/api/git/commit-diff?dir=/tmp&hash=abc1234&path=a"] {
+    for path in ["/remote/fake/api/workspace", "/remote/fake/api/ssh-hosts", "/remote/fake/api/plugins/git/status?dir=/tmp", "/remote/fake/api/plugins/git/diff?dir=/tmp&path=a", "/remote/fake/api/plugins/git/commit?dir=/tmp&hash=abc1234", "/remote/fake/api/plugins/git/commit-diff?dir=/tmp&hash=abc1234&path=a"] {
         for header in ["Sec-Fetch-Site: cross-site", "Sec-Fetch-Site: same-site", "Origin: http://evil.example"] {
             assert_eq!(http_with_header(fake.port, "GET", path, header).await.0, 403, "{path} with {header}");
         }

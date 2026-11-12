@@ -2,6 +2,15 @@
 
 import type { PluginContext, PluginInstance, PluginStatus, WestermPlugin } from "./types.ts";
 
+/**
+ * The built-in plugins a page has: all of them on the computer's own
+ * dashboard (`local`), else only the ones that run everywhere. A remote
+ * window and a tunnel page have no plugin manager, so those are always on.
+ */
+export function pagePlugins(all: readonly WestermPlugin[], local: boolean): WestermPlugin[] {
+  return local ? [...all] : all.filter((plugin) => plugin.everywhere === true);
+}
+
 /** The ids in `GET /api/plugins` that this page knows, in `known` order. Anything else reads as none. */
 export function parseInstalled(json: unknown, known: readonly string[]): string[] {
   const list = typeof json === "object" && json !== null ? (json as { installed?: unknown }).installed : null;

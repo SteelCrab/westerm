@@ -22,8 +22,9 @@ use tokio::sync::{mpsc, watch};
 use super::auth::{cookie_token, device_label, new_token, same, set_cookie, DeviceView, Limiter, Sessions, Verdict};
 use super::{AUTH_PATH, LOGIN_PATH, PING_EVERY};
 use crate::host::MAX_MESSAGE;
+use crate::server::plugins::git;
 use crate::server::{
-    agents, asset, docs, get_workspace, git, is_json, no_store, origin_allowed, put_workspace, relay_with, session_request, ssh_hosts,
+    agents, asset, docs, get_workspace, is_json, no_store, origin_allowed, put_workspace, relay_with, session_request, ssh_hosts,
     terminal_config, RelayExtra, Shared,
 };
 
@@ -40,11 +41,13 @@ pub(super) enum Access {
 
 /// The fixed list of the spec (7.6). A new API path is Denied until it is
 /// listed here, so nothing opens to the tunnel by accident.
+/// Of the plugin routes only Git's are listed: its panel shows on a tunnel
+/// page, which has no other plugin.
 pub(super) fn access(path: &str) -> Access {
     match path {
         AUTH_PATH | LOGIN_PATH => Access::Public,
         "/api/terminal-config" | "/api/workspace" | "/api/ssh-hosts" | "/ws/session" | "/api/agents/history" => Access::Cookie,
-        _ if path.starts_with("/api/docs/") || path.starts_with("/api/git/") => Access::Cookie,
+        _ if path.starts_with("/api/docs/") || path.starts_with(git::PREFIX) => Access::Cookie,
         _ if path.starts_with("/api/") || path.starts_with("/ws/") || path == "/remote" || path.starts_with("/remote/") => {
             Access::Denied
         }
@@ -384,13 +387,13 @@ mod tests {
             "/ws/session",
             "/api/docs/tree",
             "/api/agents/history",
-            "/api/git/status",
-            "/api/git/action",
+            "/api/plugins/git/status",
+            "/api/plugins/git/action",
         ] {
             assert_eq!(access(path), Access::Cookie, "{path}");
         }
         // The computer's installed fonts mean nothing to another device's browser.
-        for path in ["/api/update", "/api/remote/link", "/api/tunnel/start", "/remote/x/api/workspace", "/remote", "/ws/other", "/api/new-thing", "/api/system-fonts"] {
+        for path in ["/api/update", "/api/remote/link", "/api/tunnel/start", "/remote/x/api/workspace", "/remote", "/ws/other", "/api/new-thing", "/api/system-fonts", "/api/plugins", "/api/plugins/docker/state", "/api/git/status"] {
             assert_eq!(access(path), Access::Denied, "{path}");
         }
         // Plugins belong to the computer's own dashboard.
@@ -448,10 +451,10 @@ mod tests {
     async fn the_git_panel_works_with_a_cookie() {
         let s = setup();
         let token = signed_in(&s.app).await;
-        let (status, _, _) = get(&s.app, "/api/git/status?dir=/no/such/folder", Some(&token)).await;
+        let (status, _, _) = get(&s.app, "/api/plugins/git/status?dir=/no/such/folder", Some(&token)).await;
         assert_ne!(status, StatusCode::NOT_FOUND, "the Git routes are served");
         assert_ne!(status, StatusCode::UNAUTHORIZED);
-        assert_eq!(get(&s.app, "/api/git/status?dir=/tmp", None).await.0, StatusCode::UNAUTHORIZED);
+        assert_eq!(get(&s.app, "/api/plugins/git/status?dir=/tmp", None).await.0, StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

@@ -3,11 +3,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { test } from "node:test";
 
-// The core knows the Docker plugin only through the registry, and the plugin
+// The core knows a built-in plugin only through the registry, and the plugin
 // knows the core only through src/plugins/types.ts and shared helpers.
 
 const SRC = resolve(import.meta.dirname, "../src");
 const DOCKER = join(SRC, "plugins/docker");
+const GIT = join(SRC, "plugins/git");
 const EXTERNAL = join(SRC, "plugins/external");
 const REGISTRY = join(SRC, "plugins/registry.ts");
 const CORE_STATE = ["workspace.ts", "agents.ts", "App.tsx"].map((file) => join(SRC, file));
@@ -42,6 +43,16 @@ test("core files reach the docker plugin only through the registry", () => {
   assert.ok(imports(REGISTRY).some((target) => inside(target, DOCKER)), "the registry lists the plugin");
 });
 
+test("core files reach the git plugin only through the registry", () => {
+  const core = sources(SRC).filter((file) => !inside(file, GIT) && file !== REGISTRY);
+  for (const file of core) {
+    for (const target of imports(file)) {
+      assert.ok(!inside(target, GIT), `${relative(SRC, file)} imports ${relative(SRC, target)}`);
+    }
+  }
+  assert.ok(imports(REGISTRY).some((target) => inside(target, GIT)), "the registry lists the plugin");
+});
+
 /** Fails when a file in `dir` reaches core state through any chain of relative imports. */
 function assertNoCoreState(dir: string, atLeast: number) {
   const plugin = sources(dir);
@@ -64,6 +75,11 @@ function assertNoCoreState(dir: string, atLeast: number) {
 
 test("the docker plugin does not reach core state, even through other files", () => {
   assertNoCoreState(DOCKER, 5);
+});
+
+test("the git plugin does not reach core state, even through other files", () => {
+  // It learns the focused folder from its panel's props, not from the dashboard.
+  assertNoCoreState(GIT, 5);
 });
 
 test("the external plugin runtime does not reach core state, even through other files", () => {
