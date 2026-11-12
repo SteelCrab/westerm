@@ -2,6 +2,8 @@
 //! a plugin, an action, and a target; each plugin checks them and builds the
 //! command itself, so the browser never sends one.
 
+#[cfg(feature = "plugin-db")]
+pub mod db;
 pub mod docker;
 pub mod external;
 
@@ -9,6 +11,11 @@ use crate::quote::ShellKind;
 
 /// The plugins this build knows, in plugin bar order. Git has no launches:
 /// it opens no shells.
+#[cfg(feature = "plugin-db")]
+pub const PLUGIN_IDS: &[&str] = &["git", "docker", db::ID];
+/// The plugins this build knows, in plugin bar order. Git has no launches:
+/// it opens no shells.
+#[cfg(not(feature = "plugin-db"))]
 pub const PLUGIN_IDS: &[&str] = &["git", "docker"];
 
 /// The plugins that are on until the user turns them off. Git was a fixed
@@ -19,6 +26,9 @@ pub const DEFAULT_ON: &[&str] = &["git"];
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PluginLaunch {
     Docker(docker::Launch),
+    /// A Databases console the server prepared.
+    #[cfg(feature = "plugin-db")]
+    Db(db::Launch),
     /// An installed plugin's program and arguments.
     External(external::Launch),
 }
@@ -30,6 +40,9 @@ pub enum LaunchError {
     UnsupportedShell,
     /// A word holds a control character. `parse_argv` refuses these first.
     ControlCharacter,
+    /// What the launch would type is gone (a console spec read before, or never written).
+    #[cfg_attr(not(feature = "plugin-db"), allow(dead_code))]
+    Expired,
 }
 
 impl PluginLaunch {
@@ -41,6 +54,9 @@ impl PluginLaunch {
                 docker::is_container_id(target)
                     .then(|| Self::Docker(docker::Launch { action, container: target.to_owned() }))
             }
+            #[cfg(feature = "plugin-db")]
+            db::ID => (action == db::CONSOLE_ACTION && db::is_token(target))
+                .then(|| Self::Db(db::Launch { token: target.to_owned() })),
             id if external::is_external_id(id) && action == external::RUN_ACTION => {
                 let argv = external::parse_argv(target)?;
                 Some(Self::External(external::Launch { id: id.to_owned(), argv }))
@@ -53,6 +69,8 @@ impl PluginLaunch {
     pub fn plugin(&self) -> &str {
         match self {
             Self::Docker(_) => "docker",
+            #[cfg(feature = "plugin-db")]
+            Self::Db(_) => db::ID,
             Self::External(launch) => &launch.id,
         }
     }
@@ -61,6 +79,8 @@ impl PluginLaunch {
     pub fn action(&self) -> &'static str {
         match self {
             Self::Docker(launch) => launch.action.as_str(),
+            #[cfg(feature = "plugin-db")]
+            Self::Db(_) => db::CONSOLE_ACTION,
             Self::External(_) => external::RUN_ACTION,
         }
     }
@@ -69,6 +89,8 @@ impl PluginLaunch {
     pub fn target(&self) -> String {
         match self {
             Self::Docker(launch) => launch.container.clone(),
+            #[cfg(feature = "plugin-db")]
+            Self::Db(launch) => launch.token.clone(),
             Self::External(launch) => serde_json::to_string(&launch.argv).expect("strings serialize"),
         }
     }
@@ -78,6 +100,8 @@ impl PluginLaunch {
     pub fn command(&self, shell: Option<ShellKind>) -> Result<String, LaunchError> {
         match self {
             Self::Docker(launch) => Ok(docker::command(launch)),
+            #[cfg(feature = "plugin-db")]
+            Self::Db(launch) => db::command(launch, shell.ok_or(LaunchError::UnsupportedShell)?),
             Self::External(launch) => {
                 let shell = shell.ok_or(LaunchError::UnsupportedShell)?;
                 external::command(launch, shell).map_err(|_| LaunchError::ControlCharacter)
@@ -119,10 +143,19 @@ mod tests {
         assert!(PluginLaunch::parse("docker", "logs", "0123456789ab").unwrap().command(None).is_ok());
     }
 
+    /// A launch each listed plugin accepts.
+    fn sample(id: &str) -> (&'static str, String) {
+        match id {
+            "db" => ("console", "a".repeat(32)),
+            _ => ("logs", "0123456789ab".to_owned()),
+        }
+    }
+
     #[test]
     fn every_listed_plugin_with_launches_parses() {
         for id in PLUGIN_IDS.iter().filter(|id| **id != "git") {
-            assert!(PluginLaunch::parse(id, "logs", "0123456789ab").is_some(), "{id}");
+            let (action, target) = sample(id);
+            assert!(PluginLaunch::parse(id, action, &target).is_some(), "{id}");
         }
         assert!(PluginLaunch::parse("git", "logs", "0123456789ab").is_none(), "Git opens no shells");
     }
@@ -130,5 +163,16 @@ mod tests {
     #[test]
     fn default_on_plugins_are_known_plugins() {
         assert!(DEFAULT_ON.iter().all(|id| PLUGIN_IDS.contains(id)));
+    }
+
+    #[cfg(feature = "plugin-db")]
+    #[test]
+    fn db_launches_need_a_token() {
+        let token = "a".repeat(32);
+        let launch = PluginLaunch::parse("db", "console", &token).unwrap();
+        assert_eq!((launch.plugin(), launch.action(), launch.target()), ("db", "console", token.clone()));
+        assert!(PluginLaunch::parse("db", "run", &token).is_none());
+        assert!(PluginLaunch::parse("db", "console", "x;rm -rf ~").is_none());
+        assert!(PLUGIN_IDS.contains(&"db"));
     }
 }

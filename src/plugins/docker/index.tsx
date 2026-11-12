@@ -9,7 +9,7 @@ import { fetchDockerState } from "./api.ts";
 import { DockerPanel } from "./DockerPanel.tsx";
 import { DOCKER_TEXT } from "./i18n.ts";
 import { newFailures, runningCount, type DockerState } from "./model.ts";
-import { createPoller } from "./poller.ts";
+import { createPoller } from "../poller.ts";
 
 const OPEN_INTERVAL = 2000;
 const CLOSED_INTERVAL = 15_000;

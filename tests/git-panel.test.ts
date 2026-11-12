@@ -38,6 +38,8 @@ const node = (selector: string) => {
 const ctx: PluginContext = {
   openShell() {},
   openBrowser() {},
+  openPane() {},
+  folders: () => [],
   fetch: (path, init) => fetch(`/api/plugins/git${path}`, init),
   refreshInstalled() {},
   openManager() {},

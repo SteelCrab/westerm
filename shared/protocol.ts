@@ -9,7 +9,7 @@ export type SessionKind = "shell" | "browser" | "editor" | "ssh";
 const SESSION_KINDS: readonly SessionKind[] = ["shell", "browser", "editor", "ssh"];
 
 /** What a pane shows: a session in the PTY host, or the docs pane, which has no process. */
-export type PaneKind = SessionKind | "docs";
+export type PaneKind = SessionKind | "docs" | "plugin";
 
 export function isSessionKind(value: unknown): value is SessionKind {
   return SESSION_KINDS.includes(value as SessionKind);

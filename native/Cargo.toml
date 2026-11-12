@@ -13,6 +13,12 @@ edition = "2024"
 # File::try_lock (host lock)
 rust-version = "1.89"
 
+[features]
+default = ["plugin-db"]
+# The Databases plugin (src/plugins/db.rs, src/server/plugins/db/): its
+# database drivers and keychain access. Builds without it leave the plugin out.
+plugin-db = ["dep:keyring", "dep:sqlx", "dep:tokio-util", "dep:url"]
+
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }
 # Kitty graphics payloads that pixel apps send inline.
@@ -27,6 +33,15 @@ futures-util = "0.3.34"
 fontdb = "0.24.0"
 # The tunnel's access code and cookie tokens come from the OS random source.
 getrandom = "0.3"
+# The Databases plugin keeps passwords in the OS keychain. Linux uses the
+# Secret Service over a pure-Rust D-Bus (zbus), so static musl builds work.
+keyring = { version = "3.6", optional = true, default-features = false, features = ["apple-native", "windows-native", "async-secret-service", "async-io", "crypto-rust"] }
+# Database drivers for the Databases plugin. TLS is rustls with ring, like the
+# rest of westerm; SQLite is bundled (built with the musl C compiler on Linux).
+sqlx = { version = "0.8.6", optional = true, default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "mysql", "sqlite", "chrono", "uuid", "rust_decimal", "json"] }
+tokio-util = { version = "0.7", optional = true, default-features = false }
+# Reads DATABASE_URL values the Databases plugin finds (already used by sqlx).
+url = { version = "2", optional = true }
 # The docs pane lists Markdown files the way git sees them (.gitignore).
 ignore = "0.4"
 libc = "0.2.191"

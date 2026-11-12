@@ -33,7 +33,7 @@ import {
   type DockerState,
 } from "./model.ts";
 import { detectPlatform, EmptyState, firstLine, InstallHint, type Platform } from "./EmptyStates.tsx";
-import { PopupMenu, type MenuItem } from "./PopupMenu.tsx";
+import { PopupMenu, type MenuItem } from "../PopupMenu.tsx";
 
 const PLATFORM = detectPlatform();
 

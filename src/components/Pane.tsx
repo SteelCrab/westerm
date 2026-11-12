@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, GripVertical, Maximize2, Minimize2, RotateCcw, X } from "lucide-react";
 import { carries, dropZone, PANE_MIME, startDrag, type DropZone } from "../dnd.ts";
 import { DocsView } from "../docs/DocsView.tsx";
+import { PluginPaneHost } from "../plugins/PluginPaneHost.tsx";
 import { useI18n } from "../i18n/index.tsx";
 import { installHint, type InstallHint } from "../installHints.ts";
 import { IS_WINDOWS } from "../paletteCommands.tsx";
@@ -148,7 +149,7 @@ export function Pane(props: PaneProps) {
 
   const ended = session.status === "exited" || session.status === "error";
   const hint =
-    session.status === "exited" && session.kind !== "docs"
+    session.status === "exited" && session.kind !== "docs" && session.kind !== "plugin"
       ? installHint(session.kind, session.exitCode, REMOTE_TARGET !== null, IS_WINDOWS)
       : null;
   // "pid 7 · reconnected", "exit 1", or a server message, in the UI language.
@@ -295,6 +296,8 @@ export function Pane(props: PaneProps) {
             dispatch={dispatch}
             onOpenUrl={props.onOpenUrl}
           />
+        ) : session.kind === "plugin" ? (
+          <PluginPaneHost session={session} focused={focused && !covered} dispatch={dispatch} />
         ) : (
         <TerminalView
           key={session.generation}

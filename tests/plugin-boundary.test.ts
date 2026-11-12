@@ -8,6 +8,7 @@ import { test } from "node:test";
 
 const SRC = resolve(import.meta.dirname, "../src");
 const DOCKER = join(SRC, "plugins/docker");
+const DB = join(SRC, "plugins/db");
 const GIT = join(SRC, "plugins/git");
 const EXTERNAL = join(SRC, "plugins/external");
 const REGISTRY = join(SRC, "plugins/registry.ts");
@@ -43,6 +44,16 @@ test("core files reach the docker plugin only through the registry", () => {
   assert.ok(imports(REGISTRY).some((target) => inside(target, DOCKER)), "the registry lists the plugin");
 });
 
+test("core files reach the db plugin only through the registry", () => {
+  const core = sources(SRC).filter((file) => !inside(file, DB) && file !== REGISTRY);
+  for (const file of core) {
+    for (const target of imports(file)) {
+      assert.ok(!inside(target, DB), `${relative(SRC, file)} imports ${relative(SRC, target)}`);
+    }
+  }
+  assert.ok(imports(REGISTRY).some((target) => inside(target, DB)), "the registry lists the plugin");
+});
+
 test("core files reach the git plugin only through the registry", () => {
   const core = sources(SRC).filter((file) => !inside(file, GIT) && file !== REGISTRY);
   for (const file of core) {
@@ -75,6 +86,10 @@ function assertNoCoreState(dir: string, atLeast: number) {
 
 test("the docker plugin does not reach core state, even through other files", () => {
   assertNoCoreState(DOCKER, 5);
+});
+
+test("the db plugin does not reach core state, even through other files", () => {
+  assertNoCoreState(DB, 7);
 });
 
 test("the git plugin does not reach core state, even through other files", () => {

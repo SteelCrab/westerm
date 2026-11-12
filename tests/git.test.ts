@@ -18,6 +18,8 @@ const file = (path: string, index: string, worktree: string, conflict = false): 
 const context = (fetch: PluginContext["fetch"]): PluginContext => ({
   openShell() {},
   openBrowser() {},
+  openPane() {},
+  folders: () => [],
   fetch,
   refreshInstalled() {},
   openManager() {},

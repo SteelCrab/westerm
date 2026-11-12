@@ -19,7 +19,7 @@ import {
   type DockerContainer,
   type DockerState,
 } from "../src/plugins/docker/model.ts";
-import { createPoller } from "../src/plugins/docker/poller.ts";
+import { createPoller } from "../src/plugins/poller.ts";
 import { BUILTIN_PLUGINS } from "../src/plugins/registry.ts";
 import type { PluginContext } from "../src/plugins/types.ts";
 
@@ -227,6 +227,8 @@ function fakeCtx(respond: (path: string) => Response | Promise<Response>): FakeC
   const ctx: PluginContext = {
     openShell() {},
     openBrowser() {},
+    openPane() {},
+    folders: () => [],
     fetch: async (path, init) => {
       calls.push({ path, init });
       return respond(path);
@@ -677,6 +679,8 @@ function plugged(answer: () => Response): Plugged {
     ctx: {
       openShell: noop,
       openBrowser: noop,
+      openPane: noop,
+      folders: () => [],
       fetch: async (path) => {
         p.fetches.push(path);
         return answer();

@@ -11,6 +11,14 @@ export function pagePlugins(all: readonly WestermPlugin[], local: boolean): West
   return local ? [...all] : all.filter((plugin) => plugin.everywhere === true);
 }
 
+/**
+ * The built-in plugins this server's build has: `builtin` from `GET
+ * /api/plugins`, or all of them when an older server sends no list.
+ */
+export function availableBuiltins(all: readonly WestermPlugin[], builtin: readonly string[] | null): WestermPlugin[] {
+  return builtin === null ? [...all] : all.filter((plugin) => builtin.includes(plugin.id));
+}
+
 /** The ids in `GET /api/plugins` that this page knows, in `known` order. Anything else reads as none. */
 export function parseInstalled(json: unknown, known: readonly string[]): string[] {
   const list = typeof json === "object" && json !== null ? (json as { installed?: unknown }).installed : null;

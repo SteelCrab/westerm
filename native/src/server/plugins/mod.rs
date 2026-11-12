@@ -4,6 +4,8 @@
 //! and off; an external plugin is installed with a record of what the user
 //! allowed it, and removed again.
 
+#[cfg(feature = "plugin-db")]
+pub(super) mod db;
 mod docker;
 mod external;
 pub(super) mod git;
@@ -48,6 +50,9 @@ pub(super) struct PluginState {
     login_env: login_env::LoginEnvCache,
     /// Fetched packages, the plugin list, and where plugins come from.
     externals: external::ExternalState,
+    /// The Databases plugin's connections, passwords, and pools.
+    #[cfg(feature = "plugin-db")]
+    pub(super) db: db::DbState,
 }
 
 /// The shape of the `PUT` body.
@@ -87,6 +92,8 @@ impl PluginState {
             manifests: RwLock::new(manifests),
             login_env: login_env::LoginEnvCache::default(),
             externals: external::ExternalState::default(),
+            #[cfg(feature = "plugin-db")]
+            db: db::DbState::load(state_dir),
         }
     }
 
@@ -207,16 +214,22 @@ pub(super) fn session_allowed(request: &AttachRequest, plugins: &PluginState) ->
                         && launch.argv.first().is_some_and(|program| plugins.granted_run(&launch.id, program))
                 }
                 PluginLaunch::Docker(_) => true,
+                // A console needs the spec the Databases routes wrote for it.
+                #[cfg(feature = "plugin-db")]
+                PluginLaunch::Db(launch) => crate::plugins::db::spec_path(&plugins.state_dir, &launch.token).is_file(),
             }
     })
 }
 
 pub(super) fn routes() -> Router<Shared> {
-    Router::new()
+    let router = Router::new()
         .route("/api/plugins", get(get_plugins).put(put_plugins))
         .merge(git::routes())
         .merge(docker::routes())
-        .merge(external::routes())
+        .merge(external::routes());
+    #[cfg(feature = "plugin-db")]
+    let router = router.merge(db::routes());
+    router
 }
 
 /// Starts the daily check for newer plugin versions.
@@ -232,6 +245,8 @@ async fn get_plugins(State(state): State<Shared>, headers: HeaderMap) -> Respons
         "installed": state.plugins.installed(),
         "external": state.plugins.external_infos(),
         "shellPanes": shell_panes(crate::spawn::shell_kind()),
+        // The page hides built-in plugins this build leaves out.
+        "builtin": PLUGIN_IDS,
     })))
 }
 
@@ -252,8 +267,14 @@ async fn put_plugins(State(state): State<Shared>, headers: HeaderMap, body: Byte
         return StatusCode::BAD_REQUEST.into_response();
     };
     let had_docker = state.plugins.is_installed("docker");
+    #[cfg(feature = "plugin-db")]
+    let had_db = state.plugins.is_installed(db::ID);
     match state.plugins.set_builtin(&installed) {
         Ok(_) => {
+            #[cfg(feature = "plugin-db")]
+            if had_db && !state.plugins.is_installed(db::ID) {
+                state.plugins.db.on_uninstall().await;
+            }
             // Installing reads the login shell's environment again.
             if !had_docker && state.plugins.is_installed("docker") {
                 state.plugins.login_env.reset().await;
@@ -353,6 +374,21 @@ mod tests {
         let plain = request(&[]);
         state.set_builtin(&[]).unwrap();
         assert!(session_allowed(&plain, &state), "a request without a plugin is always allowed");
+    }
+
+    #[cfg(feature = "plugin-db")]
+    #[test]
+    fn a_db_session_needs_the_plugin_and_a_waiting_spec() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = PluginState::load(dir.path());
+        let token = "b".repeat(32);
+        let launch = request(&[("plugin", "db"), ("action", "console"), ("target", &token)]);
+        assert!(launch.plugin.is_some());
+        assert!(!session_allowed(&launch, &state), "not installed");
+        state.set_builtin(&["db".into()]).unwrap();
+        assert!(!session_allowed(&launch, &state), "no spec waits");
+        crate::plugins::db::write_spec(dir.path(), &token, &["sqlite3".into()]).unwrap();
+        assert!(session_allowed(&launch, &state));
     }
 
     #[test]
@@ -507,6 +543,14 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_list_route_names_the_builtin_plugins_of_this_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = shared(dir.path());
+        let body: serde_json::Value = serde_json::from_str(&body_text(get_plugins(State(state), page_headers(false)).await).await).unwrap();
+        assert_eq!(body["builtin"], json!(PLUGIN_IDS));
+    }
+
+    #[tokio::test]
     async fn the_list_route_carries_external_plugins() {
         let dir = tempfile::tempdir().unwrap();
         let state = shared(dir.path());
@@ -525,7 +569,8 @@ mod tests {
                     "granted": {"run": ["kubectl"], "panes": true, "background": true},
                     "installedAt": 1_794_139_521_000u64
                 }],
-                "shellPanes": shell_panes(crate::spawn::shell_kind())
+                "shellPanes": shell_panes(crate::spawn::shell_kind()),
+                "builtin": PLUGIN_IDS
             })
         );
 
@@ -625,7 +670,8 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()["cache-control"], "no-store");
         let panes = shell_panes(crate::spawn::shell_kind());
-        assert_eq!(body_text(response).await, format!(r#"{{"external":[],"installed":["git"],"shellPanes":{panes}}}"#));
+        let builtin = serde_json::to_string(PLUGIN_IDS).unwrap();
+        assert_eq!(body_text(response).await, format!(r#"{{"builtin":{builtin},"external":[],"installed":["git"],"shellPanes":{panes}}}"#));
 
         let response = put(page_headers(true), r#"{"installed":["docker","nope"]}"#).await;
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
@@ -633,7 +679,7 @@ mod tests {
         assert!(state.plugins.is_installed("docker"));
         assert_eq!(
             body_text(get_plugins(State(state.clone()), page_headers(false)).await).await,
-            format!(r#"{{"external":[],"installed":["docker"],"shellPanes":{panes}}}"#)
+            format!(r#"{{"builtin":{builtin},"external":[],"installed":["docker"],"shellPanes":{panes}}}"#)
         );
 
         // Refused: not JSON, bad shape, too big, wrong Origin. The list stays.

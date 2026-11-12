@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { parsePluginList, type ExternalInfo } from "./external/info.ts";
 import { externalPlugin } from "./external/plugin.tsx";
-import { instanceKey, pagePlugins, parseInstalled, statusStore, syncInstances, withPlugin } from "./installed.ts";
+import { availableBuiltins, instanceKey, pagePlugins, parseInstalled, statusStore, syncInstances, withPlugin } from "./installed.ts";
 import { BUILTIN_PLUGINS } from "./registry.ts";
 import type { PluginContext, PluginInstance, PluginStatus, WestermPlugin } from "./types.ts";
 
@@ -25,6 +25,8 @@ export interface Plugins {
 interface List {
   installed: string[] | null;
   external: ExternalInfo[];
+  /** The built-in plugins of the server's build; null until it says. */
+  builtin: string[] | null;
 }
 
 const sameIds = (a: readonly string[] | null, b: readonly string[]) =>
@@ -47,7 +49,7 @@ const sameExternal = (a: readonly ExternalInfo[], b: readonly ExternalInfo[]) =>
  */
 export function usePlugins(contextFor: (id: string) => PluginContext, allowed: boolean): Plugins {
   const builtins = useMemo(() => pagePlugins(BUILTIN_PLUGINS, allowed), [allowed]);
-  const [list, setList] = useState<List>(() => ({ installed: allowed ? null : builtins.map((plugin) => plugin.id), external: [] }));
+  const [list, setList] = useState<List>(() => ({ installed: allowed ? null : builtins.map((plugin) => plugin.id), external: [], builtin: null }));
   const contextForRef = useRef(contextFor);
   contextForRef.current = contextFor;
   // Bumped by each request, so an older answer does not overwrite a newer one.
@@ -67,8 +69,8 @@ export function usePlugins(contextFor: (id: string) => PluginContext, allowed: b
       return plugin;
     });
     made.current = next;
-    return [...builtins, ...external];
-  }, [builtins, list.external]);
+    return [...availableBuiltins(builtins, list.builtin), ...external];
+  }, [builtins, list.external, list.builtin]);
   const listRef = useRef(list);
   listRef.current = list;
   const registryRef = useRef(registry);
@@ -82,15 +84,20 @@ export function usePlugins(contextFor: (id: string) => PluginContext, allowed: b
       if (!response.ok) return;
       const json: unknown = await response.json();
       if (mine !== sequence.current) return;
-      const { installed, external, shellPanes: panes } = parsePluginList(json);
+      const { installed, external, shellPanes: panes, builtin } = parsePluginList(json);
       shellPanes.current = panes;
-      const known = [...BUILTIN_PLUGINS.map((plugin) => plugin.id), ...external.map((info) => info.id)];
+      const known = [...availableBuiltins(BUILTIN_PLUGINS, builtin).map((plugin) => plugin.id), ...external.map((info) => info.id)];
       const ids = parseInstalled({ installed }, known);
       setList((previous) => {
         const sameList = sameIds(previous.installed, ids);
         const sameInfo = sameExternal(previous.external, external);
-        if (sameList && sameInfo) return previous;
-        return { installed: sameList ? previous.installed : ids, external: sameInfo ? previous.external : external };
+        const sameBuiltin = builtin === null ? previous.builtin === null : previous.builtin !== null && sameIds(previous.builtin, builtin);
+        if (sameList && sameInfo && sameBuiltin) return previous;
+        return {
+          installed: sameList ? previous.installed : ids,
+          external: sameInfo ? previous.external : external,
+          builtin: sameBuiltin ? previous.builtin : builtin,
+        };
       });
     } catch {
       // Keep the list as it is; the next focus reads it again.
