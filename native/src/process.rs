@@ -246,7 +246,7 @@ pub(crate) mod windows {
             let len = usize::from(u16::from_ne_bytes([header[0], header[1]]));
             let buffer = usize::from_ne_bytes(header[POINTER..].try_into().ok()?);
             let bytes = self.read(buffer, len)?;
-            let units: Vec<u16> = bytes.chunks_exact(2).map(|pair| u16::from_ne_bytes([pair[0], pair[1]])).collect();
+            let units: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|&pair| u16::from_ne_bytes(pair)).collect();
             Some(String::from_utf16_lossy(&units))
         }
 
