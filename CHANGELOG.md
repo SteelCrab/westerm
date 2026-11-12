@@ -4,11 +4,17 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-12
+
 ### Added
 
 - Git sidebar: inspect the current repository, review diffs and recent commits (full messages, changed files, and per-file patches), stage or unstage files, and commit staged changes.
 - Cargo packaging for `westerm`: the crate includes the built web UI and license, and can be installed without Node.js. A separate CI check installs the packaged crate and verifies its embedded web files on macOS, Linux, and Windows. Windows Cargo installs use the system ConPTY; the bundled ConPTY files remain available through npm and the GitHub releases.
 - Tunnel: the cloud button in the activity bar starts a Cloudflare Quick Tunnel and shows its `https://<name>.trycloudflare.com` address, a QR code, and a 6-digit access code. Another device's browser opens the address, enters the code, and uses the same workspaces, tabs, and shells. Wrong codes lock logins and 20 stop the tunnel; **Stop tunnel** ends every device's access. The computer stays awake while the tunnel is on, and a tunnel with no device for 12 hours stops by itself. It needs `cloudflared`; the panel shows the install command when it is missing.
+
+### Changed
+
+- This version changes the PTY host, so open shells restart once when it starts (their screens are restored).
 
 ### Fixed
 
@@ -177,7 +183,8 @@ The first release.
 - Video in terminal-browser is choppy, because frames travel through the PTY as base64 text.
 - The macOS app is not notarized, so macOS asks for approval on first open.
 
-[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/SteelCrab/westerm/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/SteelCrab/westerm/compare/v0.4.5...v0.5.0
 [0.4.5]: https://github.com/SteelCrab/westerm/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/SteelCrab/westerm/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/SteelCrab/westerm/compare/v0.4.2...v0.4.3
