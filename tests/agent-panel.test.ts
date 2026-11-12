@@ -437,6 +437,7 @@ function panel(state: Dashboard, change: Partial<Parameters<typeof AgentPanel>[0
         onSetWorkspaceColor: noop,
         onFocus: noop,
         onStart: noop,
+        onOpenUrl: noop,
         compact: false,
         history: noHistory,
         ...change,

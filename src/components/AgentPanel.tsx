@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronRight, Folder, GitBranch, History } from "lucide-react";
+import { Check, ChevronRight, Folder, FolderGit2, GitBranch, GitPullRequest, GitPullRequestDraft, History, X } from "lucide-react";
 import type { AgentKind, AgentLaunch } from "../../shared/protocol.ts";
 import type { WorkspaceColor, WorkspaceIcon } from "../../shared/workspace-file.ts";
 import {
@@ -17,6 +17,16 @@ import { AgentIcon } from "../agentIcons.tsx";
 import { useI18n } from "../i18n/index.tsx";
 import { HTML_LANG } from "../i18n/messages.ts";
 import { minutesSince } from "../uiHelpers.ts";
+import {
+  agentEntries,
+  fetchWorktrees,
+  worktreeCache,
+  WORKTREES_REFRESH,
+  type AgentRepo,
+  type PullRequest,
+  type Worktree,
+  type WorktreeReader,
+} from "../worktrees.ts";
 import { activeTab, agentDisplay, sessionLabel, type AgentDisplay, type Dashboard, type Session } from "../workspace.ts";
 import { useNow } from "./AgentCard.tsx";
 import { AgentMark } from "./AgentMark.tsx";
@@ -41,16 +51,22 @@ interface AgentPanelProps {
   onFocus: (id: string) => void;
   /** Opens a new shell in `folder` that starts or resumes an agent. */
   onStart: (folder: string, launch: AgentLaunch) => void;
+  /** Opens a pull request's page in a browser pane. */
+  onOpenUrl: (url: string) => void;
   /** Icons only: folder icons and agent marks, names in tooltips. */
   compact: boolean;
   /** Reads a folder's past conversations; tests pass their own. */
   history?: HistoryReader;
+  /** Reads a folder's repository: its worktrees and pull requests; tests pass their own. */
+  worktrees?: WorktreeReader;
 }
 
 /**
  * The agents view of the sidebar slot: the workspace menu, then the
  * workspace's shells grouped by folder. Each folder lists its agents, start
- * buttons, and the conversations that ended there.
+ * buttons, and the conversations that ended there. The folders of a
+ * repository with more than one worktree sit under it, each with its branch
+ * and its pull request.
  */
 export function AgentPanel(props: AgentPanelProps) {
   const { state, compact } = props;
@@ -60,6 +76,27 @@ export function AgentPanel(props: AgentPanelProps) {
   const folders = agentFolders(state);
   const elsewhere = elsewhereWaiting(state);
   const agentCount = folders.reduce((count, folder) => count + folder.agents.length, 0);
+  const repos = worktreeCache(props.worktrees ?? fetchWorktrees);
+  // Icons only: no branch names and no pull requests, so nothing to ask.
+  const asked = compact ? [] : folders.flatMap((folder) => folder.path ?? []);
+  const askedKey = asked.join("\0");
+  const refresh = useNow(WORKTREES_REFRESH);
+  const [, setAnswers] = useState(0);
+  useEffect(() => {
+    let live = true;
+    for (const path of asked) {
+      void repos.load(path, "").then((info) => {
+        // A failed read keeps what the folder showed.
+        if (live && info) setAnswers((count) => count + 1);
+      });
+    }
+    return () => {
+      live = false;
+    };
+    // `asked` is new on every render; its key tells when the folders change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedKey, refresh, repos]);
+  const entries = agentEntries(folders, (path) => (compact ? undefined : repos.shown(path)));
 
   const toggle = (key: string) =>
     setCollapsed((current) => {
@@ -68,6 +105,7 @@ export function AgentPanel(props: AgentPanelProps) {
       else next.add(key);
       return next;
     });
+  const shared = { ...props, cache: historyCache(props.history ?? fetchHistory), now, collapsed, onToggle: toggle };
 
   return (
     <aside className={`session-panel agents-panel${compact ? " compact" : ""}`} aria-label={t.agents.title}>
@@ -103,44 +141,95 @@ export function AgentPanel(props: AgentPanelProps) {
         <p className="agents-empty">{!compact && t.agents.empty}</p>
       ) : (
         <ul className="tree" role="tree" aria-label={t.agents.tree}>
-          {folders.map((folder) => (
-            <FolderNode
-              key={folder.key}
-              {...props}
-              cache={historyCache(props.history ?? fetchHistory)}
-              folder={folder}
-              now={now}
-              expanded={!collapsed.has(folder.key)}
-              onToggle={() => toggle(folder.key)}
-            />
-          ))}
+          {entries.map((entry) =>
+            entry.kind === "repo" ? (
+              <RepoNode key={`repo:${entry.repo.key}`} {...shared} repo={entry.repo} />
+            ) : (
+              <FolderNode key={entry.folder.key} {...shared} folder={entry.folder} worktree={entry.worktree} />
+            ),
+          )}
         </ul>
       )}
     </aside>
   );
 }
 
-interface FolderNodeProps extends AgentPanelProps {
+/** What the panel's rows share: the panel's props, and which rows are folded. */
+interface TreeProps extends AgentPanelProps {
   cache: HistoryCache;
-  folder: AgentFolder;
   now: number;
-  expanded: boolean;
-  onToggle: () => void;
+  /** The keys of the folded folders, and `repo:<key>` of the folded repositories. */
+  collapsed: ReadonlySet<string>;
+  onToggle: (key: string) => void;
+}
+
+interface RepoNodeProps extends TreeProps {
+  repo: AgentRepo;
+}
+
+/** A repository: its folders with shells, each named by its branch, then its worktrees without a shell. */
+function RepoNode(props: RepoNodeProps) {
+  const { repo } = props;
+  const { t } = useI18n();
+  const key = `repo:${repo.key}`;
+  const expanded = !props.collapsed.has(key);
+
+  return (
+    <li role="treeitem" aria-expanded={expanded} className="agents-repo-node">
+      <div className="tree-row agents-repo">
+        <button
+          type="button"
+          className="tree-select agents-repo-toggle"
+          title={`${repo.name} · ${repo.key}`}
+          aria-expanded={expanded}
+          onClick={() => props.onToggle(key)}
+        >
+          <ChevronRight size={13} className={`agents-chevron${expanded ? " expanded" : ""}`} aria-hidden="true" />
+          <FolderGit2 size={15} className="agents-repo-icon" aria-hidden="true" />
+          <span className="tree-label agents-repo-name">{repo.name}</span>
+        </button>
+        {/* Unfolded, the folder that waits shows the dot itself. */}
+        {!expanded && repo.waiting && <span className="agents-dot" role="img" aria-label={t.agent.tab.waiting} />}
+        <span className="agents-repo-count">{t.agents.worktreeCount(repo.count)}</span>
+      </div>
+      {expanded && (
+        <ul className="tree-children" role="group">
+          {repo.folders.map(({ folder, worktree }) => (
+            <FolderNode key={folder.key} {...props} folder={folder} worktree={worktree} repo={repo} />
+          ))}
+          {repo.idle.length > 0 && <IdleWorktrees worktrees={repo.idle} onStart={props.onStart} onOpenUrl={props.onOpenUrl} />}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+interface FolderNodeProps extends TreeProps {
+  folder: AgentFolder;
+  /** The worktree the folder is in; null when the server has not told, or the folder is in none. */
+  worktree: Worktree | null;
+  /** The repository this row sits under: the row is then named by its branch. */
+  repo?: AgentRepo;
 }
 
 function FolderNode(props: FolderNodeProps) {
-  const { folder, expanded, compact, onToggle } = props;
+  const { folder, worktree, repo, compact } = props;
   const { t } = useI18n();
+  const expanded = !props.collapsed.has(folder.key);
+  const onToggle = () => props.onToggle(folder.key);
   const name = folder.path === null ? t.agents.unknownFolder : folder.name;
   const title = folder.path ?? t.agents.unknownFolder;
   const focusedId = activeTab(props.state).focusedId;
   const busy = folder.agents.length > 0;
-  const icon = <Folder size={15} className={`agents-folder-icon${busy ? " busy" : ""}`} aria-hidden="true" />;
+  const iconClass = `agents-folder-icon${busy ? " busy" : ""}`;
+  const icon = <Folder size={15} className={iconClass} aria-hidden="true" />;
   const waitingDot = folder.waiting && <span className="agents-dot" role="img" aria-label={t.agent.tab.waiting} />;
+  const branch = worktree?.branch ?? folder.branch;
+  const pr = worktree?.pr ?? null;
 
   return (
     <li role="treeitem" aria-expanded={expanded} className="agents-folder-node">
-      <div className="tree-row agents-folder">
+      <div className={`tree-row agents-folder${repo ? " agents-worktree" : ""}${pr ? " with-pr" : ""}`}>
         {compact ? (
           <button type="button" className="tree-select" title={title} aria-label={name} onClick={onToggle}>
             {icon}
@@ -150,28 +239,51 @@ function FolderNode(props: FolderNodeProps) {
           <>
             <button type="button" className="tree-select agents-folder-toggle" title={title} aria-expanded={expanded} onClick={onToggle}>
               <ChevronRight size={13} className={`agents-chevron${expanded ? " expanded" : ""}`} aria-hidden="true" />
-              {icon}
-              <span className="agents-folder-text">
+              {repo ? <GitBranch size={15} className={iconClass} aria-hidden="true" /> : icon}
+              {repo ? (
+                // Under a repository: the branch, or the commit of a detached HEAD; the folder goes below.
+                <span className="tree-label agents-folder-name">{branch ?? worktree?.head ?? name}</span>
+              ) : (
                 <span className="tree-label">
                   <span className="agents-parent">{folder.parent}</span>
                   <span className="agents-folder-name">{name}</span>
                 </span>
-                <span className="agents-folder-meta">
-                  {folder.branch && (
-                    <>
-                      <GitBranch size={11} aria-hidden="true" />
-                      <span className="tree-label">{folder.branch}</span>
-                      <span aria-hidden="true">·</span>
-                    </>
-                  )}
-                  <span className="agents-shells">{t.agents.shellCount(folder.shells)}</span>
-                </span>
-              </span>
+              )}
             </button>
+            {pr ? (
+              <PrChip pr={pr} onOpenUrl={props.onOpenUrl} />
+            ) : (
+              // Only when GitHub answered: else the branch may have one.
+              repo?.prs && branch && <span className="agents-no-pr">{t.agents.noPr}</span>
+            )}
             {busy && folder.path !== null && <StartButtons path={folder.path} onStart={props.onStart} onHover />}
             {waitingDot}
-            <span className="tree-count" title={t.agents.agentCount(folder.agents.length)}>
-              {folder.agents.length}
+            {/* Under a repository the agents show below, and the row keeps its width for the branch. */}
+            {!repo && (
+              <span className="tree-count" title={t.agents.agentCount(folder.agents.length)}>
+                {folder.agents.length}
+              </span>
+            )}
+            {/* The second line, outside the button: it has the row's whole width, also under the pull request. */}
+            <span className="agents-folder-meta">
+              {repo ? (
+                <>
+                  <span className="tree-label">
+                    {folder.parent}
+                    {name}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                </>
+              ) : (
+                folder.branch && (
+                  <>
+                    <GitBranch size={11} aria-hidden="true" />
+                    <span className="tree-label">{folder.branch}</span>
+                    <span aria-hidden="true">·</span>
+                  </>
+                )
+              )}
+              <span className="agents-shells">{t.agents.shellCount(folder.shells)}</span>
             </span>
           </>
         )}
@@ -256,6 +368,65 @@ function AgentNode({ session, current, now, compact, onFocus }: AgentNodeProps) 
           </button>
         )}
       </div>
+    </li>
+  );
+}
+
+/**
+ * A branch's open pull request: its number, then its checks. Red with the
+ * count of failed checks, a turning ring while they run, green with a check
+ * when all passed. A press opens the pull request.
+ */
+function PrChip({ pr, onOpenUrl }: { pr: PullRequest; onOpenUrl: (url: string) => void }) {
+  const { t } = useI18n();
+  const checks = pr.checks === "failing" ? t.agents.prChecks.failing(pr.failed) : t.agents.prChecks[pr.checks];
+  const label = [t.agents.openPr(pr.number, pr.title), ...(pr.draft ? [t.agents.prDraft] : []), checks].join(" · ");
+  const Icon = pr.draft ? GitPullRequestDraft : GitPullRequest;
+  return (
+    <button type="button" className={`agents-pr agents-pr-${pr.checks}`} aria-label={label} title={label} onClick={() => onOpenUrl(pr.url)}>
+      <Icon size={11} aria-hidden="true" />
+      <span>#{pr.number}</span>
+      {pr.checks === "failing" && (
+        <>
+          <X size={11} strokeWidth={2.5} aria-hidden="true" />
+          <span>{pr.failed}</span>
+        </>
+      )}
+      {pr.checks === "running" && <span className="agents-pr-spin" aria-hidden="true" />}
+      {pr.checks === "passing" && <Check size={11} strokeWidth={2.5} aria-hidden="true" />}
+    </button>
+  );
+}
+
+interface IdleWorktreesProps {
+  worktrees: Worktree[];
+  onStart: AgentPanelProps["onStart"];
+  onOpenUrl: AgentPanelProps["onOpenUrl"];
+}
+
+/** A repository's worktrees without a shell, folded at first: each with its pull request and start buttons. */
+function IdleWorktrees({ worktrees, onStart, onOpenUrl }: IdleWorktreesProps) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <li role="treeitem" aria-expanded={open} className="agents-idle">
+      <button type="button" className="tree-row agents-idle-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <ChevronRight size={12} className={`agents-chevron${open ? " expanded" : ""}`} aria-hidden="true" />
+        <span>{t.agents.idleWorktrees(worktrees.length)}</span>
+      </button>
+      {open && (
+        <ul role="group">
+          {worktrees.map((worktree) => (
+            <li key={worktree.path} role="treeitem" className="tree-row agents-idle-row" title={worktree.path}>
+              <GitBranch size={12} aria-hidden="true" />
+              <span className="tree-label agents-idle-name">{worktree.branch ?? worktree.head}</span>
+              {/* Before the pull request: it stays in its place when these show. */}
+              <StartButtons path={worktree.path} onStart={onStart} />
+              {worktree.pr && <PrChip pr={worktree.pr} onOpenUrl={onOpenUrl} />}
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }

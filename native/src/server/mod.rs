@@ -15,6 +15,7 @@ mod plugins;
 mod remote;
 mod remote_window;
 mod updates;
+mod worktrees;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -155,6 +156,7 @@ fn local_router(state: Shared) -> Router {
         .route(cloudflare::AUTH_PATH, get(|| async { no_store(Json(serde_json::json!({ "tunnel": false }))) }))
         .merge(docs::routes())
         .merge(agents::routes())
+        .merge(worktrees::routes())
         .merge(images::routes())
         .merge(fonts::routes())
         .merge(plugins::routes())
@@ -186,6 +188,7 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         .merge(docs::routes())
         .merge(agents::routes())
         .merge(plugins::git::routes())
+        .merge(worktrees::routes())
         .merge(images::routes())
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)

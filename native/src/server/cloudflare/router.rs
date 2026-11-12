@@ -46,7 +46,9 @@ pub(super) enum Access {
 pub(super) fn access(path: &str) -> Access {
     match path {
         AUTH_PATH | LOGIN_PATH => Access::Public,
-        "/api/terminal-config" | "/api/workspace" | "/api/ssh-hosts" | "/ws/session" | "/api/agents/history" => Access::Cookie,
+        "/api/terminal-config" | "/api/workspace" | "/api/ssh-hosts" | "/ws/session" | "/api/agents/history" | "/api/agents/worktrees" => {
+            Access::Cookie
+        }
         _ if path.starts_with("/api/docs/") || path.starts_with(git::PREFIX) => Access::Cookie,
         _ if path.starts_with("/api/") || path.starts_with("/ws/") || path == "/remote" || path.starts_with("/remote/") => {
             Access::Denied
@@ -387,6 +389,7 @@ mod tests {
             "/ws/session",
             "/api/docs/tree",
             "/api/agents/history",
+            "/api/agents/worktrees",
             "/api/plugins/git/status",
             "/api/plugins/git/action",
         ] {

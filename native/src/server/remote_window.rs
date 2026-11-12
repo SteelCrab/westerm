@@ -30,7 +30,7 @@ pub(super) fn routes() -> Router<Shared> {
             "/remote/{target}/api/docs/{name}",
             get(docs_get).put(docs_put).post(docs_post).layer(DefaultBodyLimit::max(super::docs::MAX_BODY_BYTES)),
         )
-        .route("/remote/{target}/api/agents/history", get(agents_history_get))
+        .route("/remote/{target}/api/agents/{name}", get(agents_get))
         .route("/remote/{target}/api/plugins/git/{name}", get(git_get).post(git_post).layer(DefaultBodyLimit::max(git::MAX_BODY_BYTES)))
         .route("/remote/{target}/api/images", post(images_post).layer(DefaultBodyLimit::max(super::images::MAX_BODY_BYTES)))
 }
@@ -68,9 +68,10 @@ async fn forward(state: &Shared, target: &str, method: &str, path: &str, body: O
         Ok(opened) => opened,
         Err(status) => return status.into_response(),
     };
-    // Git may wait on a network (pull, push), and a picture is a large body:
-    // both may take longer than a layout request.
-    let answer = if path.starts_with(git::PREFIX) || path == super::images::PATH {
+    // Git may wait on a network (pull, push), the worktrees wait for gh to ask
+    // GitHub, and a picture is a large body: they may take longer than a
+    // layout request.
+    let answer = if path.starts_with(git::PREFIX) || path.starts_with("/api/agents/worktrees") || path == super::images::PATH {
         http1::exchange_with_timeout(opened.stream, method, path, body, std::time::Duration::from_secs(35)).await
     } else {
         http1::exchange(opened.stream, method, path, body).await
@@ -123,18 +124,23 @@ fn docs_path(name: &str, query: Option<String>) -> String {
     }
 }
 
-/// The server's path for the past conversations of a folder, with the page's query as it came.
-fn history_path(query: Option<String>) -> String {
+/// The server's path for an agents read of a folder, with the page's query as it came.
+fn agents_path(name: &str, query: Option<String>) -> String {
     match query {
-        Some(query) => format!("/api/agents/history?{query}"),
-        None => "/api/agents/history".to_owned(),
+        Some(query) => format!("/api/agents/{name}?{query}"),
+        None => format!("/api/agents/{name}"),
     }
 }
 
-/// The sidebar of a remote window lists the past conversations of a folder on the server.
-async fn agents_history_get(State(state): State<Shared>, Path(target): Path<String>, RawQuery(query): RawQuery, headers: HeaderMap) -> Response {
+/// The sidebar of a remote window lists a folder's past conversations, and
+/// its repository's worktrees and pull requests, on the server.
+async fn agents_get(
+    State(state): State<Shared>, Path((target, name)): Path<(String, String)>,
+    RawQuery(query): RawQuery, headers: HeaderMap,
+) -> Response {
+    if !matches!(name.as_str(), "history" | "worktrees") { return StatusCode::NOT_FOUND.into_response(); }
     match checked_get_target(&state, &headers, &target) {
-        Ok(target) => forward(&state, &target, "GET", &history_path(query), None).await,
+        Ok(target) => forward(&state, &target, "GET", &agents_path(&name, query), None).await,
         Err(status) => status.into_response(),
     }
 }
@@ -280,9 +286,27 @@ mod tests {
     }
 
     #[test]
-    fn history_requests_keep_their_query() {
-        assert_eq!(history_path(Some("dir=%2Fw".into())), "/api/agents/history?dir=%2Fw");
-        assert_eq!(history_path(None), "/api/agents/history");
+    fn agents_requests_keep_their_query() {
+        assert_eq!(agents_path("history", Some("dir=%2Fw".into())), "/api/agents/history?dir=%2Fw");
+        assert_eq!(agents_path("history", None), "/api/agents/history");
+        assert_eq!(agents_path("worktrees", Some("dir=%2Fw".into())), "/api/agents/worktrees?dir=%2Fw");
+    }
+
+    /// Refusals answer before any link to the server is opened.
+    #[tokio::test]
+    async fn agents_routes_refuse_unknown_names_and_other_pages() {
+        let state: Shared = Arc::new(test_state(&["http://127.0.0.1:4317"]));
+        let get = |name: &str, headers: HeaderMap| {
+            agents_get(State(state.clone()), Path(("prod".to_owned(), name.to_owned())), RawQuery(None), headers)
+        };
+        assert_eq!(get("secret", page_headers()).await.status(), StatusCode::NOT_FOUND);
+        let mut evil = page_headers();
+        evil.insert(header::HOST, "evil.example:4317".parse().unwrap());
+        for name in ["history", "worktrees"] {
+            assert_eq!(get(name, evil.clone()).await.status(), StatusCode::FORBIDDEN, "{name}");
+            // The own page, with no link to the server up.
+            assert_eq!(get(name, page_headers()).await.status(), StatusCode::SERVICE_UNAVAILABLE, "{name}");
+        }
     }
 
     /// Refusals answer before any link to the server is opened.

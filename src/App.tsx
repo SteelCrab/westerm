@@ -646,6 +646,10 @@ export function App({ tunnelPage = false }: AppProps = {}) {
                 closeDrawer();
               }}
               onStart={startAgent}
+              onOpenUrl={(url) => {
+                openUrl(url);
+                closeDrawer();
+              }}
               compact={compact}
             />
           ) : view.startsWith("plugin:") ? (
