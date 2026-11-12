@@ -4,6 +4,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Remote windows: hole punching. When the server sits behind a router that does not forward UDP, both ends now open a UDP path themselves and the window connects over QUIC instead of the SSH tunnel. Nothing needs to be set up. The header shows "QUIC · hole punching", and the tooltip of "SSH tunnel" says why QUIC was not used. By default, both ends ask two public STUN servers for their public address; set `WESTERM_REMOTE_STUN` to use other servers, or `WESTERM_REMOTE_STUN=off` to turn this off.
+
 ## [0.5.0] - 2026-11-12
 
 ### Added

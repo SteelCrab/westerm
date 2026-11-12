@@ -93,7 +93,7 @@ A remote window shows the tabs and shells of a server. They live in the PTY host
 | What happens | What you get |
 |---|---|
 | Close the window | Nothing ends on the server. Open the server again to see the same tabs and shells. |
-| Wi‑Fi changes, or a short drop | QUIC moves the connection to the new network, or the panes reconnect to the same shells. |
+| Wi‑Fi changes, or a short drop | QUIC moves the connection to the new network, or the panes reconnect to the same shells. A hole punched link cannot move: it drops after about 15 seconds and the window sets up a new one over SSH. The shells keep running. |
 | Sleep, a long drop | A "Reconnecting…" banner shows. The panes reconnect to the same shells, their screens replayed ("reconnected"). |
 | Restart the local dashboard | The window reconnects and shows the same tabs and shells. |
 | The server reboots | The next connection starts westerm there again. Shells come back from their saved screens ("restored"). |
