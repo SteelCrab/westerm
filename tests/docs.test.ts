@@ -51,6 +51,19 @@ test("headings get ids that # links can reach", () => {
   assert.equal(slug("Saving & restoring: screens!"), "saving--restoring-screens");
 });
 
+test("heading ids start fresh for each document", () => {
+  const source = "# Install\n\n## Install\n\n## Install";
+  const expected = '<h1 id="install">Install</h1>\n<h2 id="install-1">Install</h2>\n<h2 id="install-2">Install</h2>\n';
+  assert.equal(renderMarkdown(source), expected);
+  assert.equal(renderMarkdown(source), expected);
+});
+
+test("plain web addresses still become links", () => {
+  const html = renderMarkdown("Visit example.com or https://example.com/docs.");
+  assert.ok(html.includes('<a href="http://example.com">example.com</a>'), html);
+  assert.ok(html.includes('<a href="https://example.com/docs">https://example.com/docs</a>'), html);
+});
+
 test("images show their alt text only", () => {
   const html = renderMarkdown("![westerm demo](assets/demo.gif)");
   assert.ok(!html.includes("<img"), html);
