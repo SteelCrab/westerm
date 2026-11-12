@@ -15,6 +15,7 @@ mod images;
 mod remote;
 mod remote_window;
 mod updates;
+mod worktrees;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -149,6 +150,7 @@ fn local_router(state: Shared) -> Router {
         .merge(docs::routes())
         .merge(agents::routes())
         .merge(git::routes())
+        .merge(worktrees::routes())
         .merge(images::routes())
         .merge(fonts::routes())
         .merge(remote_window::routes())
@@ -178,6 +180,7 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         .merge(docs::routes())
         .merge(agents::routes())
         .merge(git::routes())
+        .merge(worktrees::routes())
         .merge(images::routes())
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)

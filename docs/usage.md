@@ -179,6 +179,23 @@ A list of the AI agents in the workspace in view, grouped by the folder they run
   - the number of shells and of agents, and a yellow dot when an agent needs your input.
 - Point at a folder row for its full path. Click it to fold or unfold the folder. The folded state is not saved.
 
+### Repositories, worktrees, and pull requests
+
+- A folder in a Git repository shows the open pull request of its branch, on the right of its first line: `#62` and the state of its checks.
+  - Red with a number: that many checks failed.
+  - Blue with a turning ring: checks run.
+  - Green with a check mark: all checks passed.
+  - Gray: the pull request has no checks. A draft has the draft icon.
+- Press the pull request to open it in a terminal-browser pane. Point at it for its title.
+- Pull requests come from GitHub's `gh` command. Without `gh`, when it is signed out, or when the repository is not on GitHub, the panel shows no pull requests. Only open pull requests from the repository's own branches show; one from a fork does not.
+- A repository with more than one worktree shows as one row: its name on the remote (`owner/repo`), or the name of its folder, and the number of its worktrees. Its folders sit under it.
+  - Each folder there is named by its branch, or by the first 7 characters of the commit on a detached HEAD. The folder and the number of shells are on the second line.
+  - "No PR" means GitHub answered and the branch has no open pull request.
+  - **Worktrees without a shell N** is folded at first. Unfold it for the other worktrees, those with a pull request first. Point at one for its folder, and for buttons that start an agent there.
+- A repository with one worktree stays a folder row, as before, with its pull request.
+- The panel reads worktrees and pull requests when it opens, and again every minute. The icons-only panel shows neither.
+- It works the same on macOS, Linux, and Windows, in a remote window (there `git` and `gh` run on the server), and through the tunnel.
+
 ### Agents in a folder
 
 Each agent row shows the agent's logo, its name (as in the session list), how long it has been in this state, and a sign:

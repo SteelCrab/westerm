@@ -47,3 +47,30 @@ test("the focused pane has a thick accent ring outside its 1px border", () => {
   // Dark, light (from the OS) and light (forced) themes each define it.
   assert.equal(css.match(/--accent-halo:/g)?.length, 3);
 });
+
+// A folder row has two lines. The pull request is on the first, beside the
+// name; the second line is the row's own, so a long folder or branch gets the
+// whole width of a narrow sidebar.
+test("a folder row's second line takes the row's whole width", () => {
+  assert.match(rule(".agents-folder") ?? "", /flex-wrap:\s*wrap/);
+  assert.match(rule(".agents-folder-meta") ?? "", /flex-basis:\s*100%/);
+});
+
+// A folder row shows start buttons over its right end on hover. A pull
+// request chip sits there too, on the first line: the buttons go to the
+// second line, or the chip could not be pressed.
+test("a folder's hover start buttons do not cover its pull request", () => {
+  const body = rule(".agents-folder.with-pr .agents-start.on-hover") ?? "";
+  assert.match(body, /top:\s*auto/);
+  assert.match(body, /bottom:/);
+  assert.match(body, /transform:\s*none/);
+});
+
+// In the list of worktrees without a shell, the start buttons open before the
+// chip on hover. They keep their place in the tab order while closed.
+test("an idle worktree's start buttons open on hover and stay reachable by keyboard", () => {
+  const closed = rule(".agents-idle-row .agents-start") ?? "";
+  assert.match(closed, /width:\s*0/);
+  assert.doesNotMatch(closed, /display:\s*none|visibility:\s*hidden/);
+  assert.match(rule(".agents-idle-row:hover .agents-start,\n.agents-idle-row:focus-within .agents-start") ?? "", /width:\s*auto/);
+});

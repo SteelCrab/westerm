@@ -24,7 +24,7 @@ const MAX_FILES: usize = 2000;
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
-struct GitError(StatusCode, String);
+pub(super) struct GitError(pub(super) StatusCode, pub(super) String);
 
 impl IntoResponse for GitError {
     fn into_response(self) -> Response {
@@ -152,10 +152,15 @@ async fn action(State(state): State<Shared>, headers: HeaderMap, body: Bytes) ->
     }
 }
 
-struct Repository(PathBuf);
+pub(super) struct Repository(PathBuf);
 
 impl Repository {
-    async fn open(dir: &str) -> Result<Self, GitError> {
+    /// The top folder of the worktree, canonical.
+    pub(super) fn root(&self) -> &Path {
+        &self.0
+    }
+
+    pub(super) async fn open(dir: &str) -> Result<Self, GitError> {
         if dir.len() > 4096 || dir.contains('\0') || !Path::new(dir).is_absolute() {
             return Err(invalid("Choose an absolute repository folder"));
         }
@@ -174,7 +179,7 @@ impl Repository {
         Ok(Self(root))
     }
 
-    async fn run(&self, args: &[&str]) -> Result<std::process::Output, GitError> {
+    pub(super) async fn run(&self, args: &[&str]) -> Result<std::process::Output, GitError> {
         let mut command = Command::new("git");
         command
             .current_dir(&self.0)
@@ -217,7 +222,7 @@ impl Repository {
         })?
     }
 
-    async fn checked(&self, args: &[&str]) -> Result<Vec<u8>, GitError> {
+    pub(super) async fn checked(&self, args: &[&str]) -> Result<Vec<u8>, GitError> {
         let output = self.run(args).await?;
         if !output.status.success() {
             let message = String::from_utf8_lossy(&output.stderr).chars().take(2000).collect();
@@ -244,7 +249,7 @@ async fn read_output(reader: impl AsyncRead + Unpin) -> Result<Vec<u8>, GitError
     Ok(bytes)
 }
 
-fn utf8(bytes: Vec<u8>) -> Result<String, GitError> {
+pub(super) fn utf8(bytes: Vec<u8>) -> Result<String, GitError> {
     String::from_utf8(bytes).map_err(|_| invalid("Git output contains a filename that is not UTF-8"))
 }
 
