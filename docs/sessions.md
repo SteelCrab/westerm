@@ -28,7 +28,7 @@
 - The screen (up to 1,000 lines) and the working folder are saved:
   - 3 seconds after output stops;
   - on exit, logout, and reboot (SIGTERM). A Windows host has no console, so it may not hear about logout or shutdown; the 3-second saves keep the loss small.
-- Windows has no public way to read another process's folder, so a new terminal-code and a restored shell may start in the home folder.
+- On Windows, PowerShell does not move its process on `cd`. westerm reads the folder the shell started in, so a new terminal-code and a restored shell start there.
 - terminal-browser and terminal-code draw with Kitty images, which cannot be saved. On reconnect they start again and restore their own tabs and folders.
 
 ## AI agents
@@ -37,14 +37,14 @@ A shell that runs Claude Code, Codex, or Gemini CLI shows it, and resumes it whe
 
 ### What the host watches
 
-- Every second, each shell looks at the program in the foreground of its terminal (macOS and Linux).
-- It is an agent when its command is `claude`, `codex`, or `gemini`, also when run from a path or by node from the npm package.
+- Every second, each shell looks at the program in the foreground of its terminal. ConPTY on Windows has no foreground process group, so there the shell looks at the processes below it, nearest first (up to 64), and takes the first that is an agent.
+- It is an agent when its command is `claude`, `codex`, or `gemini` (`claude.exe` on Windows), also when run from a path or by node from the npm package.
 - Gemini CLI is not an agent when it runs one task or prints something: `-p`/`--prompt`, `--acp`, `--list-sessions`, `--delete-session`, `--list-extensions`, `--version`, `--help`, and the subcommands `mcp`, `extensions`, `skills`, `hooks`, and `gemma`.
 - Claude Code writes `~/.claude/sessions/<pid>.json` (`$CLAUDE_CONFIG_DIR` when set). westerm reads the conversation id and the status from it: busy (works), waiting (asks), or idle.
 - Gemini CLI writes no file for its process. westerm learns its conversation id only when the command line names it: `-r`/`--resume <id>` or `--session-id <id>`. `latest` and a number are not ids.
 - The last 16 rows with text tell the rest: "esc to interrupt" means it works; for Gemini CLI, "(esc to cancel," does. A question means it asks, and wins: "Do you want to", "Would you like to", Codex's questions with choices ("enter to submit answer"), Codex's "Implement this plan?", and Gemini CLI's "allow execution of" and "apply this change?". When the file and the screen differ, the more urgent one wins: asks, then works.
-- Each shell also reports its own folder and git branch once a second (macOS and Linux). The host sends a `place` message when the folder or branch changes, and once when a window attaches. westerm reads the branch from the files in `.git`; it does not run `git`. The [agents sidebar](usage.md#agents-sidebar) groups shells by this folder.
-- Not watched: SSH panes (the agent runs on the other end), terminal-browser and terminal-code, and Windows (ConPTY has no foreground process group).
+- Each shell also reports its own folder and git branch once a second. The host sends a `place` message when the folder or branch changes, and once when a window attaches. westerm reads the branch from the files in `.git`; it does not run `git`. The [agents sidebar](usage.md#agents-sidebar) groups shells by this folder.
+- Not watched: SSH panes (the agent runs on the other end), terminal-browser and terminal-code, and programs inside WSL (Windows cannot see their command lines).
 
 ### What is saved
 

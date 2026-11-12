@@ -170,7 +170,8 @@ A list of the AI agents in the workspace in view, grouped by the folder they run
 
 - Only shells are listed. SSH, terminal-browser, terminal-code, and docs panes are not.
 - A shell belongs to the folder its agent runs in. With no agent, it belongs to the folder of the shell itself.
-- A shell whose folder is not known yet goes under "Unknown folder". On Windows every shell does, and the panel says "Agents show on macOS and Linux".
+- A shell whose folder is not known yet goes under "Unknown folder".
+- On Windows, PowerShell does not move its process on `cd`. A shell with no agent stays under the folder it started in. An agent is listed under the folder it runs in.
 - Folders keep the order in which their panes first show: tab order, then pane order. A state change does not move a row.
 - A folder row shows:
   - the folder name in bold, with its parent in gray: `~/` when the parent is your home folder, else `<parent name>/`; your home folder is `~`;
@@ -228,7 +229,7 @@ A docs pane lists the Markdown files of a folder and shows, edits, and saves the
 
 - **Open**: the book icon in the activity bar, or "New docs pane" in the palette. The folder is the one of the focused shell, else your home folder.
 - **Folder**: the chip at the top shows it. Click it to type another absolute folder.
-- **Follow shell**: while on, the folder follows the shell it opened beside. `cd` in that shell, and the pane lists the new folder within a few seconds. Picking a folder by hand turns it off; the switch turns it on again for the first running shell of the tab. Windows has no follow.
+- **Follow shell**: while on, the folder follows the shell it opened beside. `cd` in that shell, and the pane lists the new folder within a few seconds. Picking a folder by hand turns it off; the switch turns it on again for the first running shell of the tab. On Windows the folder stays the one the shell started in: PowerShell does not move its process on `cd`.
 - **Tree**: `.md` and `.markdown` files only, by folder. It follows `.gitignore`, skips `.git`, `node_modules`, and `target`, and lists at most 2,000 files, from folders up to 7 levels below the root. The search box filters by path. The file icon at the top makes a new document; type `notes.md` or `docs/notes.md` in a folder that exists.
 - **Modes**: View (the rendered document), Edit (the text), and Split (both, side by side). On a phone-wide window, Split shows as Edit and the list button opens the tree.
 - **Keys** while the pane has the keyboard: ⌘S (Ctrl+S) saves, ⌘E (Ctrl+E) switches between View and Split.

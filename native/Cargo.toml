@@ -51,7 +51,17 @@ vt100 = "0.18.1"
 core-foundation = "0.10.1"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes", "Win32_System_Power"] }
+# Diagnostics, Threading, and Wdk read the programs in a shell: their
+# command lines, folders, and parents (src/process.rs).
+windows-sys = { version = "0.61.2", features = [
+    "Wdk_System_Threading",
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Pipes",
+    "Win32_System_Power",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 # Router tests send requests without a socket.

@@ -462,7 +462,6 @@ const en = {
     resumeLabel: (title: string) => `Resume ${title}`,
     untitled: "Untitled conversation",
     empty: "No shells in this workspace",
-    platform: "Agents show on macOS and Linux",
   },
   tunnel: {
     title: "Tunnel",
@@ -937,7 +936,6 @@ const ko: Messages = {
     resumeLabel: (title) => `${title} 이어서 시작`,
     untitled: "제목 없는 대화",
     empty: "이 워크스페이스에 셸이 없습니다",
-    platform: "에이전트는 macOS와 Linux에서 보입니다",
   },
   tunnel: {
     title: "터널링",
@@ -1410,7 +1408,6 @@ const ja: Messages = {
     resumeLabel: (title) => `${title} を再開`,
     untitled: "無題の会話",
     empty: "このワークスペースにシェルはありません",
-    platform: "エージェントは macOS と Linux で表示されます",
   },
   tunnel: {
     title: "トンネル",
@@ -1883,7 +1880,6 @@ const zh: Messages = {
     resumeLabel: (title) => `继续 ${title}`,
     untitled: "无标题对话",
     empty: "此工作区没有 Shell",
-    platform: "智能体仅在 macOS 和 Linux 上显示",
   },
   tunnel: {
     title: "隧道",

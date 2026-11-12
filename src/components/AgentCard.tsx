@@ -11,9 +11,9 @@ export function minutesSince(time: number, now: number): number {
   return Math.max(0, Math.floor((now - time) / 60_000));
 }
 
-/** "~/westerm" for a folder in the user's home on macOS or Linux; other paths as they are. */
+/** "~/westerm" for a folder in the user's home, `~\westerm` on Windows; other paths as they are. */
 export function homeShort(path: string): string {
-  return path.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
+  return path.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~").replace(/^[A-Za-z]:\\Users\\[^\\]+(?=\\|$)/, "~");
 }
 
 /** The time now, again every `ms`. */
