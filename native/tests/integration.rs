@@ -2,8 +2,9 @@
 //! connection and a host restart, and the dashboard enforces its origin.
 //! Runs on macOS, Linux (Unix socket), and Windows (named pipe).
 
+use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
@@ -184,20 +185,38 @@ async fn one_window_at_a_time_owns_every_session() {
     stop_host(state.path(), host).await;
 }
 
+/// The port in the address the dashboard prints when it starts to serve. A
+/// thread keeps reading the output, so the dashboard never waits on a full pipe.
+fn served_port(server: &mut Child) -> u16 {
+    let stdout = server.stdout.take().unwrap();
+    let (found, port) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if let Some(port) = line.strip_prefix("> westerm: http://127.0.0.1:").and_then(|p| p.trim().parse().ok()) {
+                let _ = found.send(port);
+            }
+        }
+    });
+    port.recv_timeout(Duration::from_secs(30))
+        .unwrap_or_else(|_| panic!("server starts; it exited: {:?}", server.try_wait()))
+}
+
 #[tokio::test]
 async fn the_dashboard_only_accepts_its_own_origin() {
     let state = tempfile::tempdir().unwrap();
     // Dropped in reverse order: the dashboard is killed, then its host stopped.
     let _host = StopHostOnDrop(state.path());
-    let port = 40000 + (std::process::id() % 20000) as u16;
-    let _server = Spawned(Command::new(BIN)
-        .args(["serve", "--port", &port.to_string()])
+    // Port 0: the server takes a free port and prints it. A port chosen here
+    // can be in use, or reserved by Windows, and then the server cannot start.
+    let mut server = Spawned(Command::new(BIN)
+        .args(["serve", "--port", "0"])
         .env("WESTERM_STATE_DIR", state.path())
         .env("SHELL", "/bin/sh")
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .unwrap());
+    let port = served_port(&mut server.0);
 
     let upgrade = |origin: Option<&str>| {
         let origin = origin.map(|o| format!("Origin: {o}\r\n")).unwrap_or_default();
@@ -213,11 +232,6 @@ async fn the_dashboard_only_accepts_its_own_origin() {
         String::from_utf8_lossy(&buf[..n]).split_whitespace().nth(1).map(str::to_owned)
     };
 
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while status(upgrade(None)).await.is_none() {
-        assert!(Instant::now() < deadline, "server starts");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
     assert_eq!(status(upgrade(None)).await.as_deref(), Some("403"));
     assert_eq!(status(upgrade(Some("http://evil.example"))).await.as_deref(), Some("403"));
     let own = format!("http://127.0.0.1:{port}");
