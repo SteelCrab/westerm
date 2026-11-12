@@ -10,6 +10,7 @@ mod docs;
 mod fonts;
 pub(crate) mod host_client;
 mod http1;
+mod images;
 mod plugins;
 mod remote;
 mod remote_window;
@@ -154,6 +155,7 @@ fn local_router(state: Shared) -> Router {
         .route(cloudflare::AUTH_PATH, get(|| async { no_store(Json(serde_json::json!({ "tunnel": false }))) }))
         .merge(docs::routes())
         .merge(agents::routes())
+        .merge(images::routes())
         .merge(fonts::routes())
         .merge(plugins::routes())
         .merge(remote_window::routes())
@@ -184,6 +186,7 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         .merge(docs::routes())
         .merge(agents::routes())
         .merge(plugins::git::routes())
+        .merge(images::routes())
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)
 }

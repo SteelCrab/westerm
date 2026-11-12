@@ -66,6 +66,14 @@ jobs:
       - run: npm ci
       - name: Build the app
         run: npm run build:app -- --target ${{ matrix.target }}
+      # A clean Windows has no Visual C++ runtime: the app and the westerm it
+      # ships must start without it.
+      - name: No Visual C++ runtime (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          node scripts/check-windows-runtime.mjs
+          desktop/target/${{ matrix.target }}/release/westerm-app.exe
+          desktop/binaries/westerm-${{ matrix.target }}.exe
       - name: Checksum
         shell: bash
         run: |

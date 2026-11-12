@@ -2885,6 +2885,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "static_vcruntime"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff7589a1859b09232522bb9edf076ca7fcf14ded96685d3fa629db73023ffbb7"
+
+[[package]]
 name = "stringprep"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3491,7 +3497,7 @@ dependencies = [
 
 [[package]]
 name = "westerm"
-version = "0.4.3"
+version = "0.5.0"
 dependencies = [
  "axum",
  "base64 0.23.1",
@@ -3515,6 +3521,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "sqlx",
+ "static_vcruntime",
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
