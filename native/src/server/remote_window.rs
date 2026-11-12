@@ -14,6 +14,7 @@ use axum::routing::get;
 use axum::Router;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 
+use super::plugins::git;
 use super::remote::manager::Opened;
 use super::{close_message, cross_site, host_allowed, http1, is_json, no_store, origin_allowed, pipe, AppState, Shared, REMOTE_HANDSHAKE_TIMEOUT};
 use crate::host::MAX_MESSAGE;
@@ -30,7 +31,7 @@ pub(super) fn routes() -> Router<Shared> {
             get(docs_get).put(docs_put).post(docs_post).layer(DefaultBodyLimit::max(super::docs::MAX_BODY_BYTES)),
         )
         .route("/remote/{target}/api/agents/history", get(agents_history_get))
-        .route("/remote/{target}/api/git/{name}", get(git_get).post(git_post).layer(DefaultBodyLimit::max(super::git::MAX_BODY_BYTES)))
+        .route("/remote/{target}/api/plugins/git/{name}", get(git_get).post(git_post).layer(DefaultBodyLimit::max(git::MAX_BODY_BYTES)))
 }
 
 /// The target from the path, when the Host header is one of this dashboard's
@@ -66,7 +67,8 @@ async fn forward(state: &Shared, target: &str, method: &str, path: &str, body: O
         Ok(opened) => opened,
         Err(status) => return status.into_response(),
     };
-    let answer = if path.starts_with("/api/git/") {
+    // Git may wait on a network (pull, push): longer than its own time limit.
+    let answer = if path.starts_with(git::PREFIX) {
         http1::exchange_with_timeout(opened.stream, method, path, body, std::time::Duration::from_secs(35)).await
     } else {
         http1::exchange(opened.stream, method, path, body).await
@@ -140,7 +142,7 @@ async fn git_get(
     RawQuery(query): RawQuery, headers: HeaderMap,
 ) -> Response {
     if !matches!(name.as_str(), "status" | "diff" | "commit" | "commit-diff") { return StatusCode::NOT_FOUND.into_response(); }
-    let path = match query { Some(query) => format!("/api/git/{name}?{query}"), None => format!("/api/git/{name}") };
+    let path = match query { Some(query) => format!("{}{name}?{query}", git::PREFIX), None => format!("{}{name}", git::PREFIX) };
     match checked_get_target(&state, &headers, &target) {
         Ok(target) => forward(&state, &target, "GET", &path, None).await,
         Err(status) => status.into_response(),
@@ -155,7 +157,7 @@ async fn git_post(
         Ok(target) => target, Err(status) => return status.into_response(),
     };
     if !is_json(&headers) || !origin_allowed(&state, &headers) { return StatusCode::FORBIDDEN.into_response(); }
-    forward(&state, &target, "POST", "/api/git/action", Some(&body)).await
+    forward(&state, &target, "POST", &format!("{}action", git::PREFIX), Some(&body)).await
 }
 
 /// A docs pane of a remote window reads the server's files.

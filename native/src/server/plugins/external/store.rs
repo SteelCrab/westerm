@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::manifest::{LocalText, Manifest, Permissions};
 use crate::plugins::external::is_external_id;
-use crate::plugins::PLUGIN_IDS;
+use crate::plugins::{DEFAULT_ON, PLUGIN_IDS};
 
 /// Where a plugin came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,20 +54,32 @@ pub struct ExternalRecord {
     pub installed_at: u64,
 }
 
-/// The shape of `plugins.json`. `installed` is built from the other two: the
-/// built-in ids, then the id of every record.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+/// The shape of `plugins.json`. `installed` is built from the other parts:
+/// the built-in ids that are on, then the id of every record. `off` lists the
+/// default-on plugins (`DEFAULT_ON`) the user turned off: a file written
+/// before such a plugin existed does not name it, and it stays on.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct PluginsFile {
     pub installed: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub off: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub external: Vec<ExternalRecord>,
 }
 
+/// No file yet: only the default-on plugins.
+impl Default for PluginsFile {
+    fn default() -> Self {
+        Self::new(DEFAULT_ON, Vec::new())
+    }
+}
+
 impl PluginsFile {
-    /// `builtin` are known built-in ids; `external` are valid records.
+    /// `builtin` are the known built-in ids that are on; `external` are valid records.
     pub fn new(builtin: &[&str], external: Vec<ExternalRecord>) -> Self {
         let installed = builtin.iter().map(|id| (*id).to_owned()).chain(external.iter().map(|record| record.id.clone())).collect();
-        Self { installed, external }
+        let off = DEFAULT_ON.iter().filter(|id| !builtin.contains(id)).map(|id| (*id).to_owned()).collect();
+        Self { installed, off, external }
     }
 
     /// The built-in ids that are on.
@@ -130,6 +142,7 @@ pub fn parse_plugins_file(bytes: &[u8]) -> PluginsFile {
     #[serde(default)]
     struct Raw {
         installed: Vec<String>,
+        off: Vec<String>,
         external: Vec<Value>,
     }
     let Ok(raw) = serde_json::from_slice::<Raw>(bytes) else { return PluginsFile::default() };
@@ -140,7 +153,9 @@ pub fn parse_plugins_file(bytes: &[u8]) -> PluginsFile {
             external.push(record);
         }
     }
-    let builtin: Vec<&str> = PLUGIN_IDS.iter().copied().filter(|id| raw.installed.iter().any(|on| on == id)).collect();
+    // A default-on plugin is on unless the file says the user turned it off.
+    let on = |id: &&str| raw.installed.iter().any(|on| on == id) || (DEFAULT_ON.contains(id) && !raw.off.iter().any(|off| off == id));
+    let builtin: Vec<&str> = PLUGIN_IDS.iter().copied().filter(on).collect();
     PluginsFile::new(&builtin, external)
 }
 
@@ -196,20 +211,33 @@ mod tests {
 
     #[test]
     fn old_plugins_files_still_read() {
+        // A file from before the Git plugin does not name it: Git stays on.
         let file = parse_plugins_file(br#"{"installed":["docker"]}"#);
-        assert_eq!(file.installed, vec!["docker"]);
+        assert_eq!(file.installed, vec!["git", "docker"]);
         assert!(file.external.is_empty());
-        assert!(parse_plugins_file(b"{not json").installed.is_empty());
-        assert!(parse_plugins_file(b"").installed.is_empty());
-        assert!(parse_plugins_file(br#"{"installed":"docker"}"#).installed.is_empty());
-        assert_eq!(parse_plugins_file(br#"{"installed":["docker","nope","docker"]}"#).installed, vec!["docker"]);
+        assert_eq!(parse_plugins_file(b"{not json").installed, vec!["git"]);
+        assert_eq!(parse_plugins_file(b"").installed, vec!["git"]);
+        assert_eq!(parse_plugins_file(br#"{"installed":"docker"}"#).installed, vec!["git"]);
+        assert_eq!(parse_plugins_file(br#"{"installed":["docker","nope","docker"]}"#).installed, vec!["git", "docker"]);
+    }
+
+    #[test]
+    fn a_default_on_plugin_is_on_until_the_file_says_off() {
+        assert_eq!(PluginsFile::default().installed, vec!["git"], "no file yet");
+        let off = parse_plugins_file(br#"{"installed":["docker"],"off":["git"]}"#);
+        assert_eq!(off.installed, vec!["docker"]);
+        assert_eq!(off.off, vec!["git"]);
+        assert_eq!(parse_plugins_file(serde_json::to_string(&off).unwrap().as_bytes()), off, "off survives a write and a read");
+        // `installed` wins over `off`, and `off` means nothing for other plugins.
+        assert_eq!(parse_plugins_file(br#"{"installed":["git"],"off":["git","docker"]}"#), PluginsFile::new(&["git"], Vec::new()));
+        assert!(PluginsFile::new(&["git", "docker"], Vec::new()).off.is_empty());
     }
 
     #[test]
     fn external_ids_need_a_record() {
         let body = json!({"installed": ["k8s-tools.kubernetes", "a.b", "docker"], "external": [k8s(json!({}))]});
         let file = parse_plugins_file(body.to_string().as_bytes());
-        assert_eq!(file.installed, vec!["docker", "k8s-tools.kubernetes"], "built-in first, then external in record order");
+        assert_eq!(file.installed, vec!["git", "docker", "k8s-tools.kubernetes"], "built-in first, then external in record order");
         assert_eq!(file.external.len(), 1);
         assert_eq!(file.external[0].installed_at, 1_794_139_521_000);
         assert_eq!(file.external[0].granted.run, vec!["kubectl"]);
@@ -228,7 +256,7 @@ mod tests {
             json!("text"),
         ]});
         let file = parse_plugins_file(body.to_string().as_bytes());
-        assert_eq!(file.installed, vec!["k8s-tools.kubernetes"]);
+        assert_eq!(file.installed, vec!["git", "k8s-tools.kubernetes"]);
         assert_eq!(file.external.len(), 1);
     }
 
@@ -259,8 +287,8 @@ mod tests {
             serde_json::to_string(&record).unwrap(),
             r#"{"id":"a.b","version":"1.0.0","source":{"kind":"folder","path":"/work/plugin"},"granted":{"run":[],"panes":false,"background":false},"installedAt":7}"#
         );
-        let file = PluginsFile::new(&["docker"], Vec::new());
-        assert_eq!(serde_json::to_string(&file).unwrap(), r#"{"installed":["docker"]}"#, "the old shape when nothing is external");
+        let file = PluginsFile::new(&["git", "docker"], Vec::new());
+        assert_eq!(serde_json::to_string(&file).unwrap(), r#"{"installed":["git","docker"]}"#, "the old shape when nothing is external or off");
         let with = PluginsFile::new(&[], vec![record]);
         assert_eq!(parse_plugins_file(serde_json::to_string(&with).unwrap().as_bytes()), with, "it reads back");
     }

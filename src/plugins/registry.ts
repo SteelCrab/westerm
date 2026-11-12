@@ -2,6 +2,7 @@
 // a plugin's own folder.
 
 import { dockerPlugin } from "./docker/index.tsx";
+import { gitPlugin } from "./git/index.tsx";
 import type { WestermPlugin } from "./types.ts";
 
-export const BUILTIN_PLUGINS: readonly WestermPlugin[] = [dockerPlugin];
+export const BUILTIN_PLUGINS: readonly WestermPlugin[] = [gitPlugin, dockerPlugin];

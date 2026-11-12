@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { parsePluginList, type ExternalInfo } from "./external/info.ts";
 import { externalPlugin } from "./external/plugin.tsx";
-import { instanceKey, parseInstalled, statusStore, syncInstances, withPlugin } from "./installed.ts";
+import { instanceKey, pagePlugins, parseInstalled, statusStore, syncInstances, withPlugin } from "./installed.ts";
 import { BUILTIN_PLUGINS } from "./registry.ts";
 import type { PluginContext, PluginInstance, PluginStatus, WestermPlugin } from "./types.ts";
 
@@ -41,11 +41,13 @@ const sameExternal = (a: readonly ExternalInfo[], b: readonly ExternalInfo[]) =>
  *
  * `contextFor` is called once per instance, when it starts. `allowed` is
  * false in a remote window and on a tunnel page (tunnel.ts pageControls):
- * neither has the plugin routes, so the list stays empty. It does not change
- * while the page is open.
+ * neither has the plugin list, so only the plugins that run everywhere are
+ * there, always on (installed.ts pagePlugins). It does not change while the
+ * page is open.
  */
 export function usePlugins(contextFor: (id: string) => PluginContext, allowed: boolean): Plugins {
-  const [list, setList] = useState<List>({ installed: allowed ? null : [], external: [] });
+  const builtins = useMemo(() => pagePlugins(BUILTIN_PLUGINS, allowed), [allowed]);
+  const [list, setList] = useState<List>(() => ({ installed: allowed ? null : builtins.map((plugin) => plugin.id), external: [] }));
   const contextForRef = useRef(contextFor);
   contextForRef.current = contextFor;
   // Bumped by each request, so an older answer does not overwrite a newer one.
@@ -65,8 +67,8 @@ export function usePlugins(contextFor: (id: string) => PluginContext, allowed: b
       return plugin;
     });
     made.current = next;
-    return [...BUILTIN_PLUGINS, ...external];
-  }, [list.external]);
+    return [...builtins, ...external];
+  }, [builtins, list.external]);
   const listRef = useRef(list);
   listRef.current = list;
   const registryRef = useRef(registry);

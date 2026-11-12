@@ -660,9 +660,9 @@ test("toggling a built-in plugin keeps the external plugins installed", async ()
     assert.deepEqual(plugins!.external, [INFO]);
     assert.deepEqual(
       plugins!.registry.map((plugin) => plugin.id),
-      ["docker", INFO.id],
+      ["git", "docker", INFO.id],
     );
-    const external = plugins!.registry[1];
+    const external = plugins!.registry[2];
 
     await act(async () => {
       assert.equal(await plugins!.setInstalled("docker", true), true);
@@ -678,11 +678,47 @@ test("toggling a built-in plugin keeps the external plugins installed", async ()
 
     // The same files keep the same plugin object; a new version makes a new one.
     await act(async () => plugins!.refresh());
-    assert.equal(plugins!.registry[1], external);
+    assert.equal(plugins!.registry[2], external);
     list = { installed: [INFO.id], external: [{ ...INFO, version: "0.4.0" }] };
     await act(async () => plugins!.refresh());
-    assert.notEqual(plugins!.registry[1], external);
-    assert.equal(plugins!.registry[1].version, "0.4.0");
+    assert.notEqual(plugins!.registry[2], external);
+    assert.equal(plugins!.registry[2].version, "0.4.0");
+  } finally {
+    await act(async () => root.unmount());
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("a remote window runs only the plugins that run everywhere, and asks the server for no list", async () => {
+  let requests = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    requests += 1;
+    return json({ installed: ["docker"], external: [] });
+  }) as typeof fetch;
+  const ctxFor = (): PluginContext => ({ ...fakeCtx().ctx, fetch: () => new Promise<Response>(noop) });
+  let plugins: Plugins | null = null;
+  function Probe() {
+    // false: a remote window or a tunnel page (tunnel.ts pageControls).
+    plugins = usePlugins(ctxFor, false);
+    return null;
+  }
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => plugins!.refresh());
+    assert.deepEqual(plugins!.installed, ["git"]);
+    assert.deepEqual(
+      plugins!.registry.map((plugin) => plugin.id),
+      ["git"],
+    );
+    assert.deepEqual([...plugins!.instances.keys()], ["git"], "Git runs without being installed there");
+    await act(async () => {
+      assert.equal(await plugins!.setInstalled("git", false), false, "there is no plugin manager to turn it off");
+    });
+    assert.deepEqual(plugins!.installed, ["git"]);
+    assert.equal(requests, 0);
   } finally {
     await act(async () => root.unmount());
     globalThis.fetch = realFetch;

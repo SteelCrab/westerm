@@ -20,12 +20,14 @@ export interface PluginButton {
 interface PluginBarProps {
   plugins: PluginButton[];
   onTogglePlugin: (id: string) => void;
-  onOpenPlugins: () => void;
+  /** Null where there is no plugin manager (a remote window, a tunnel page). */
+  onOpenPlugins: (() => void) | null;
 }
 
 /**
  * The middle of the activity bar: a button per installed plugin, in registry
- * order, then the puzzle button that opens the plugin manager.
+ * order, then the puzzle button that opens the plugin manager (where the
+ * page has one).
  */
 export function PluginBar({ plugins, onTogglePlugin, onOpenPlugins }: PluginBarProps) {
   const { t } = useI18n();
@@ -60,12 +62,14 @@ export function PluginBar({ plugins, onTogglePlugin, onOpenPlugins }: PluginBarP
           </button>
         );
       })}
-      <button type="button" className="activity-button plugin-open" aria-label={t.plugins.open} onClick={onOpenPlugins}>
-        <Puzzle size={18} strokeWidth={1.75} />
-        <span className="activity-tooltip" role="presentation">
-          {t.plugins.open}
-        </span>
-      </button>
+      {onOpenPlugins && (
+        <button type="button" className="activity-button plugin-open" aria-label={t.plugins.open} onClick={onOpenPlugins}>
+          <Puzzle size={18} strokeWidth={1.75} />
+          <span className="activity-tooltip" role="presentation">
+            {t.plugins.open}
+          </span>
+        </button>
+      )}
     </div>
   );
 }

@@ -547,8 +547,6 @@ function bar(change: Partial<Parameters<typeof ActivityBar>[0]>) {
         agentsOpen: false,
         agentsWaiting: false,
         onToggleAgents: noop,
-        gitOpen: false,
-        onToggleGit: noop,
         tunnelOpen: false,
         tunnelOn: false,
         onToggleTunnel: null,
@@ -595,7 +593,7 @@ test("plugin panels follow the agents rules in every layout", () => {
 });
 
 test("another panel's button switches the open panel instead of closing it", () => {
-  for (const from of ["agents", "git", "tunnel"] as const) {
+  for (const from of ["agents", "plugin:git", "tunnel"] as const) {
     const base: SidebarFlags = { layout: "sidebar", narrow: false, sidebarOpen: true, drawerOpen: false, panel: from };
     const next = press(base, "plugin:docker");
     assert.equal(sidebarView(next), "plugin:docker");

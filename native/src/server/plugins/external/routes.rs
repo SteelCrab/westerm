@@ -771,7 +771,7 @@ mod tests {
         assert_eq!(record.granted.run, vec!["kubectl"]);
         let file: Value = serde_json::from_slice(&std::fs::read(env.state_dir.path().join("plugins.json")).unwrap()).unwrap();
         assert_eq!(file["external"][0]["source"]["kind"], "url");
-        assert_eq!(file["installed"], json!([ID]));
+        assert_eq!(file["installed"], json!(["git", ID]));
     }
 
     #[tokio::test]
@@ -1174,15 +1174,15 @@ mod tests {
         let env = Env::new();
         env.install_from_index("0.3.1", &["kubectl"]).await;
         std::fs::write(env.plugins().join(ID).join("data.json"), r#"{"a":1}"#).unwrap();
-        env.state.plugins.set_builtin(&["docker".into()]).unwrap();
+        env.state.plugins.set_builtin(&["git".into(), "docker".into()]).unwrap();
         let (status, body) = env.delete(ID).await;
         assert_eq!((status, body), (StatusCode::NO_CONTENT, Value::Null));
         assert!(!env.plugins().join(ID).exists(), "the package and the storage are gone");
         assert!(!env.state.plugins.is_installed(ID));
-        assert_eq!(env.state.plugins.installed(), vec!["docker"], "built-in plugins stay");
+        assert_eq!(env.state.plugins.installed(), vec!["git", "docker"], "built-in plugins stay");
         assert!(env.state.plugins.external_infos().is_empty());
         let file: Value = serde_json::from_slice(&std::fs::read(env.state_dir.path().join("plugins.json")).unwrap()).unwrap();
-        assert_eq!(file, json!({ "installed": ["docker"] }));
+        assert_eq!(file, json!({ "installed": ["git", "docker"] }));
 
         let folder = env.folder("k8s", ID, "0.3.1", &["kubectl"]);
         let (_, fetched) = env.fetch(json!({ "path": folder })).await;

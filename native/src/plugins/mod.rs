@@ -7,8 +7,13 @@ pub mod external;
 
 use crate::quote::ShellKind;
 
-/// The plugins this build knows.
-pub const PLUGIN_IDS: &[&str] = &["docker"];
+/// The plugins this build knows, in plugin bar order. Git has no launches:
+/// it opens no shells.
+pub const PLUGIN_IDS: &[&str] = &["git", "docker"];
+
+/// The plugins that are on until the user turns them off. Git was a fixed
+/// panel before it was a plugin, so it stays where it was after an update.
+pub const DEFAULT_ON: &[&str] = &["git"];
 
 /// A checked plugin launch.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -115,9 +120,15 @@ mod tests {
     }
 
     #[test]
-    fn every_listed_plugin_parses() {
-        for id in PLUGIN_IDS {
+    fn every_listed_plugin_with_launches_parses() {
+        for id in PLUGIN_IDS.iter().filter(|id| **id != "git") {
             assert!(PluginLaunch::parse(id, "logs", "0123456789ab").is_some(), "{id}");
         }
+        assert!(PluginLaunch::parse("git", "logs", "0123456789ab").is_none(), "Git opens no shells");
+    }
+
+    #[test]
+    fn default_on_plugins_are_known_plugins() {
+        assert!(DEFAULT_ON.iter().all(|id| PLUGIN_IDS.contains(id)));
     }
 }

@@ -230,8 +230,6 @@ function bar(change: Record<string, unknown>): string {
         agentsOpen: false,
         agentsWaiting: false,
         onToggleAgents: noop,
-        gitOpen: false,
-        onToggleGit: noop,
         tunnelOpen: false,
         tunnelOn: false,
         onToggleTunnel: null,
