@@ -10,6 +10,13 @@ import type { Messages } from "../i18n/messages.ts";
 import { RemoteWindowIcon } from "../kinds.tsx";
 import { postRemote } from "../remoteApi.ts";
 
+type Connected = Extract<RemoteStage, { stage: "connected" }>;
+
+/** The badge text of a connected link: how the dashboard reaches the server. */
+export function viaText(stage: Connected, t: Messages): string {
+  return stage.via === "quic" && stage.path === "punched" ? `${t.remote.via.quic} · ${t.remote.punched}` : t.remote.via[stage.via];
+}
+
 /** What a stage of the link says: a step, the way it connected, or why it failed. */
 export function stageText(stage: RemoteStage | null, t: Messages): string {
   switch (stage?.stage) {
@@ -25,7 +32,7 @@ export function stageText(stage: RemoteStage | null, t: Messages): string {
     case "confirm":
       return t.remote.confirm(stage.sessions);
     case "connected":
-      return [t.remote.via[stage.via], stage.killOnLogout && t.remote.killOnLogout].filter(Boolean).join(" · ");
+      return [viaText(stage, t), stage.killOnLogout && t.remote.killOnLogout, stage.note].filter(Boolean).join(" · ");
     case "failed":
       return t.remote.failed[stage.reason];
   }

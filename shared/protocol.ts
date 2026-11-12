@@ -64,6 +64,9 @@ export type AttachMode = "new" | "reattached" | "revived";
 /** How the dashboard reaches a remote westerm. */
 export type RemoteVia = "quic" | "tunnel";
 
+/** How a QUIC link got through. Absent: straight to the gate's port. */
+export type RemotePath = "punched";
+
 /** Why a remote westerm could not connect; the UI shows each in its language. */
 export type RemoteFailure =
   | "auth"
@@ -85,7 +88,7 @@ export type RemoteStage =
   | { stage: "connecting" }
   /** The server's host is an older build with running shells: replace it? */
   | { stage: "confirm"; sessions: number }
-  | { stage: "connected"; via: RemoteVia; killOnLogout: boolean }
+  | { stage: "connected"; via: RemoteVia; killOnLogout: boolean; path?: RemotePath; note?: string }
   | { stage: "failed"; reason: RemoteFailure; detail: string };
 
 /** False for failures that a later try can get past on its own. Same rule as native/src/protocol.rs. */
