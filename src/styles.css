@@ -2879,15 +2879,6 @@ button {
   font-size: 12px;
 }
 
-.agents-platform {
-  flex: none;
-  margin: 0;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  color: var(--text-faint);
-  font-size: 11px;
-}
-
 /* Icons only: the waiting dot sits on the folder icon, like a session's status dot. */
 .session-panel.compact .agents-folder .agents-dot {
   position: absolute;

@@ -145,6 +145,10 @@ test("the info card counts whole minutes and shortens the home folder", () => {
   assert.equal(homeShort("/Users/pistachio-x"), "~");
   assert.equal(homeShort("/srv/app"), "/srv/app");
   assert.equal(homeShort("/Users"), "/Users");
+  assert.equal(homeShort("C:\\Users\\pyh55"), "~");
+  assert.equal(homeShort("c:\\Users\\pyh55\\westerm"), "~\\westerm");
+  assert.equal(homeShort("C:\\Users"), "C:\\Users");
+  assert.equal(homeShort("D:\\work\\app"), "D:\\work\\app");
 });
 
 test("a shell keeps its place, but the layout does not save it", () => {

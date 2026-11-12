@@ -10,6 +10,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 - Cargo packaging for `westerm`: the crate includes the built web UI and license, and can be installed without Node.js. A separate CI check installs the packaged crate and verifies its embedded web files on macOS, Linux, and Windows. Windows Cargo installs use the system ConPTY; the bundled ConPTY files remain available through npm and the GitHub releases.
 - Tunnel: the cloud button in the activity bar starts a Cloudflare Quick Tunnel and shows its `https://<name>.trycloudflare.com` address, a QR code, and a 6-digit access code. Another device's browser opens the address, enters the code, and uses the same workspaces, tabs, and shells. Wrong codes lock logins and 20 stop the tunnel; **Stop tunnel** ends every device's access. The computer stays awake while the tunnel is on, and a tunnel with no device for 12 hours stops by itself. It needs `cloudflared`; the panel shows the install command when it is missing.
 
+### Fixed
+
+- Windows: the agents sidebar lists each shell under its folder and shows the AI agent it runs. Before, every shell was under "Unknown folder" and no agent was found. Agents on Windows now also show their status on tabs and panes, and resume after a restart, as on macOS and Linux. PowerShell does not move its process on `cd`, so a shell with no agent stays under the folder it started in.
+
 ## [0.4.3] - 2026-11-10
 
 ### Changed
