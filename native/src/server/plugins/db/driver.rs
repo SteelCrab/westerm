@@ -915,8 +915,11 @@ pub(crate) mod tests {
     use super::*;
     use crate::server::plugins::db::store::tests::sqlite;
 
+    /// Small result limits and a short connect limit. The query limit is
+    /// long: a first write on a slow CI disk (Windows) can take over 300 ms.
+    /// A test of the query limit sets its own.
     pub(crate) fn small() -> Limits {
-        Limits { rows: 1000, cell: 1000, total: 1 << 20, query: Duration::from_millis(300), connect: Duration::from_millis(300) }
+        Limits { rows: 1000, cell: 1000, total: 1 << 20, query: Duration::from_secs(10), connect: Duration::from_millis(300) }
     }
 
     pub(crate) fn file_connection(dir: &std::path::Path, read_only: bool) -> Connection {
@@ -1006,7 +1009,8 @@ pub(crate) mod tests {
         let pool = pool(dir.path(), false).await;
         let started = Instant::now();
         let forever = "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n) SELECT count(*) FROM n";
-        assert_eq!(sql(&pool, forever).await, Err(DbError::Timeout));
+        let limits = Limits { query: Duration::from_millis(300), ..small() };
+        assert_eq!(run(&pool, forever, None, &limits, CancellationToken::new()).await, Err(DbError::Timeout));
         assert!(started.elapsed() < Duration::from_secs(3));
     }
 
@@ -1021,8 +1025,7 @@ pub(crate) mod tests {
             later.cancel();
         });
         let forever = "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n) SELECT count(*) FROM n";
-        let limits = Limits { query: Duration::from_secs(10), ..small() };
-        assert_eq!(run(&pool, forever, None, &limits, cancel).await, Err(DbError::Cancelled));
+        assert_eq!(run(&pool, forever, None, &small(), cancel).await, Err(DbError::Cancelled));
     }
 
     #[tokio::test]
