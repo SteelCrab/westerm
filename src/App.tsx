@@ -5,7 +5,6 @@ import type { WorkspaceColor, WorkspaceIcon } from "../shared/workspace-file.ts"
 import { anyWaiting, effectivePanel, pressPanel, sidebarView, type SidebarFlags, type SidebarPanel } from "./agents.ts";
 import { ActivityBar } from "./components/ActivityBar.tsx";
 import { AgentPanel } from "./components/AgentPanel.tsx";
-import { GitPanel } from "./components/GitPanel.tsx";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette.tsx";
 import { placeRename, type RenameTarget } from "./components/InlineRename.tsx";
 import { PaneLayer } from "./components/PaneLayer.tsx";
@@ -27,6 +26,7 @@ import { BUILTIN_PLUGINS } from "./plugins/registry.ts";
 import type { PluginContext, PluginStatus } from "./plugins/types.ts";
 import { usePlugins } from "./plugins/usePlugins.ts";
 import { planOpenPane, pluginFolders } from "./pluginPanes.ts";
+import { pluginPlace } from "./pluginPlace.ts";
 import {
   buildCommands,
   IS_MAC,
@@ -37,7 +37,7 @@ import {
   sshCommands,
   urlCommands,
 } from "./paletteCommands.tsx";
-import { openRemoteWindow, REMOTE_TARGET } from "./remoteWindow.ts";
+import { openRemoteWindow, pluginPath, REMOTE_TARGET } from "./remoteWindow.ts";
 import { useRemoteLink } from "./useRemoteLink.ts";
 import { useSshHosts } from "./useSshHosts.ts";
 import { terminalColors } from "./colorThemes.ts";
@@ -135,8 +135,9 @@ export function App({ tunnelPage = false }: AppProps = {}) {
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const [savedPanel, setPanel] = useSidebarPanel();
   // Only this computer's own dashboard updates westerm, opens remote windows,
-  // runs tunnels, and has plugins. A remote window shares this page's
-  // storage, so a remembered tunnel panel does not apply there.
+  // runs tunnels, and manages plugins (elsewhere only the ones that run
+  // everywhere show). A remote window shares this page's storage, so a
+  // remembered tunnel panel does not apply there.
   const controls = pageControls(REMOTE_TARGET !== null, tunnelPage);
   const tunnelAllowed = controls.tunnel;
   const tunnel = useTunnel(tunnelAllowed);
@@ -252,7 +253,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
         closeDrawer();
       },
       folders: () => pluginFolders(stateRef.current),
-      fetch: (path, init) => fetch(`/api/plugins/${id}${path}`, init),
+      fetch: (path, init) => fetch(pluginPath(id, path), init),
       refreshInstalled: () => refreshPlugins.current(),
       openManager: () => setManager({ selected: id }),
     }),
@@ -301,8 +302,8 @@ export function App({ tunnelPage = false }: AppProps = {}) {
       if (placed.where === "sidebar") {
         setSidebar(true);
         // Tab and session names are edited in the sessions list. The sessions
-        // list and the agents panel have the workspace menu; Git, the tunnel
-        // panel, and plugin panels do not.
+        // list and the agents panel have the workspace menu; the tunnel panel
+        // and plugin panels do not.
         if (placed.kind !== "workspace" || panel !== "agents") setPanel(null);
       }
       setRenaming(placed);
@@ -510,7 +511,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
   for (const session of state.sessions) counts[session.kind] += 1;
 
   // Top: the workspace menu and the tab bar; the sidebar slot opens only for
-  // a panel (agents, Git, the tunnel, or a plugin's). Sidebar: both in the
+  // a panel (agents, the tunnel, or a plugin's). Sidebar: both in the
   // sidebar, no tab bar; the header stays only for the update button. The
   // sidebar slot shows the sessions list or one of those panels (agents.ts
   // sidebarView). A remembered plugin panel counts only while installed.
@@ -584,6 +585,8 @@ export function App({ tunnelPage = false }: AppProps = {}) {
     });
   const PluginPanel = view?.startsWith("plugin:") ? plugins.instances.get(view.slice("plugin:".length))?.Panel : undefined;
   const compact = !narrow && isCompact(sidebarWidth);
+  // Where the user is, for a plugin's panel that follows it.
+  const place = useMemo(() => pluginPlace(state), [state]);
   // A remote window always shows its server in the header.
   const headerShown = onTop || REMOTE_TARGET !== null || (controls.updates && updateShown(update.status, updateOpen));
 
@@ -610,17 +613,13 @@ export function App({ tunnelPage = false }: AppProps = {}) {
         agentsOpen={view === "agents"}
         agentsWaiting={anyWaiting(state)}
         onToggleAgents={() => togglePanel("agents")}
-        gitOpen={view === "git"}
-        onToggleGit={() => togglePanel("git")}
         plugins={pluginButtons}
         onTogglePlugin={(id) => togglePanel(`plugin:${id}`)}
         onOpenPlugins={controls.plugins ? () => setManager({ selected: null }) : null}
       />
       {sidebarShown && (
         <div className="sidebar-slot">
-          {view === "git" ? (
-            <GitPanel key={activeWorkspace(state).id} compact={compact} state={state} />
-          ) : view === "tunnel" ? (
+          {view === "tunnel" ? (
             <TunnelPanel
               status={tunnel.status}
               onStart={tunnel.start}
@@ -650,7 +649,7 @@ export function App({ tunnelPage = false }: AppProps = {}) {
               compact={compact}
             />
           ) : view.startsWith("plugin:") ? (
-            PluginPanel && <PluginPanel key={view} />
+            PluginPanel && <PluginPanel key={view} compact={compact} place={place} />
           ) : (
             <SessionList
               state={state}

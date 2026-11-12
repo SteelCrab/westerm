@@ -3,10 +3,10 @@ import { afterEach, test } from "node:test";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { GitPanel } from "../src/components/GitPanel.tsx";
 import { I18nProvider } from "../src/i18n/index.tsx";
-import type { GitStatus } from "../src/git.ts";
-import { createDashboard, dashboardReducer } from "../src/workspace.ts";
+import { gitPlugin } from "../src/plugins/git/index.tsx";
+import type { GitStatus } from "../src/plugins/git/model.ts";
+import type { PluginContext, PluginPlace } from "../src/plugins/types.ts";
 
 const browser = new Window({ url: "http://127.0.0.1/" });
 Object.assign(globalThis, {
@@ -34,11 +34,25 @@ const node = (selector: string) => {
   assert.ok(found, selector);
   return found as unknown as HTMLElement;
 };
-async function mount() {
-  let state = createDashboard("w1", "t1");
-  state = dashboardReducer(state, { type: "open", id: "a", kind: "shell", cwd: "/repo" });
+// What App hands the plugin: requests go to the plugin's own routes.
+const ctx: PluginContext = {
+  openShell() {},
+  openBrowser() {},
+  openPane() {},
+  folders: () => [],
+  fetch: (path, init) => fetch(`/api/plugins/git${path}`, init),
+  refreshInstalled() {},
+  openManager() {},
+};
+const REPO: PluginPlace = { workspace: "w1", focused: "/repo", folders: ["/repo"] };
+// The panel as the plugin bar shows it: the running plugin's own Panel.
+const { Panel } = gitPlugin.start(ctx);
+async function show(place: PluginPlace, compact = false) {
+  await act(async () => mounted!.render(createElement(I18nProvider, null, createElement(Panel, { compact, place }))));
+}
+async function mount(place: PluginPlace = REPO, compact = false) {
   mounted = createRoot(browser.document.body.appendChild(browser.document.createElement("div")) as unknown as HTMLElement);
-  await act(async () => mounted!.render(createElement(I18nProvider, null, createElement(GitPanel, { compact: false, state }))));
+  await show(place, compact);
 }
 async function click(selector: string) {
   await act(async () => node(selector).click());
@@ -128,4 +142,48 @@ test("a commit load failure appears inline and can be retried by reopening", asy
   await click('[aria-label="Open commit: Initial commit"]');
   assert.match(node(".git-commit-message").textContent ?? "", /An empty commit/);
   assert.equal(browser.document.querySelector(".git-commit-detail .git-preview"), null);
+});
+
+test("the panel reads the plugin's own routes and follows the focused folder", async () => {
+  const reads: URL[] = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input), "http://127.0.0.1");
+    reads.push(url);
+    return body({ ...initial(), root: url.searchParams.get("dir") });
+  };
+  await mount();
+  assert.equal(reads[0].pathname, "/api/plugins/git/status");
+  assert.equal(reads[0].searchParams.get("dir"), "/repo");
+  assert.match(node(".git-repo-name").textContent ?? "", /\/repo/);
+  // The user focuses a pane in another folder of the same workspace.
+  await show({ workspace: "w1", focused: "/other", folders: ["/repo", "/other"] });
+  assert.equal(reads.at(-1)?.searchParams.get("dir"), "/other");
+  assert.match(node(".git-repo-name").textContent ?? "", /\/other/);
+});
+
+test("a chosen folder stays through a focus change and is dropped in another workspace", async () => {
+  const dirs: (string | null)[] = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input), "http://127.0.0.1");
+    dirs.push(url.searchParams.get("dir"));
+    return body({ ...initial(), root: url.searchParams.get("dir") });
+  };
+  await mount({ workspace: "w1", focused: "/repo", folders: ["/repo", "/other"] });
+  const select = node(".git-folder-select") as unknown as HTMLSelectElement;
+  await act(async () => {
+    select.value = "/other";
+    select.dispatchEvent(new browser.Event("change", { bubbles: true }) as unknown as Event);
+  });
+  assert.equal(dirs.at(-1), "/other");
+  await show({ workspace: "w1", focused: "/repo", folders: ["/repo", "/other"] });
+  assert.equal(dirs.at(-1), "/other", "the choice wins over the focused pane");
+  await show({ workspace: "w2", focused: "/elsewhere", folders: ["/elsewhere"] });
+  assert.equal(dirs.at(-1), "/elsewhere", "a new workspace starts the panel over");
+});
+
+test("a narrow sidebar shows only the number of changed files", async () => {
+  globalThis.fetch = async () => body(initial());
+  await mount(REPO, true);
+  assert.equal(node(".git-compact .git-count").textContent, "1");
+  assert.equal(browser.document.querySelector(".git-commit-form"), null);
 });

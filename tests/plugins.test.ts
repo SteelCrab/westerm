@@ -174,8 +174,6 @@ function bar(change: Partial<Parameters<typeof ActivityBar>[0]>) {
         agentsOpen: false,
         agentsWaiting: false,
         onToggleAgents: noop,
-        gitOpen: false,
-        onToggleGit: noop,
         tunnelOpen: false,
         tunnelOn: false,
         onToggleTunnel: null,
@@ -236,14 +234,16 @@ test("with nothing installed the plugin bar has only the puzzle button", () => {
   assert.doesNotMatch(html, /plugin-button/);
 });
 
-test("a remote window has no plugin bar", () => {
+test("a remote window's plugin bar has the plugins that run there and no plugin manager", () => {
   const html = bar({
     onOpenPlugins: null,
     plugins: [{ id: "a", label: "Fake", icon: Box, status: QUIET, pressed: false, external: false }],
   });
-  assert.doesNotMatch(html, /plugin-bar/);
+  assert.match(html, /class="plugin-bar"/);
+  assert.match(html, /aria-label="Fake"/);
   assert.doesNotMatch(html, /aria-label="Plugins"/);
-  assert.doesNotMatch(html, /aria-label="Fake"/);
+  // With no such plugin there is no bar at all.
+  assert.doesNotMatch(bar({ onOpenPlugins: null }), /plugin-bar/);
 });
 
 function manager(installed: string[], selected: string | null = null) {

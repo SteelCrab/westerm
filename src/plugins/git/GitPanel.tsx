@@ -3,19 +3,27 @@ import {
   ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, FileCode2, FileText,
   FolderGit2, GitBranch, GitCommitHorizontal, Minus, Plus, RotateCcw,
 } from "lucide-react";
-import { useI18n } from "../i18n/index.tsx";
-import {
-  fetchGitCommit, fetchGitCommitDiff, fetchGitDiff, fetchGitStatus, focusedGitFolder, gitEntries, gitFolders, runGitOperation, sameGitEntry,
-  type GitCommitDetail, type GitEntry, type GitOperation, type GitStatus,
-} from "../git.ts";
-import type { Dashboard } from "../workspace.ts";
+import { useI18n } from "../../i18n/index.tsx";
+import type { PluginContext, PluginPanelProps } from "../types.ts";
+import { fetchGitCommit, fetchGitCommitDiff, fetchGitDiff, fetchGitStatus, runGitOperation } from "./api.ts";
+import { GIT_TEXT } from "./i18n.ts";
+import { gitEntries, sameGitEntry, type GitCommitDetail, type GitEntry, type GitOperation, type GitStatus } from "./model.ts";
 
-export function GitPanel({ compact, state }: { compact: boolean; state: Dashboard }) {
-  const { t, locale } = useI18n();
-  const g = t.git;
-  const folders = gitFolders(state);
+/** The panel's text in the UI language. */
+function useGitText() {
+  const { locale } = useI18n();
+  return { g: GIT_TEXT[locale], locale };
+}
+
+/**
+ * The repository of the focused pane's folder, or of a folder the user chose:
+ * its changes, a commit box, and the recent commits.
+ */
+export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: PluginContext }) {
+  const { g, locale } = useGitText();
+  const folders = place.folders;
   const [chosen, setChosen] = useState<string | null>(null);
-  const dir = chosen ?? focusedGitFolder(state);
+  const dir = chosen ?? place.focused;
   const currentDir = useRef(dir);
   currentDir.current = dir;
   const [folderInput, setFolderInput] = useState("");
@@ -53,7 +61,7 @@ export function GitPanel({ compact, state }: { compact: boolean; state: Dashboar
       if (reading || busyRef.current) return;
       reading = true;
       setLoading(true);
-      const result = await fetchGitStatus(dir, controller.signal);
+      const result = await fetchGitStatus(ctx, dir, controller.signal);
       if (!cancelled) {
         if (result.ok) {
           setLoaded({ dir, repo: result.value });
@@ -76,7 +84,7 @@ export function GitPanel({ compact, state }: { compact: boolean; state: Dashboar
       window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [dir, revision]);
+  }, [ctx, dir, revision]);
 
   const perform = async (operation: GitOperation) => {
     if (!repo || busyRef.current || loading) return;
@@ -84,7 +92,7 @@ export function GitPanel({ compact, state }: { compact: boolean; state: Dashboar
     setBusy(true);
     setNotice("");
     setError("");
-    const result = await runGitOperation(repo.root, operation);
+    const result = await runGitOperation(ctx, repo.root, operation);
     busyRef.current = false;
     setBusy(false);
     if (currentDir.current !== dir) return;
@@ -190,7 +198,7 @@ export function GitPanel({ compact, state }: { compact: boolean; state: Dashboar
           <div className="git-change-summary"><span>{g.fileCount(repo.files.length)}</span></div>
           <FileGroup title={g.staged} files={staged} selected={selected} onSelect={setSelected} onStage={changeFiles} staged disabled={disabled} />
           <FileGroup title={g.changes} files={changes} selected={selected} onSelect={setSelected} onStage={changeFiles} staged={false} disabled={disabled} />
-          {current && <DiffPreview root={repo.root} entry={current} revision={loaded} />}
+          {current && <DiffPreview ctx={ctx} root={repo.root} entry={current} revision={loaded} />}
           <details className="git-history" open>
             <summary><ChevronRight size={12} className="git-chevron" aria-hidden="true" /><GitCommitHorizontal size={13} aria-hidden="true" />
               {g.history}<span className="git-count">{repo.commits.length}</span>
@@ -206,7 +214,7 @@ export function GitPanel({ compact, state }: { compact: boolean; state: Dashboar
                   <time dateTime={item.time} title={item.time}>{new Date(item.time).toLocaleString(locale, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time>
                 </span>
               </button>
-              {selectedCommit === item.hash && <CommitDetails key={`${repo.root}:${item.hash}`} root={repo.root} hash={item.hash} />}
+              {selectedCommit === item.hash && <CommitDetails key={`${repo.root}:${item.hash}`} ctx={ctx} root={repo.root} hash={item.hash} />}
             </li>)}</ol>
           </details>
         </>}
@@ -216,19 +224,18 @@ export function GitPanel({ compact, state }: { compact: boolean; state: Dashboar
   );
 }
 
-function DiffPreview({ root, entry, revision }: { root: string; entry: GitEntry; revision: unknown }) {
-  const { t } = useI18n();
-  const g = t.git;
+function DiffPreview({ ctx, root, entry, revision }: { ctx: PluginContext; root: string; entry: GitEntry; revision: unknown }) {
+  const { g } = useGitText();
   const [result, setResult] = useState<{ text: string; error: boolean } | null>(null);
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
     setResult(null);
-    void fetchGitDiff(root, entry, controller.signal).then((result) => {
+    void fetchGitDiff(ctx, root, entry, controller.signal).then((result) => {
       if (!cancelled) setResult(result.ok ? { text: result.value.text, error: false } : { text: result.error, error: true });
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [root, entry.path, entry.staged, revision]);
+  }, [ctx, root, entry.path, entry.staged, revision]);
   return (
     <section className="git-preview" aria-label={g.preview}>
       <div className="git-preview-heading"><FileCode2 size={12} aria-hidden="true" /><span>{g.preview}</span><span title={entry.path}>{entry.path}</span></div>
@@ -237,9 +244,8 @@ function DiffPreview({ root, entry, revision }: { root: string; entry: GitEntry;
   );
 }
 
-function CommitDetails({ root, hash }: { root: string; hash: string }) {
-  const { t, locale } = useI18n();
-  const g = t.git;
+function CommitDetails({ ctx, root, hash }: { ctx: PluginContext; root: string; hash: string }) {
+  const { g, locale } = useGitText();
   const [detail, setDetail] = useState<GitCommitDetail | null>(null);
   const messageRef = useRef<HTMLPreElement>(null);
   const [error, setError] = useState("");
@@ -247,14 +253,14 @@ function CommitDetails({ root, hash }: { root: string; hash: string }) {
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
-    void fetchGitCommit(root, hash, controller.signal).then((result) => {
+    void fetchGitCommit(ctx, root, hash, controller.signal).then((result) => {
       if (cancelled) return;
       if (!result.ok) { setError(result.error); return; }
       setDetail(result.value);
       setSelectedPath(result.value.files[0]?.path ?? null);
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [root, hash]);
+  }, [ctx, root, hash]);
   useEffect(() => {
     if (detail) messageRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [detail]);
@@ -277,32 +283,31 @@ function CommitDetails({ root, hash }: { root: string; hash: string }) {
             <FileText size={13} aria-hidden="true" /><span className="git-commit-file-path">{file.path}</span>
             <span className={`git-file-status status-${file.status}`} aria-hidden="true">{file.status}</span>
           </button>)}</div>}
-        {selectedPath && <CommitFileDiff key={selectedPath} root={root} hash={detail.hash} path={selectedPath} />}
+        {selectedPath && <CommitFileDiff key={selectedPath} ctx={ctx} root={root} hash={detail.hash} path={selectedPath} />}
       </>}
     </section>
   );
 }
 
-function CommitFileDiff({ root, hash, path }: { root: string; hash: string; path: string }) {
-  const { t } = useI18n();
+function CommitFileDiff({ ctx, root, hash, path }: { ctx: PluginContext; root: string; hash: string; path: string }) {
+  const { g } = useGitText();
   const [result, setResult] = useState<{ text: string; error: boolean } | null>(null);
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
-    void fetchGitCommitDiff(root, hash, path, controller.signal).then((result) => {
+    void fetchGitCommitDiff(ctx, root, hash, path, controller.signal).then((result) => {
       if (!cancelled) setResult(result.ok ? { text: result.value.text, error: false } : { text: result.error, error: true });
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [root, hash, path]);
-  return <section className="git-preview" aria-label={t.git.preview}>
+  }, [ctx, root, hash, path]);
+  return <section className="git-preview" aria-label={g.preview}>
     <div className="git-preview-heading"><FileCode2 size={12} aria-hidden="true" /><span title={path}>{path}</span></div>
     <DiffText result={result} path={path} />
   </section>;
 }
 
 function DiffText({ result, path }: { result: { text: string; error: boolean } | null; path: string }) {
-  const { t } = useI18n();
-  const g = t.git;
+  const { g } = useGitText();
   if (result?.error) return <p role="alert" className="git-error">{result.text}</p>;
   return <pre tabIndex={0} aria-label={g.filePreview(path)}>{result === null ? g.loading : !result.text ? g.noDiff :
     result.text.split("\n").map((line, index) => <span key={index}
@@ -320,8 +325,7 @@ interface FileGroupProps {
 }
 
 function FileGroup({ title, files, selected, staged, disabled, onSelect, onStage }: FileGroupProps) {
-  const { t } = useI18n();
-  const g = t.git;
+  const { g } = useGitText();
   const [open, setOpen] = useState(true);
   const ActionIcon = staged ? Minus : Plus;
   return (

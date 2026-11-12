@@ -1,25 +1,10 @@
 # Usage
 
-## Git sidebar
-
-The folder-shaped Git button below Agents opens the repository of the focused terminal. It follows that terminal's folder. Choose another workspace folder from the list, or enter an absolute folder path to pin a repository. Choose **Follow focused terminal** to follow again.
-
-- The panel shows the current branch, changed files, the upstream's last known ahead/behind counts, and recent commits.
-- Select a recent commit to read its full message, author, timestamp, and changed files. Select a committed file to view its patch. Merge commits compare with their first parent; the comparison is labeled.
-- Select a file to read its staged or unstaged diff. A partially staged file appears in both groups.
-- Use `+` and `−` to stage or unstage a file. The section buttons apply to the listed files. Unstaging keeps working files intact.
-- Enter a message and choose **Commit** to commit the staged changes. Git hooks and Git's configured author identity still apply.
-- Select a local branch to switch branches. Git refuses a switch that would overwrite changes or use a branch checked out in another worktree.
-- **Pull** uses fast-forward only. **Push** uses the configured upstream. Both require an upstream branch. Neither runs automatically.
-- The refresh button reloads the repository. While open, the panel also refreshes every five seconds and when the window regains focus.
-- Git errors, such as missing identity, conflicts, authentication failure, and large diffs, appear in the panel. Interactive authentication is unavailable; configure credentials in the terminal first.
-- Linked Git worktrees are supported. In a remote window, the panel runs Git on that server. The panel uses the current theme and opens as a drawer on narrow windows.
-
 ## The screen
 
 | Area | What it does |
 |---|---|
-| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top, then the Agents, Git, and Tunnel buttons; a badge shows how many panes are open. The plugin bar sits between them and the bottom group. The command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. See [Agents sidebar](#agents-sidebar) and [Plugins](#plugins). |
+| Activity bar | New shell, terminal-browser, terminal-code, SSH, docs, and remote window at the top, then the Agents and Tunnel buttons; a badge shows how many panes are open. The plugin bar, with Git as its first button, sits between them and the bottom group. The command palette, Settings, and (in the sidebar layout) the sidebar switch at the bottom. See [Agents sidebar](#agents-sidebar) and [Plugins](#plugins). |
 | Layout | Settings ▸ General ▸ Workspaces and tabs picks one. **Top** (the default): the workspace menu and the tab bar across the top, and no sidebar. **Sidebar**: the workspace menu and the tabs in the sidebar, and no tab bar. |
 | Tab bar (top layout) | The workspace menu at the left, then the tabs. `+` or a double-click on empty space opens a tab. A middle click closes one. Drag to reorder. |
 | Sidebar (sidebar layout) | The workspace menu, then the tabs of the workspace in view, with their sessions as a tree. Collapse, rename, and drag to reorder or move. Drag its right edge to resize it; drag it narrow and it shrinks to icons: the workspace icon, tab numbers, and the session icons of the tab in view. |
@@ -218,12 +203,12 @@ Each agent row shows the agent's logo, its name (as in the session list), how lo
 
 ## Plugins
 
-A plugin adds a panel to westerm. Docker and Databases are built in: installing one turns it on, and nothing is downloaded. Other plugins come from outside (the plugin list, a GitHub repository, a `.tar.gz` link, or a folder on your computer) and run in an isolated frame with only the permissions you confirm. See [External plugins](#external-plugins). To write one, see [Writing plugins](plugins.md).
+A plugin adds a panel to westerm. Git, Docker, and Databases are built in: installing one turns it on, and nothing is downloaded. [Git](#git) is installed from the start. Other plugins come from outside (the plugin list, a GitHub repository, a `.tar.gz` link, or a folder on your computer) and run in an isolated frame with only the permissions you confirm. See [External plugins](#external-plugins). To write one, see [Writing plugins](plugins.md).
 
 ### The plugin bar
 
 - The plugin bar is the group of buttons in the activity bar between the launchers at the top and the bottom group (Agents, palette, Settings). Lines above and below set it apart.
-- Each installed plugin has a button. The last button is the puzzle piece. It opens the plugin manager. With nothing installed, you see only the puzzle piece.
+- Each installed plugin has a button. The last button is the puzzle piece. It opens the plugin manager. At first you see the Git button and the puzzle piece; with nothing installed, only the puzzle piece.
 - A button of an external plugin has a small yellow mark, and its panel header says `external`.
 - A plugin button can show a number badge and a red dot. The plugin decides what they mean. For Docker, see [Docker](#docker).
 - A plugin button opens the plugin's panel in the sidebar's place, the same way the Agents button does:
@@ -231,7 +216,7 @@ A plugin adds a panel to westerm. Docker and Databases are built in: installing 
   - Sidebar layout: the button switches the sidebar between the sessions list and the panel. Press it again to go back to the sessions list.
   - Windows 640px wide or less: the panel opens as a drawer.
 - This browser remembers which panel is open. A panel whose plugin is not installed is closed.
-- A remote window and a page opened through a [tunnel](#tunnel) have no plugin bar: neither has the plugin routes. A pane that a plugin started, such as Docker logs, still opens there.
+- A remote window and a page opened through a [tunnel](#tunnel) have no plugin manager, and their plugin bar has only the Git button: neither has the other plugin routes. A pane that a plugin started, such as Docker logs, still opens there.
 
 ### The plugin manager
 
@@ -249,8 +234,8 @@ A plugin adds a panel to westerm. Docker and Databases are built in: installing 
 - The right side shows the plugin you picked: its name, version, author, source (a repository address or a folder), description, what **This plugin can** do, and its buttons. Each permission has a risk: `run` is high, `panes` is medium, `background` is low.
 - A built-in plugin's "can do" list is a description. westerm does not enforce it, because a built-in plugin is westerm's own code. For an external plugin the list is enforced (see [External plugins](#external-plugins)).
 - **Install** of a built-in plugin asks for no confirmation. The button appears in the plugin bar and its panel opens. No restart is needed.
-- **Uninstall** removes the button, stops the plugin's background checks, and makes its server routes answer 404. If its panel was open, the sidebar goes back to the sessions list (the top layout closes it). Panes the plugin opened stay, because they are ordinary shells.
-- With nothing installed (the default), the page makes no plugin request except `GET /api/plugins`, and westerm runs no `docker` process. westerm downloads the plugin list only when you open the plugin manager. The server also looks for updates once a day, but only when an installed plugin came from the plugin list or a GitHub repository.
+- **Uninstall** removes the button, stops the plugin's background checks, and makes its server routes answer 404 (Git's routes keep answering, because a remote window and a tunnel page use them too). If its panel was open, the sidebar goes back to the sessions list (the top layout closes it). Panes the plugin opened stay, because they are ordinary shells.
+- With only Git installed (the default), the page makes no plugin request except `GET /api/plugins` until you open the Git panel, and westerm runs no `docker` process. Git runs `git` only while its panel is open. westerm downloads the plugin list only when you open the plugin manager. The server also looks for updates once a day, but only when an installed plugin came from the plugin list or a GitHub repository.
 - If the plugin list cannot be loaded (for now it always cannot, because the repository does not exist yet), **Browse** shows "Could not load the plugin list" and **Retry**. Installing from a URL or a folder still works.
 
 ### External plugins
@@ -297,8 +282,25 @@ A note on trust: westerm blocks the plugin's direct network requests, but a bad 
 
 ### Where the list is kept
 
-- The installed list is saved on the server, in `plugins.json` in the state folder. It is the same for every browser and window of this westerm, and the server uses it to refuse routes of plugins that are off. For an external plugin it also holds where the plugin came from and the permissions you confirmed. The server checks requests against those, not against the plugin's own `plugin.json`. Package files of a plugin from the list, a repository, or a link are in `plugins/<id>/<version>/`. A folder plugin has no such folder: westerm uses your folder in place.
+- The installed list is saved on the server, in `plugins.json` in the state folder. It is the same for every browser and window of this westerm, and the server uses it to refuse routes of plugins that are off. It also holds `off`, the plugins that are installed from the start (Git) and that you uninstalled, so an update does not bring them back. For an external plugin it also holds where the plugin came from and the permissions you confirmed. The server checks requests against those, not against the plugin's own `plugin.json`. Package files of a plugin from the list, a repository, or a link are in `plugins/<id>/<version>/`. A folder plugin has no such folder: westerm uses your folder in place.
 - A page reads the list when it opens, and again when it becomes visible or gets focus. So a window shows an install or an uninstall made in another window when you switch to it. A plugin route that answers 404 (uninstalled elsewhere) also makes the page read the list again. Its panel closes without an error.
+
+### Git
+
+**Git** is a built-in plugin that is installed from the start. Its folder-shaped button, the first in the plugin bar, opens the repository of the focused terminal. It follows that terminal's folder. Choose another workspace folder from the list, or enter an absolute folder path to pin a repository. Choose **Follow focused terminal** to follow again.
+
+- The panel shows the current branch, changed files, the upstream's last known ahead/behind counts, and recent commits.
+- Select a recent commit to read its full message, author, timestamp, and changed files. Select a committed file to view its patch. Merge commits compare with their first parent; the comparison is labeled.
+- Select a file to read its staged or unstaged diff. A partially staged file appears in both groups.
+- Use `+` and `−` to stage or unstage a file. The section buttons apply to the listed files. Unstaging keeps working files intact.
+- Enter a message and choose **Commit** to commit the staged changes. Git hooks and Git's configured author identity still apply.
+- Select a local branch to switch branches. Git refuses a switch that would overwrite changes or use a branch checked out in another worktree.
+- **Pull** uses fast-forward only. **Push** uses the configured upstream. Both require an upstream branch. Neither runs automatically.
+- The refresh button reloads the repository. While open, the panel also refreshes every five seconds and when the window regains focus.
+- Git errors, such as missing identity, conflicts, authentication failure, and large diffs, appear in the panel. Interactive authentication is unavailable; configure credentials in the terminal first.
+- Linked Git worktrees are supported. In a remote window, the panel runs Git on that server. The panel uses the current theme and opens as a drawer on narrow windows.
+- Git is the one plugin that also shows in a remote window and on a page opened through a [tunnel](#tunnel). It is always on there, because those pages have no plugin manager.
+- **Uninstall** in the plugin manager removes the button from this computer's dashboard, and it stays off after a restart or an update. Install it again from the plugin manager.
 
 ### Docker
 

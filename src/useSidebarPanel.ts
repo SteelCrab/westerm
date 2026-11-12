@@ -5,6 +5,9 @@ const KEY = "westerm.sidebarPanel";
 /** Before the tunnel panel, the slot remembered only "agents or not". */
 const OLD_KEY = "westerm.agentsView";
 
+/** Before Git was a plugin, its panel was saved under this name. */
+const OLD_GIT = "git";
+
 /**
  * The remembered panel; the old agents choice counts when there is none. A
  * plugin panel comes back as it was saved: App shows it only while its plugin
@@ -13,6 +16,7 @@ const OLD_KEY = "westerm.agentsView";
 export function readSidebarPanel(storage: Pick<Storage, "getItem"> | null): SidebarPanel | null {
   if (!storage) return null;
   const saved = storage.getItem(KEY);
+  if (saved === OLD_GIT) return "plugin:git";
   if (saved !== null) return saved === "agents" || saved === "tunnel" || isPluginPanel(saved) ? saved : null;
   return storage.getItem(OLD_KEY) === "true" ? "agents" : null;
 }

@@ -1,5 +1,10 @@
-//! Git operations for the sidebar. Commands run in the selected worktree,
-//! with literal path arguments and bounded output. No shell is involved.
+//! The Git plugin's server routes, under `/api/plugins/git`. Commands run in
+//! the selected worktree, with literal path arguments and bounded output. No
+//! shell is involved.
+//!
+//! Unlike the other plugins' routes, these answer whether or not the plugin
+//! is installed: a remote window's server and a tunnel page serve them too,
+//! and neither has a plugin manager. Installing only shows the panel.
 
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
@@ -16,9 +21,9 @@ use serde_json::json;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
 
-use super::{Shared, host_allowed, is_json, no_store, origin_allowed, read_allowed};
+use crate::server::{docs, host_allowed, is_json, no_store, origin_allowed, read_allowed, Shared};
 
-pub(super) const MAX_BODY_BYTES: usize = 64 * 1024;
+pub(in crate::server) const MAX_BODY_BYTES: usize = 64 * 1024;
 const MAX_OUTPUT: u64 = 2 * 1024 * 1024;
 const MAX_FILES: usize = 2000;
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -40,13 +45,16 @@ fn failed(message: &str) -> GitError {
     GitError(StatusCode::INTERNAL_SERVER_ERROR, message.to_owned())
 }
 
-pub(super) fn routes() -> Router<Shared> {
+/// The path every route starts with; the remote window and the tunnel name it too.
+pub(in crate::server) const PREFIX: &str = "/api/plugins/git/";
+
+pub(in crate::server) fn routes() -> Router<Shared> {
     Router::new()
-        .route("/api/git/status", get(status))
-        .route("/api/git/diff", get(diff))
-        .route("/api/git/commit", get(commit_detail))
-        .route("/api/git/commit-diff", get(commit_diff))
-        .route("/api/git/action", post(action).layer(DefaultBodyLimit::max(MAX_BODY_BYTES)))
+        .route("/api/plugins/git/status", get(status))
+        .route("/api/plugins/git/diff", get(diff))
+        .route("/api/plugins/git/commit", get(commit_detail))
+        .route("/api/plugins/git/commit-diff", get(commit_diff))
+        .route("/api/plugins/git/action", post(action).layer(DefaultBodyLimit::max(MAX_BODY_BYTES)))
 }
 
 #[derive(Deserialize)]
@@ -320,7 +328,7 @@ async fn repository_status(dir: &str) -> Result<RepositoryStatus, GitError> {
     let branches =
         utf8(repo.checked(&["for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads/"]).await?)?.lines().map(str::to_owned).collect();
     let mut result = RepositoryStatus {
-        root: super::docs::shown_path(&repo.0),
+        root: docs::shown_path(&repo.0),
         branch,
         head,
         branches,
@@ -601,7 +609,7 @@ mod tests {
     async fn untracked_preview_accepts_normal_and_verbatim_windows_roots() {
         let (_temp, root) = init();
         let canonical = Path::new(&root).canonicalize().unwrap();
-        let shown = super::super::docs::shown_path(&canonical);
+        let shown = docs::shown_path(&canonical);
         fs::write(canonical.join("preview.txt"), "inside the repository\n").unwrap();
         fs::create_dir(canonical.join("nested")).unwrap();
         fs::write(canonical.join("nested").join("preview.txt"), "inside the repository\n").unwrap();

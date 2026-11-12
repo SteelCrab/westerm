@@ -54,6 +54,23 @@ export interface PluginPaneProps {
   close(): void;
 }
 
+/** Where the user is: the folders of the workspace in view. */
+export interface PluginPlace {
+  /** The id of the workspace in view; a panel may start over when it changes. */
+  workspace: string;
+  /** The folder of the focused pane, else the first of `folders`; null without one. */
+  focused: string | null;
+  /** The folders of the workspace's shell and docs panes, once each. */
+  folders: readonly string[];
+}
+
+/** What westerm hands a plugin's panel each time it draws it. */
+export interface PluginPanelProps {
+  /** The sidebar is at its narrowest: room for an icon and a number. */
+  compact: boolean;
+  place: PluginPlace;
+}
+
 /** Everything a plugin may ask of westerm. Stable for the life of the plugin. */
 export interface PluginContext {
   /** reuse: focus the pane this launch opened before in this workspace, if any. */
@@ -63,7 +80,7 @@ export interface PluginContext {
   openPane(options: OpenPaneOptions): void;
   /** The folders of the shells in every workspace, once each, at most 32. */
   folders(): string[];
-  /** fetch() under /api/plugins/<id>; `path` starts with "/". */
+  /** fetch() under /api/plugins/<id>, on the server of a remote window; `path` starts with "/". */
   fetch(path: string, init?: RequestInit): Promise<Response>;
   /** Read the installed list again (a plugin route answered 404). */
   refreshInstalled(): void;
@@ -78,7 +95,7 @@ export interface PluginInstance {
   status(): PluginStatus;
   setPanelOpen(open: boolean): void;
   dispose(): void;
-  Panel: ComponentType;
+  Panel: ComponentType<PluginPanelProps>;
   /** Draws the plugin's panes; a plugin without panes leaves it out. */
   PaneView?: ComponentType<PluginPaneProps>;
 }
@@ -90,6 +107,12 @@ export interface WestermPlugin {
   /** An image to show instead of `icon` (an external plugin's SVG, drawn with <img>). */
   iconUrl?: string;
   text: Record<Locale, PluginText>;
+  /**
+   * Also runs in a remote window and on a tunnel page, always on: those pages
+   * have no plugin manager and no other plugin. Its server routes must be
+   * served there too.
+   */
+  everywhere?: boolean;
   /** Set for a plugin installed from outside westerm. */
   external?: { source: ExternalSource; granted: ExternalPermissions; installedAt: number };
   start(ctx: PluginContext): PluginInstance;

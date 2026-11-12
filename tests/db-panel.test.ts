@@ -348,15 +348,15 @@ test("a SQLite connection asks only for a file", async () => {
 // ---- Plugin ----
 
 test("the plugin bar shows the db plugin after docker", () => {
-  assert.deepEqual(BUILTIN_PLUGINS.map((plugin) => plugin.id), ["docker", "db"]);
+  assert.deepEqual(BUILTIN_PLUGINS.map((plugin) => plugin.id), ["git", "docker", "db"]);
   assert.equal(dbPlugin.version, "0.1.0");
   assert.equal(dbPlugin.text.en.name, "Databases");
   assert.equal(dbPlugin.text.en.permissions.length, 4);
 });
 
 test("a build without the db plugin hides it from the manager", () => {
-  assert.deepEqual(availableBuiltins(BUILTIN_PLUGINS, ["docker"]).map((plugin) => plugin.id), ["docker"]);
-  assert.deepEqual(availableBuiltins(BUILTIN_PLUGINS, null).map((plugin) => plugin.id), ["docker", "db"], "an older server lists none: all show");
+  assert.deepEqual(availableBuiltins(BUILTIN_PLUGINS, ["git", "docker"]).map((plugin) => plugin.id), ["git", "docker"]);
+  assert.deepEqual(availableBuiltins(BUILTIN_PLUGINS, null).map((plugin) => plugin.id), ["git", "docker", "db"], "an older server lists none: all show");
 });
 
 test("the badge counts open connections and hides at zero", async () => {

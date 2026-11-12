@@ -69,9 +69,9 @@ export function agentFolders(state: Dashboard): AgentFolder[] {
 
 /**
  * A panel that can take the sidebar slot instead of the sessions list:
- * agents, Git, the tunnel, or one plugin's.
+ * agents, the tunnel, or one plugin's (Git is a plugin).
  */
-export type SidebarPanel = "agents" | "git" | "tunnel" | `plugin:${string}`;
+export type SidebarPanel = "agents" | "tunnel" | `plugin:${string}`;
 
 export type SidebarView = "sessions" | SidebarPanel | null;
 

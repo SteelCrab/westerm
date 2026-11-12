@@ -422,7 +422,7 @@ button {
   box-shadow: 0 0 0 2px var(--surface-2);
 }
 
-/* ---- Git sidebar --------------------------------------------- */
+/* ---- Git plugin panel ---------------------------------------- */
 
 .git-panel {
   min-height: 0;

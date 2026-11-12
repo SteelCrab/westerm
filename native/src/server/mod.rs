@@ -7,7 +7,6 @@ mod agents;
 mod cloudflare;
 mod config;
 mod docs;
-mod git;
 mod fonts;
 pub(crate) mod host_client;
 mod http1;
@@ -155,7 +154,6 @@ fn local_router(state: Shared) -> Router {
         .route(cloudflare::AUTH_PATH, get(|| async { no_store(Json(serde_json::json!({ "tunnel": false }))) }))
         .merge(docs::routes())
         .merge(agents::routes())
-        .merge(git::routes())
         .merge(fonts::routes())
         .merge(plugins::routes())
         .merge(remote_window::routes())
@@ -185,7 +183,7 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         .route("/ws/session", get(session))
         .merge(docs::routes())
         .merge(agents::routes())
-        .merge(git::routes())
+        .merge(plugins::git::routes())
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)
 }
