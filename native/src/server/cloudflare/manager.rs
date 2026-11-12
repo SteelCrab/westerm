@@ -18,6 +18,7 @@ use super::awake::{self, KeepAwake};
 use super::cloudflared;
 use super::router::{router, Admission, AdmissionEvent};
 use crate::server::host_client::HostClient;
+use crate::server::plugins::PluginState;
 use crate::server::remote::RemoteManager;
 use crate::server::{updates, AppState};
 
@@ -174,6 +175,8 @@ struct Running {
 pub(crate) struct TunnelManager {
     host: Arc<HostClient>,
     remote: Arc<RemoteManager>,
+    /// The local dashboard's plugins: a pane a plugin started opens through the tunnel too.
+    plugins: Arc<PluginState>,
     state_dir: PathBuf,
     status: watch::Sender<Status>,
     awake: Mutex<Awake>,
@@ -182,11 +185,12 @@ pub(crate) struct TunnelManager {
 }
 
 impl TunnelManager {
-    pub fn new(host: Arc<HostClient>, remote: Arc<RemoteManager>, state_dir: PathBuf) -> Arc<Self> {
+    pub fn new(host: Arc<HostClient>, remote: Arc<RemoteManager>, plugins: Arc<PluginState>, state_dir: PathBuf) -> Arc<Self> {
         let phase = if find_cloudflared().is_some() { Phase::Off } else { Phase::Missing };
         Arc::new(Self {
             host,
             remote,
+            plugins,
             state_dir,
             status: watch::channel(Status::idle(phase, None)).0,
             awake: Mutex::new(Awake::default()),
@@ -321,6 +325,7 @@ impl TunnelManager {
             state_dir: self.state_dir.clone(),
             updates: updates::UpdateCheck::default(),
             remote: Arc::clone(&self.remote),
+            plugins: Arc::clone(&self.plugins),
             trusted: false,
             tunnel: None,
         });

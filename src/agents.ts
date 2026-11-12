@@ -2,7 +2,7 @@
 // folder, which view the sidebar slot shows, and past conversations.
 
 import type { AgentKind } from "../shared/protocol.ts";
-import { homeShort } from "./components/AgentCard.tsx";
+import { homeShort } from "./uiHelpers.ts";
 import { REMOTE_TARGET } from "./remoteWindow.ts";
 import {
   activeWorkspace,
@@ -73,8 +73,11 @@ export function agentFolders(state: Dashboard): AgentFolder[] {
   return [...folders.values()];
 }
 
-/** A panel that can take the sidebar slot instead of the sessions list. */
-export type SidebarPanel = "agents" | "git" | "tunnel";
+/**
+ * A panel that can take the sidebar slot instead of the sessions list:
+ * agents, the tunnel, or one plugin's (Git is a plugin).
+ */
+export type SidebarPanel = "agents" | "tunnel" | `plugin:${string}`;
 
 export type SidebarView = "sessions" | SidebarPanel | null;
 
@@ -107,6 +110,23 @@ export function pressPanel(o: SidebarFlags, which: SidebarPanel): SidebarFlags {
     sidebarOpen: o.sidebarOpen || o.layout === "sidebar",
     drawerOpen: o.narrow || o.drawerOpen,
   };
+}
+
+/** A built-in plugin's id (`docker`) or an external one's (`<author>.<name>`). */
+const PLUGIN_PANEL = /^plugin:[a-z0-9-]{1,32}(\.[a-z0-9-]{1,32})?$/;
+
+/** `saved` names a plugin panel that can exist. */
+export function isPluginPanel(saved: string): saved is `plugin:${string}` {
+  return PLUGIN_PANEL.test(saved);
+}
+
+/**
+ * The panel to show: a plugin panel needs its plugin in the installed list.
+ * `installed` is null while the list is being read.
+ */
+export function effectivePanel(panel: SidebarPanel | null, installed: readonly string[] | null): SidebarPanel | null {
+  if (panel === null || !panel.startsWith("plugin:")) return panel;
+  return installed?.includes(panel.slice("plugin:".length)) ? panel : null;
 }
 
 const isWaiting = (session: Session) => session.kind === "shell" && agentDisplay(session) === "waiting";
@@ -165,32 +185,47 @@ export interface HistoryCache {
   load(path: string, running: string): Promise<PastConversation[] | null>;
 }
 
-interface Kept {
-  list: PastConversation[];
-  running: string;
-  at: number;
+export interface ReadCache<T> {
+  /** What is kept for `path`, however old: what its folder shows until a read ends. */
+  shown(path: string): T | undefined;
+  /**
+   * The value for `path`: the kept one while it is younger than the cache's
+   * age and was read with the same `key`, else a new read. null when the read
+   * fails: the folder keeps what it shows, and the next call reads again.
+   */
+  load(path: string, key: string): Promise<T | null>;
 }
 
-/** Past-conversation lists by folder, kept outside the panel so a folder that folds and unfolds reads nothing new. */
-export function createHistoryCache(read: HistoryReader, clock: () => number = Date.now): HistoryCache {
-  const kept = new Map<string, Kept>();
-  const reading = new Map<string, { running: string; done: Promise<PastConversation[] | null> }>();
+/** What `read` gave by folder, kept outside the panel so a folder that folds and unfolds reads nothing new. */
+export function createReadCache<T>(
+  read: (path: string) => Promise<T | null>,
+  maxAge: number,
+  clock: () => number = Date.now,
+): ReadCache<T> {
+  const kept = new Map<string, { value: T; key: string; at: number }>();
+  const reading = new Map<string, { key: string; done: Promise<T | null> }>();
   return {
-    shown: (path) => kept.get(path)?.list ?? [],
-    load(path, running) {
+    shown: (path) => kept.get(path)?.value,
+    load(path, key) {
       const entry = kept.get(path);
-      if (entry && entry.running === running && clock() - entry.at < HISTORY_MAX_AGE) return Promise.resolve(entry.list);
+      if (entry && entry.key === key && clock() - entry.at < maxAge) return Promise.resolve(entry.value);
       const pending = reading.get(path);
-      if (pending && pending.running === running) return pending.done;
-      const done = read(path).catch(() => null).then((list) => {
+      if (pending && pending.key === key) return pending.done;
+      const done = read(path).catch(() => null).then((value) => {
         if (reading.get(path)?.done === done) reading.delete(path);
-        if (list) kept.set(path, { list, running, at: clock() });
-        return list;
+        if (value !== null) kept.set(path, { value, key, at: clock() });
+        return value;
       });
-      reading.set(path, { running, done });
+      reading.set(path, { key, done });
       return done;
     },
   };
+}
+
+/** Past-conversation lists by folder; the key of a read is the conversations that run there. */
+export function createHistoryCache(read: HistoryReader, clock: () => number = Date.now): HistoryCache {
+  const cache = createReadCache(read, HISTORY_MAX_AGE, clock);
+  return { shown: (path) => cache.shown(path) ?? [], load: cache.load };
 }
 
 const caches = new WeakMap<HistoryReader, HistoryCache>();

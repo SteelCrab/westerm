@@ -90,12 +90,21 @@ export function tunnelEnded(code: number): boolean {
 /** Sent on `window` by a terminal that saw CLOSE_TUNNEL_ENDED; TunnelGate shows the end. */
 export const TUNNEL_ENDED_EVENT = "westerm:tunnel-ended";
 
+export interface PageControls {
+  updates: boolean;
+  remoteWindows: boolean;
+  tunnel: boolean;
+  /** The plugin bar and the plugin manager. */
+  plugins: boolean;
+}
+
 /**
  * What a page may control. Only the computer's own dashboard updates westerm,
- * opens remote windows, and runs tunnels; a remote window follows its local
- * westerm, and a tunnel page belongs to someone who is not at the computer.
+ * opens remote windows, runs tunnels, and has plugins; a remote window follows
+ * its local westerm, and a tunnel page belongs to someone who is not at the
+ * computer.
  */
-export function pageControls(remote: boolean, tunnelPage: boolean): { updates: boolean; remoteWindows: boolean; tunnel: boolean } {
+export function pageControls(remote: boolean, tunnelPage: boolean): PageControls {
   const local = !remote && !tunnelPage;
-  return { updates: local, remoteWindows: local, tunnel: local };
+  return { updates: local, remoteWindows: local, tunnel: local, plugins: local };
 }

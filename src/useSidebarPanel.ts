@@ -1,15 +1,23 @@
 import { useCallback, useState } from "react";
-import type { SidebarPanel } from "./agents.ts";
+import { isPluginPanel, type SidebarPanel } from "./agents.ts";
 
 const KEY = "westerm.sidebarPanel";
 /** Before the tunnel panel, the slot remembered only "agents or not". */
 const OLD_KEY = "westerm.agentsView";
 
-/** The remembered panel; the old agents choice counts when there is none. */
+/** Before Git was a plugin, its panel was saved under this name. */
+const OLD_GIT = "git";
+
+/**
+ * The remembered panel; the old agents choice counts when there is none. A
+ * plugin panel comes back as it was saved: App shows it only while its plugin
+ * is installed (agents.ts effectivePanel).
+ */
 export function readSidebarPanel(storage: Pick<Storage, "getItem"> | null): SidebarPanel | null {
   if (!storage) return null;
   const saved = storage.getItem(KEY);
-  if (saved !== null) return saved === "agents" || saved === "tunnel" ? saved : null;
+  if (saved === OLD_GIT) return "plugin:git";
+  if (saved !== null) return saved === "agents" || saved === "tunnel" || isPluginPanel(saved) ? saved : null;
   return storage.getItem(OLD_KEY) === "true" ? "agents" : null;
 }
 

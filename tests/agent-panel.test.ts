@@ -14,6 +14,7 @@ import {
   historyCache,
   historyPath,
   pastConversations,
+  effectivePanel,
   pressPanel,
   sidebarView,
   type SidebarFlags,
@@ -224,8 +225,9 @@ test("the tunnel button shares the slot", () => {
   assert.equal(sidebarView(o), null);
 });
 
+const storage = (values: Record<string, string>) => ({ getItem: (key: string) => values[key] ?? null });
+
 test("the old agents choice is read once", () => {
-  const storage = (values: Record<string, string>) => ({ getItem: (key: string) => values[key] ?? null });
   assert.equal(readSidebarPanel(storage({ "westerm.agentsView": "true" })), "agents");
   assert.equal(readSidebarPanel(storage({ "westerm.agentsView": "false" })), null);
   assert.equal(readSidebarPanel(storage({ "westerm.sidebarPanel": "tunnel", "westerm.agentsView": "true" })), "tunnel");
@@ -435,6 +437,7 @@ function panel(state: Dashboard, change: Partial<Parameters<typeof AgentPanel>[0
         onSetWorkspaceColor: noop,
         onFocus: noop,
         onStart: noop,
+        onOpenUrl: noop,
         compact: false,
         history: noHistory,
         ...change,
@@ -543,7 +546,7 @@ function bar(change: Partial<Parameters<typeof ActivityBar>[0]>) {
       null,
       createElement(ActivityBar, {
         sidebarOpen: false,
-        counts: { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0 },
+        counts: { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0, plugin: 0 },
         onLaunch: noop,
         onToggleSidebar: null,
         onOpenSettings: noop,
@@ -553,11 +556,12 @@ function bar(change: Partial<Parameters<typeof ActivityBar>[0]>) {
         agentsOpen: false,
         agentsWaiting: false,
         onToggleAgents: noop,
-        gitOpen: false,
-        onToggleGit: noop,
         tunnelOpen: false,
         tunnelOn: false,
         onToggleTunnel: null,
+        plugins: [],
+        onTogglePlugin: noop,
+        onOpenPlugins: null,
         ...change,
       }),
     ),
@@ -581,4 +585,46 @@ test("the agents button is at the top of the activity bar, after the launchers",
   assert.ok(top.indexOf('data-kind="docs"') < agents, "the launchers keep their places");
   assert.ok(top.indexOf('aria-label="Remote window"') < agents, "so does the remote window button");
   assert.match(bottom, /^<button[^>]*aria-label="Command palette/, "the palette now leads the bottom group");
+});
+
+test("plugin panels follow the agents rules in every layout", () => {
+  const base: SidebarFlags = { layout: "sidebar", narrow: false, sidebarOpen: true, drawerOpen: false, panel: null };
+  assert.equal(sidebarView(base), "sessions");
+  const opened = press(base, "plugin:docker");
+  assert.equal(sidebarView(opened), "plugin:docker");
+  assert.equal(sidebarView(press(opened, "plugin:docker")), "sessions");
+  const top: SidebarFlags = { ...base, layout: "top", sidebarOpen: false };
+  assert.equal(sidebarView(top), null);
+  assert.equal(sidebarView(press(top, "plugin:docker")), "plugin:docker");
+  const narrow = press({ ...base, narrow: true }, "plugin:docker");
+  assert.equal(narrow.drawerOpen, true);
+  assert.equal(sidebarView(narrow), "plugin:docker");
+});
+
+test("another panel's button switches the open panel instead of closing it", () => {
+  for (const from of ["agents", "plugin:git", "tunnel"] as const) {
+    const base: SidebarFlags = { layout: "sidebar", narrow: false, sidebarOpen: true, drawerOpen: false, panel: from };
+    const next = press(base, "plugin:docker");
+    assert.equal(sidebarView(next), "plugin:docker");
+    assert.equal(next.sidebarOpen, true);
+    assert.equal(sidebarView(press(next, from)), from);
+  }
+});
+
+test("a remembered plugin panel comes back; bad values do not", () => {
+  const read = (saved: string) => readSidebarPanel(storage({ "westerm.sidebarPanel": saved }));
+  assert.equal(read("plugin:docker"), "plugin:docker");
+  assert.equal(read("plugin:k8s-tools.kubernetes"), "plugin:k8s-tools.kubernetes");
+  for (const bad of ["plugin:../x", "plugin:", `plugin:${"a".repeat(33)}`, "plugin:a.b.c", "plugin:a.", "plugin:.b", `plugin:a.${"b".repeat(33)}`, "sessions"]) {
+    assert.equal(read(bad), null, bad);
+  }
+});
+
+test("a plugin panel shows only while its plugin is installed", () => {
+  assert.equal(effectivePanel("plugin:docker", null), null);
+  assert.equal(effectivePanel("plugin:docker", []), null);
+  assert.equal(effectivePanel("plugin:docker", ["docker"]), "plugin:docker");
+  assert.equal(effectivePanel("agents", null), "agents");
+  assert.equal(effectivePanel("tunnel", []), "tunnel");
+  assert.equal(effectivePanel(null, ["docker"]), null);
 });

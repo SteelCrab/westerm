@@ -220,7 +220,7 @@ function bar(change: Record<string, unknown>): string {
       null,
       createElement(ActivityBar, {
         sidebarOpen: false,
-        counts: { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0 },
+        counts: { shell: 0, browser: 0, editor: 0, ssh: 0, docs: 0, plugin: 0 },
         onLaunch: noop,
         onToggleSidebar: null,
         onOpenSettings: noop,
@@ -230,11 +230,12 @@ function bar(change: Record<string, unknown>): string {
         agentsOpen: false,
         agentsWaiting: false,
         onToggleAgents: noop,
-        gitOpen: false,
-        onToggleGit: noop,
         tunnelOpen: false,
         tunnelOn: false,
         onToggleTunnel: null,
+        plugins: [],
+        onTogglePlugin: noop,
+        onOpenPlugins: null,
         ...change,
       }),
     ),
@@ -303,11 +304,11 @@ test("a tunnel-ended close code is told apart", () => {
 });
 
 test("the tunnel page hides local-only controls", () => {
-  assert.deepEqual(pageControls(false, false), { updates: true, remoteWindows: true, tunnel: true });
-  assert.deepEqual(pageControls(true, false), { updates: false, remoteWindows: false, tunnel: false });
-  assert.deepEqual(pageControls(false, true), { updates: false, remoteWindows: false, tunnel: false });
-  const html = bar({ onOpenRemoteWindow: null, onToggleTunnel: null });
-  assert.doesNotMatch(html, /aria-label="(Tunnel|Remote window)/);
+  assert.deepEqual(pageControls(false, false), { updates: true, remoteWindows: true, tunnel: true, plugins: true });
+  assert.deepEqual(pageControls(true, false), { updates: false, remoteWindows: false, tunnel: false, plugins: false });
+  assert.deepEqual(pageControls(false, true), { updates: false, remoteWindows: false, tunnel: false, plugins: false });
+  const html = bar({ onOpenRemoteWindow: null, onToggleTunnel: null, onOpenPlugins: null });
+  assert.doesNotMatch(html, /aria-label="(Tunnel|Remote window|Plugins)/);
 });
 
 test("a pasted code with a space is not cut short by the input", () => {

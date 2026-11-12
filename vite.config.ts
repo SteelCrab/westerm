@@ -6,6 +6,12 @@ import react from "@vitejs/plugin-react";
 // terminal sockets to the Rust server from `npm run dev:server` on :4317.
 const server = "http://127.0.0.1:4317";
 
+// The dashboard page's policy, as the Rust server sends it (PAGE_CSP in
+// native/src/server/mod.rs): frames show only this origin, so a plugin iframe
+// that navigates elsewhere is blocked and stopped. Proxied responses keep the
+// Rust server's own headers.
+const headers = { "Content-Security-Policy": "frame-src 'self'" };
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -18,12 +24,17 @@ export default defineConfig({
     },
   },
   server: {
+    headers,
     proxy: {
       // ws: a remote window's status stream is /api/remote/link.
       "/api": { target: server, ws: true },
       "/ws": { target: server, ws: true },
       "/remote": { target: server, ws: true },
+      // External plugins' panel pages and the plugin SDK they load.
+      "/plugin-assets": { target: server },
+      "/plugin-sdk": { target: server },
     },
   },
+  preview: { headers },
   build: { target: "es2022" },
 });

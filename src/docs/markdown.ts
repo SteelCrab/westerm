@@ -13,14 +13,16 @@ export function slug(text: string): string {
     .replace(/\s/g, "-");
 }
 
-interface RenderEnv {
+type RenderEnv = {
   /** How often each id was used in this document, for `-1`, `-2` on repeats. */
   ids: Map<string, number>;
-}
+};
 
 const md = new MarkdownIt({ html: false, linkify: true });
+md.linkify.set({ fuzzyLink: true });
 
-md.renderer.rules.heading_open = (tokens, idx, options, env: RenderEnv, self) => {
+md.renderer.rules.heading_open = (tokens, idx, options, env, self) => {
+  const { ids } = env as RenderEnv;
   const inline = tokens[idx + 1];
   const text = (inline?.children ?? [])
     .filter((child) => child.type === "text" || child.type === "code_inline")
@@ -28,8 +30,8 @@ md.renderer.rules.heading_open = (tokens, idx, options, env: RenderEnv, self) =>
     .join("");
   const base = slug(text);
   if (base) {
-    const seen = env.ids.get(base) ?? 0;
-    env.ids.set(base, seen + 1);
+    const seen = ids.get(base) ?? 0;
+    ids.set(base, seen + 1);
     tokens[idx].attrSet("id", seen === 0 ? base : `${base}-${seen}`);
   }
   return self.renderToken(tokens, idx, options);

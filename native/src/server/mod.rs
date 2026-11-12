@@ -7,14 +7,15 @@ mod agents;
 mod cloudflare;
 mod config;
 mod docs;
-mod git;
 mod fonts;
 pub(crate) mod host_client;
 mod http1;
 mod images;
+mod plugins;
 mod remote;
 mod remote_window;
 mod updates;
+mod worktrees;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -62,6 +63,8 @@ struct AppState {
     origins: Vec<String>,
     state_dir: PathBuf,
     updates: updates::UpdateCheck,
+    /// The installed plugins; shared with the tunnel listener's state.
+    plugins: Arc<plugins::PluginState>,
     /// Links to remote westerm servers, one per server.
     remote: Arc<RemoteManager>,
     /// True when every caller is already trusted, as on the server's private
@@ -109,18 +112,23 @@ pub async fn run(options: Options) -> std::io::Result<()> {
     origins.extend(options.allow_origins);
     // Before the rename the state lived elsewhere; move it before serving.
     host_client::migrate_legacy_state().await;
+    plugins::clear_staging(&state_dir()?);
     let host = Arc::new(HostClient::default());
     let remote = Arc::new(RemoteManager::new(state_dir()?));
-    let tunnel = cloudflare::TunnelManager::new(Arc::clone(&host), Arc::clone(&remote), state_dir()?);
+    let plugins = Arc::new(plugins::PluginState::load(&state_dir()?));
+    let tunnel =
+        cloudflare::TunnelManager::new(Arc::clone(&host), Arc::clone(&remote), Arc::clone(&plugins), state_dir()?);
     let state = Arc::new(AppState {
         host,
         origins,
         state_dir: state_dir()?,
         updates: updates::UpdateCheck::default(),
+        plugins,
         remote,
         trusted: false,
         tunnel: Some(tunnel),
     });
+    plugins::spawn_daily_check(state.clone());
     // Start the PTY host now so the first pane does not wait for it.
     if let Err(error) = state.host.ensure().await {
         eprintln!("> {error}");
@@ -131,7 +139,7 @@ pub async fn run(options: Options) -> std::io::Result<()> {
     axum::serve(listener, app).await
 }
 
-/// Every route of the dashboard on 127.0.0.1.
+/// Every route of the dashboard on 127.0.0.1, and the web UI for the rest.
 fn local_router(state: Shared) -> Router {
     Router::new()
         .route("/api/terminal-config", get(terminal_config))
@@ -148,9 +156,10 @@ fn local_router(state: Shared) -> Router {
         .route(cloudflare::AUTH_PATH, get(|| async { no_store(Json(serde_json::json!({ "tunnel": false }))) }))
         .merge(docs::routes())
         .merge(agents::routes())
-        .merge(git::routes())
+        .merge(worktrees::routes())
         .merge(images::routes())
         .merge(fonts::routes())
+        .merge(plugins::routes())
         .merge(remote_window::routes())
         .merge(cloudflare::control_routes())
         .fallback(asset)
@@ -166,6 +175,7 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         host: Arc::new(HostClient::keeping_running()),
         origins: Vec::new(),
         remote: Arc::new(RemoteManager::new(state_dir.clone())),
+        plugins: Arc::new(plugins::PluginState::load(&state_dir)),
         state_dir,
         updates: updates::UpdateCheck::default(),
         trusted: true,
@@ -177,7 +187,8 @@ pub fn remote_router(state_dir: PathBuf) -> Router {
         .route("/ws/session", get(session))
         .merge(docs::routes())
         .merge(agents::routes())
-        .merge(git::routes())
+        .merge(plugins::git::routes())
+        .merge(worktrees::routes())
         .merge(images::routes())
         .fallback(|| async { StatusCode::NOT_FOUND })
         .with_state(state)
@@ -422,9 +433,12 @@ async fn session(
     ws.max_message_size(MAX_MESSAGE).on_upgrade(move |browser| relay(browser, dir, query, state))
 }
 
-/// A pane's attach request, from this dashboard's own page only.
+/// A pane's attach request, from this dashboard's own page only. A pane a
+/// plugin starts also needs that plugin (plugins::session_allowed).
 fn session_request(state: &AppState, headers: &HeaderMap, query: &HashMap<String, String>) -> Option<AttachRequest> {
-    AttachRequest::from_query(query).filter(|_| origin_allowed(state, headers))
+    AttachRequest::from_query(query)
+        .filter(|_| origin_allowed(state, headers))
+        .filter(|request| plugins::session_allowed(request, &state.plugins))
 }
 
 /// Codes a server may send in a close frame; others become 1011.
@@ -609,6 +623,12 @@ where
     PipeEnd { session_closed, host_answered }
 }
 
+/// The policy of the dashboard's own page: frames may show only this origin.
+/// A plugin's iframe that navigates itself elsewhere (another site, `data:`,
+/// `blob:`) is blocked by the page and gets an error page instead, whose
+/// `load` stops the plugin before any foreign document can talk to westerm.
+const PAGE_CSP: &str = "frame-src 'self'";
+
 /// The web UI, with index.html for unknown paths (a single-page app).
 async fn asset(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
@@ -623,7 +643,12 @@ async fn asset(uri: Uri) -> Response {
     let mime = mime_guess::from_path(path).first_or_octet_stream();
     // Hashed asset names never change content; the page itself must stay fresh.
     let cache = if path.starts_with("assets/") { "public, max-age=31536000, immutable" } else { "no-cache" };
-    ([(header::CONTENT_TYPE, mime.as_ref().to_owned()), (header::CACHE_CONTROL, cache.to_owned())], file.data).into_response()
+    let mut response =
+        ([(header::CONTENT_TYPE, mime.as_ref().to_owned()), (header::CACHE_CONTROL, cache.to_owned())], file.data).into_response();
+    if mime.essence_str() == "text/html" {
+        response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, header::HeaderValue::from_static(PAGE_CSP));
+    }
+    response
 }
 
 #[cfg(test)]
@@ -636,10 +661,53 @@ mod tests {
             origins: origins.iter().map(|origin| (*origin).to_owned()).collect(),
             state_dir: PathBuf::new(),
             updates: updates::UpdateCheck::default(),
+            plugins: Arc::default(),
             remote: Arc::new(RemoteManager::new(PathBuf::new())),
             trusted: false,
             tunnel: None,
         }
+    }
+
+    /// One GET over HTTP/1.1: the status line and every header (names lower case).
+    async fn raw_get(addr: std::net::SocketAddr, path: &str, host: &str) -> (String, Vec<(String, String)>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        stream.write_all(format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+        let mut answer = Vec::new();
+        stream.read_to_end(&mut answer).await.unwrap();
+        let answer = String::from_utf8_lossy(&answer).into_owned();
+        let head = answer.split("\r\n\r\n").next().unwrap().to_owned();
+        let mut lines = head.split("\r\n");
+        let status = lines.next().unwrap().to_owned();
+        let headers = lines
+            .filter_map(|line| line.split_once(':'))
+            .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_owned()))
+            .collect();
+        (status, headers)
+    }
+
+    fn csp(headers: &[(String, String)]) -> Vec<&str> {
+        headers.iter().filter(|(name, _)| name == "content-security-policy").map(|(_, value)| value.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn the_dashboard_page_may_frame_only_its_own_origin() {
+        let state: Shared = Arc::new(test_state(&["http://127.0.0.1:4318"]));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, local_router(state)).await });
+
+        // The page, a remote window's page, and the single-page-app fallback.
+        for path in ["/", "/?remote=example", "/index.html", "/some/route"] {
+            let (status, headers) = raw_get(addr, path, "127.0.0.1:4318").await;
+            assert!(status.contains(" 200 "), "{path}: {status}");
+            assert_eq!(csp(&headers), ["frame-src 'self'"], "{path}");
+        }
+        // A plugin page keeps its own policy, not the dashboard's.
+        let (_, headers) = raw_get(addr, "/plugin-assets/k8s-tools.kubernetes/panel.html", "127.0.0.1:4318").await;
+        let policies = csp(&headers);
+        assert_eq!(policies.len(), 1, "{policies:?}");
+        assert!(policies[0].starts_with("sandbox allow-scripts;"), "{policies:?}");
     }
 
     fn headers_with_host(host: &str) -> HeaderMap {
