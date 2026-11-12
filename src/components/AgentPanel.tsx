@@ -16,6 +16,7 @@ import {
 import { AgentIcon } from "../agentIcons.tsx";
 import { useI18n } from "../i18n/index.tsx";
 import { HTML_LANG } from "../i18n/messages.ts";
+import { minutesSince } from "../uiHelpers.ts";
 import {
   agentEntries,
   fetchWorktrees,
@@ -27,7 +28,7 @@ import {
   type WorktreeReader,
 } from "../worktrees.ts";
 import { activeTab, agentDisplay, sessionLabel, type AgentDisplay, type Dashboard, type Session } from "../workspace.ts";
-import { minutesSince, useNow } from "./AgentCard.tsx";
+import { useNow } from "./AgentCard.tsx";
 import { AgentMark } from "./AgentMark.tsx";
 import type { RenameTarget } from "./InlineRename.tsx";
 import { WorkspaceMenu } from "./WorkspaceMenu.tsx";

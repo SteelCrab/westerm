@@ -1,6 +1,7 @@
 //! The app's windows: the main one with the dashboard, and one per remote
-//! server. Each window stays on the dashboard; any other page opens in the
-//! default browser.
+//! server. Each window stays on the dashboard. A link with a target
+//! (`target="_blank"`, `window.open`) to another page opens in the default
+//! browser; any other navigation away from the dashboard is refused.
 
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window, WindowEvent, Wry};
@@ -94,7 +95,8 @@ pub fn show_page(app: &AppHandle, page: Page) {
 #[derive(Debug, PartialEq, Eq)]
 enum Navigation {
     Allow,
-    /// Not the dashboard: the default browser opens it.
+    /// Not the dashboard. A new window (`target="_blank"`) opens it in the
+    /// default browser; a navigation of the page or a frame is refused.
     External,
     Refuse,
 }
@@ -112,15 +114,17 @@ fn navigation(url: &Url, dashboard: Option<u16>) -> Navigation {
     }
 }
 
+/// Whether a navigation in a window goes ahead. wry asks for every
+/// navigation, frames included, and does not say which frame it is, so an
+/// outside address is refused without opening it: a plugin's iframe could
+/// otherwise open any address in the user's browser. The dashboard opens
+/// outside pages only through new windows (`on_new_window`).
+fn may_follow(url: &Url, dashboard: Option<u16>) -> bool {
+    navigation(url, dashboard) == Navigation::Allow
+}
+
 fn follow(app: &AppHandle, url: &Url) -> bool {
-    match navigation(url, shared(app).dashboard_port()) {
-        Navigation::Allow => true,
-        Navigation::External => {
-            open_external(app, url);
-            false
-        }
-        Navigation::Refuse => false,
-    }
+    may_follow(url, shared(app).dashboard_port())
 }
 
 /// `window.open` and links with a target: a dashboard's remote window
@@ -308,6 +312,18 @@ mod tests {
         assert_eq!(navigation(&url("https://github.com/SteelCrab/westerm"), port), Navigation::External);
         assert_eq!(navigation(&url("file:///etc/passwd"), port), Navigation::Refuse);
         assert_eq!(navigation(&url("javascript:alert(1)"), port), Navigation::Refuse);
+    }
+
+    #[test]
+    fn navigations_away_from_the_dashboard_are_refused_not_opened() {
+        let port = Some(4317);
+        assert!(may_follow(&url("http://127.0.0.1:4317/?remote=prod"), port));
+        assert!(may_follow(&url("tauri://localhost/index.html"), port));
+        assert!(may_follow(&url("about:blank"), port), "an empty frame");
+        assert!(!may_follow(&url("https://evil.example/?d=secret"), port), "a frame leaving its page");
+        assert!(!may_follow(&url("mailto:someone@example.com"), port));
+        assert!(!may_follow(&url("http://127.0.0.1:8080/"), port));
+        assert!(!may_follow(&url("file:///etc/passwd"), port));
     }
 
     #[test]

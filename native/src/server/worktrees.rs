@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::process::Command;
 
-use super::git::{utf8, GitError, Repository};
+use super::plugins::git::{utf8, GitError, Repository};
 use super::{no_store, read_allowed, Shared};
 
 /// Pull requests are read again when they are this old.

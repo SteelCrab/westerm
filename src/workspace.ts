@@ -1,14 +1,17 @@
-import type { AgentLaunch, AgentState, AgentStatus, AttachMode, PaneKind, Place } from "../shared/protocol.ts";
+import type { AgentLaunch, AgentState, AttachMode, PaneKind, Place, PluginLaunch } from "../shared/protocol.ts";
 import {
   DEFAULT_WORKSPACE_ICON,
+  PLUGIN_PANE_DATA_MAX,
   positionColor,
   WORKSPACE_COLORS,
   type DocsMode,
   type SavedDashboard,
   type SavedDocs,
+  type SavedPluginPane,
   type WorkspaceColor,
   type WorkspaceIcon,
 } from "../shared/workspace-file.ts";
+import type { AgentDisplay, TabAgentDisplay } from "./agentDisplay.ts";
 import type { Notice } from "./i18n/messages.ts";
 import {
   dockPane,
@@ -41,6 +44,18 @@ export interface DocsPane {
   mode: DocsMode;
 }
 
+/** What a plugin pane shows. See `SavedPluginPane` in shared/workspace-file.ts. */
+export interface PluginPane {
+  /** The plugin that draws the pane. */
+  plugin: string;
+  /** Which of the plugin's views. */
+  view: string;
+  /** A pane with the same plugin and key is focused instead of opened again. */
+  reuseKey: string | null;
+  /** The plugin's own state for the pane, as JSON. */
+  data: unknown;
+}
+
 export interface Session {
   id: string;
   kind: PaneKind;
@@ -69,6 +84,8 @@ export interface Session {
   generation: number;
   /** A docs pane's state; null for every other kind. */
   docs: DocsPane | null;
+  /** A plugin pane's state; null for every other kind. */
+  pluginPane: PluginPane | null;
   /** The AI agent in a shell's foreground, as the PTY host reports it. */
   agent: AgentState | null;
   /** The agent finished while this pane was not in view. */
@@ -79,14 +96,16 @@ export interface Session {
   cwd: string | null;
   /** A new shell starts this agent; the first attach clears it. Not saved. */
   launch: AgentLaunch | null;
+  /** A new shell starts this plugin command; the first attach clears it. Not saved. */
+  pluginLaunch: PluginLaunch | null;
+  /** The plugin launch that opened this session; kept after the attach to find the pane again. Not saved. */
+  openedBy: PluginLaunch | null;
   /** A restored shell here resumes its agent, when Settings allow it. Saved with the layout. */
   autoResume: boolean;
 }
 
-/** What an agent's mark shows: its status, or "done" until its pane is seen. */
-export type AgentDisplay = AgentStatus | "done";
-/** What a tab shows for its agents; an idle agent shows nothing there. */
-export type TabAgentDisplay = Exclude<AgentDisplay, "idle">;
+// Defined in agentDisplay.ts so the UI text can name them without this file.
+export type { AgentDisplay, TabAgentDisplay };
 
 /** A tab owns a split layout of panes. Focus and maximize are remembered per tab. */
 export interface Tab {
@@ -142,11 +161,19 @@ export type DashboardAction =
       cwd?: string | null;
       /** A new shell starts this agent. */
       launch?: AgentLaunch | null;
+      /** A new shell starts this plugin command. */
+      plugin?: PluginLaunch | null;
+      /** The session's name, as if the user had renamed it. */
+      name?: string | null;
       target?: string | null;
       /** Layer width / height, to split the focused pane along its longer side. */
       aspect?: number;
       /** A docs pane's first state. */
       docs?: DocsPane;
+      /** A plugin pane's first state. */
+      pluginPane?: PluginPane;
+      /** A plugin pane's first title; other kinds take a numbered default. */
+      title?: string;
     }
   | { type: "ready"; id: string; pid: number; mode: AttachMode }
   /**
@@ -217,7 +244,8 @@ export type DashboardAction =
   | { type: "swapPanes"; id: string; withId: string }
   /** Divider drag result for the split at `path`. */
   | { type: "setSplitSizes"; tabId: string; path: number[]; sizes: number[] }
-  | { type: "docsUpdate"; id: string; change: Partial<DocsPane> };
+  | { type: "docsUpdate"; id: string; change: Partial<DocsPane> }
+  | { type: "pluginPaneData"; id: string; data: unknown };
 
 function emptyTab(id: string, workspaceId: string): Tab {
   return { id, workspaceId, name: null, layout: null, paneIds: [], focusedId: null, maximizedId: null };
@@ -240,6 +268,7 @@ const TITLE_PREFIX: Record<PaneKind, string> = {
   editor: "Code",
   ssh: "SSH",
   docs: "Docs",
+  plugin: "Plugin",
 };
 
 export const NAME_MAX = 60;
@@ -326,6 +355,28 @@ export function sessionTab(state: Dashboard, sessionId: string): Tab | null {
   return state.tabs.find((tab) => tab.paneIds.includes(sessionId)) ?? null;
 }
 
+/** The session in the workspace in view that a plugin launch opened, if any. */
+export function findOpenedBy(state: Dashboard, launch: PluginLaunch): string | null {
+  const shown = new Set(workspaceTabs(state, activeWorkspace(state).id).flatMap((tab) => tab.paneIds));
+  const found = state.sessions.find(
+    ({ id, openedBy }) =>
+      shown.has(id) &&
+      openedBy?.plugin === launch.plugin &&
+      openedBy.action === launch.action &&
+      openedBy.target === launch.target,
+  );
+  return found?.id ?? null;
+}
+
+/** The plugin pane in the workspace in view that this plugin opened with this key, if any. */
+export function findPluginPane(state: Dashboard, plugin: string, reuseKey: string): string | null {
+  const shown = new Set(workspaceTabs(state, activeWorkspace(state).id).flatMap((tab) => tab.paneIds));
+  const found = state.sessions.find(
+    ({ id, pluginPane }) => shown.has(id) && pluginPane?.plugin === plugin && pluginPane.reuseKey === reuseKey,
+  );
+  return found?.id ?? null;
+}
+
 /** The session a tab shows as its name: its focused pane, else its first pane. */
 export function tabLead(state: Dashboard, tab: Tab): Session | null {
   const sessions = tabSessions(state, tab.id);
@@ -380,7 +431,11 @@ export function focusedShellId(state: Dashboard): string | null {
 
 const NO_DOCS: DocsPane = { root: null, followFrom: null, file: null, mode: "view" };
 
-/** A docs pane has no process to connect to: it runs from the start. */
+/** Docs and plugin panes have no process to connect to: they run from the start. */
+function startStatus(kind: PaneKind): SessionStatus {
+  return kind === "docs" || kind === "plugin" ? "running" : "connecting";
+}
+
 /**
  * A new docs pane's first state. Beside a docs pane it opens that pane's
  * folder; otherwise the focused shell's folder, which it follows. With
@@ -400,6 +455,7 @@ function newSession(
   url: string | null,
   target: string | null = null,
   docs: DocsPane | null = null,
+  pluginPane: PluginPane | null = null,
 ): Session {
   return {
     id,
@@ -408,7 +464,7 @@ function newSession(
     name: null,
     url,
     target,
-    status: kind === "docs" ? "running" : "connecting",
+    status: startStatus(kind),
     detail: null,
     exitCode: null,
     notice: null,
@@ -417,11 +473,14 @@ function newSession(
     retries: 0,
     generation: 0,
     docs: kind === "docs" ? (docs ?? NO_DOCS) : null,
+    pluginPane: kind === "plugin" ? pluginPane : null,
     agent: null,
     agentUnseen: false,
     place: null,
     cwd: null,
     launch: null,
+    pluginLaunch: null,
+    openedBy: null,
     autoResume: true,
   };
 }
@@ -430,12 +489,17 @@ const TARGET_TITLE: Partial<Record<PaneKind, string>> = { ssh: "ssh", browser: "
 
 /**
  * Layout and names only; processes and screens live in the PTY host. Docs
- * panes go in `docs` and `docIds`, which versions from before them ignore.
+ * panes go in `docs` and `docIds`, plugin panes in `pluginPanes` and
+ * `pluginIds`; versions from before them ignore those.
  */
 export function toSaved(state: Dashboard): SavedDashboard {
   const docsIds = new Set(state.sessions.filter((session) => session.kind === "docs").map((session) => session.id));
+  const pluginIds = new Set(state.sessions.filter((session) => session.kind === "plugin").map((session) => session.id));
   const docs: SavedDocs[] = state.sessions.flatMap(({ id, kind, title, name, docs }) =>
     kind === "docs" && docs ? [{ id, title, name, ...docs }] : [],
+  );
+  const pluginPanes: SavedPluginPane[] = state.sessions.flatMap(({ id, kind, title, name, pluginPane }) =>
+    kind === "plugin" && pluginPane ? [{ id, title, name, ...pluginPane }] : [],
   );
   return {
     version: 1,
@@ -445,15 +509,19 @@ export function toSaved(state: Dashboard): SavedDashboard {
       workspaceId,
       name,
       layout,
-      paneIds: paneIds.filter((paneId) => !docsIds.has(paneId)),
+      paneIds: paneIds.filter((paneId) => !docsIds.has(paneId) && !pluginIds.has(paneId)),
       docIds: paneIds.filter((paneId) => docsIds.has(paneId)),
+      pluginIds: paneIds.filter((paneId) => pluginIds.has(paneId)),
       focusedId,
       maximizedId,
     })),
     sessions: state.sessions.flatMap(({ id, kind, title, name, url, target, autoResume }) =>
-      kind === "docs" ? [] : [{ id, kind, title, name, url, target, ...(!autoResume && { autoResume: false as const }) }],
+      kind === "docs" || kind === "plugin"
+        ? []
+        : [{ id, kind, title, name, url, target, ...(!autoResume && { autoResume: false as const }) }],
     ),
     docs,
+    pluginPanes,
     workspaces: state.workspaces.map(({ id, name, activeTabId, icon, color }) => ({ id, name, activeTabId, icon, color })),
     activeWorkspaceId: state.activeWorkspaceId,
   };
@@ -476,7 +544,7 @@ function reconnectAll(previous: Dashboard, next: Dashboard): Dashboard {
     ...next,
     sessions: next.sessions.map((session) => ({
       ...session,
-      status: session.kind === "docs" ? "running" : "connecting",
+      status: startStatus(session.kind),
       detail: null,
       exitCode: null,
       notice: null,
@@ -602,14 +670,22 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
         ...newSession(
           action.id,
           action.kind,
-          action.target ? `${TARGET_TITLE[action.kind] ?? action.kind} ${action.target}` : defaultTitle(state.sessions, action.kind),
+          action.target
+            ? `${TARGET_TITLE[action.kind] ?? action.kind} ${action.target}`
+            : action.kind === "plugin" && action.title
+              ? action.title
+              : defaultTitle(state.sessions, action.kind),
           action.url ?? null,
           action.target ?? null,
           action.docs ?? null,
+          action.pluginPane ?? null,
         ),
         cwdFrom: action.cwdFrom ?? null,
         cwd: action.cwd ?? null,
         launch: action.launch ?? null,
+        pluginLaunch: action.plugin ?? null,
+        openedBy: action.plugin ?? null,
+        name: action.name ?? null,
       };
       // A new session leaves maximize so it is visible, beside the focused pane.
       const next = { ...state, sessions: [...state.sessions, session] };
@@ -645,6 +721,7 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
         retries: 0,
         // The host started the agent; a later reconnect must not ask again.
         launch: null,
+        pluginLaunch: null,
       });
     case "disconnected": {
       const session = state.sessions.find((item) => item.id === action.id);
@@ -667,10 +744,14 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
             ...newSession(id, "docs", title, null, null, docs),
             name,
           })),
+          ...(saved.pluginPanes ?? []).map(({ id, title, name, ...pluginPane }) => ({
+            ...newSession(id, "plugin", title, null, null, null, pluginPane),
+            name,
+          })),
         ],
         // Layouts saved before split trees were a plain grid order.
         tabs: saved.tabs.map((tab) => ({
-          ...withLayout(emptyTab(tab.id, tab.workspaceId), tab.layout ?? fromGrid([...tab.paneIds, ...(tab.docIds ?? [])])),
+          ...withLayout(emptyTab(tab.id, tab.workspaceId), tab.layout ?? fromGrid([...tab.paneIds, ...(tab.docIds ?? []), ...(tab.pluginIds ?? [])])),
           name: tab.name,
           focusedId: tab.focusedId,
           maximizedId: tab.maximizedId,
@@ -714,7 +795,7 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
     case "restart": {
       const session = state.sessions.find((item) => item.id === action.id);
       if (!session) return state;
-      if (session.kind === "docs") return state;
+      if (session.kind === "docs" || session.kind === "plugin") return state;
       return patch(state, action.id, {
         status: "connecting",
         detail: null,
@@ -851,6 +932,13 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
         return { ...docked, focusedId: action.id, maximizedId: null };
       });
       return showTab({ ...state, tabs }, to.id);
+    }
+    case "pluginPaneData": {
+      const session = state.sessions.find((item) => item.id === action.id);
+      if (!session?.pluginPane) return state;
+      // Data the saved file cannot hold would cost every plugin pane on the next load.
+      if (JSON.stringify(action.data ?? null).length > PLUGIN_PANE_DATA_MAX) return state;
+      return patch(state, action.id, { pluginPane: { ...session.pluginPane, data: action.data } });
     }
     case "docsUpdate": {
       const session = state.sessions.find((item) => item.id === action.id);

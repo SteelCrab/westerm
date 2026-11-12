@@ -9,7 +9,7 @@ export type SessionKind = "shell" | "browser" | "editor" | "ssh";
 const SESSION_KINDS: readonly SessionKind[] = ["shell", "browser", "editor", "ssh"];
 
 /** What a pane shows: a session in the PTY host, or the docs pane, which has no process. */
-export type PaneKind = SessionKind | "docs";
+export type PaneKind = SessionKind | "docs" | "plugin";
 
 export function isSessionKind(value: unknown): value is SessionKind {
   return SESSION_KINDS.includes(value as SessionKind);
@@ -142,6 +142,53 @@ export function parseAgentState(value: unknown): AgentState | null {
 export interface AgentLaunch {
   kind: AgentKind;
   conversation: string | null;
+}
+
+/**
+ * What a plugin launch asks the host for: the plugin, its action, and the
+ * thing it acts on. The host checks all three and builds the command itself.
+ */
+export interface PluginLaunch {
+  plugin: string;
+  action: string;
+  target: string;
+}
+
+/** The action of an external plugin's shell pane. Its target is the argv as a JSON array. */
+export const PLUGIN_RUN_ACTION = "run";
+/** Most words in an external launch, the program included. */
+export const MAX_PLUGIN_ARGS = 32;
+/** Longest word in an external launch, in UTF-8 bytes. */
+export const MAX_PLUGIN_ARG_BYTES = 1024;
+
+/**
+ * An argv the host accepts for an external launch: 1 to MAX_PLUGIN_ARGS
+ * strings, each at most MAX_PLUGIN_ARG_BYTES in UTF-8, free of control
+ * characters (C0, DEL, C1) and of lone surrogates (serde refuses them in the
+ * JSON target), whose first word is a program name, not a path or
+ * an option. The same rules as `parse_argv` in native/src/plugins/external.rs.
+ */
+export function isLaunchArgv(value: unknown): value is string[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_PLUGIN_ARGS) return false;
+  const encoder = new TextEncoder();
+  return (
+    value.every(
+      (word) =>
+        typeof word === "string" &&
+        encoder.encode(word).length <= MAX_PLUGIN_ARG_BYTES &&
+        !/[\u0000-\u001f\u007f-\u009f]/.test(word) &&
+        !/\p{Cs}/u.test(word),
+    ) && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value[0])
+  );
+}
+
+/**
+ * The launch that opens a shell pane running `argv` for the external plugin
+ * `id`. This is the only encoding of an external launch: check the argv with
+ * isLaunchArgv first, or the host refuses the session.
+ */
+export function externalLaunch(id: string, argv: readonly string[]): PluginLaunch {
+  return { plugin: id, action: PLUGIN_RUN_ACTION, target: JSON.stringify(argv) };
 }
 
 /** A shell's current folder and the git branch there. */

@@ -1,4 +1,4 @@
-import { BookOpen, CodeXml, Globe, Server, ServerCog, SquareTerminal, type LucideIcon } from "lucide-react";
+import { BookOpen, CodeXml, Globe, Puzzle, Server, ServerCog, SquareTerminal, type LucideIcon } from "lucide-react";
 import type { PaneKind } from "../shared/protocol.ts";
 
 /** Labels and hints are UI text: see `kinds` in src/i18n/messages.ts. */
@@ -30,6 +30,11 @@ export const KINDS: Record<PaneKind, KindMeta> = {
   /** No terminal: the pane shows Markdown files. */
   docs: {
     icon: BookOpen,
+    imageLimit: 0,
+  },
+  /** No terminal: a plugin draws the pane (src/plugins/PluginPaneHost.tsx). */
+  plugin: {
+    icon: Puzzle,
     imageLimit: 0,
   },
 };
