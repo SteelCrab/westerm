@@ -297,9 +297,10 @@ mod tests {
         let (my, none) = url_to_input("mariadb://root@127.0.0.1/shop", base).unwrap();
         assert_eq!((my.engine, my.port, none), (Engine::Mysql, Some(3306), None));
         let (lite, _) = url_to_input("sqlite:./data/dev.db", base).unwrap();
-        assert_eq!((lite.engine, lite.path.as_deref(), lite.name.as_str()), (Engine::Sqlite, Some("/work/site/data/dev.db"), "dev.db"));
+        // Compared as paths: Windows joins with `\`, so the text differs there.
+        assert_eq!((lite.engine, lite.path.as_deref().map(Path::new), lite.name.as_str()), (Engine::Sqlite, Some(base.join("data").join("dev.db").as_path()), "dev.db"));
         let (prisma, _) = url_to_input("file:./dev.db", base).unwrap();
-        assert_eq!(prisma.path.as_deref(), Some("/work/site/dev.db"));
+        assert_eq!(prisma.path.as_deref().map(Path::new), Some(base.join("dev.db").as_path()));
         let (absolute, _) = url_to_input("sqlite:///var/app.db", base).unwrap();
         assert_eq!(absolute.path.as_deref(), Some("/var/app.db"));
         assert!(url_to_input("redis://h", base).is_none());
