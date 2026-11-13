@@ -42,6 +42,14 @@ npm install -g @pistacrab/westerm
 
 也可以直接运行 `npx @pistacrab/westerm`。通过 npm 安装后，使用 `npm install -g @pistacrab/westerm@latest` 更新。
 
+#### Bun
+
+```bash
+bun add -g @pistacrab/westerm
+```
+
+安装的是同一个 npm 包。安装的 `westerm` 命令通过 Node.js 22 或更高版本启动。没有 Node.js 时，运行 `bunx @pistacrab/westerm`。使用 `bun add -g @pistacrab/westerm@latest` 更新。
+
 #### 安装脚本
 
 macOS、Linux：

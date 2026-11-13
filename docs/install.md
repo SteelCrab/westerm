@@ -15,6 +15,19 @@ Or run `npx @pistacrab/westerm` without a global installation. The package inclu
 
 Update with `npm install -g @pistacrab/westerm@latest`, then restart westerm. The built-in updater replaces the bundled executable directly; npm updates keep the package version in sync.
 
+## Bun
+
+Bun installs the same npm package:
+
+```bash
+bun add -g @pistacrab/westerm
+westerm
+```
+
+- The `westerm` command is a small Node.js script (`#!/usr/bin/env node`) that starts the bundled executable, so it needs Node.js 22 or later on your PATH.
+- Without Node.js, run `bunx @pistacrab/westerm`. Bun then runs the script itself.
+- Update with `bun add -g @pistacrab/westerm@latest`, then restart westerm.
+
 ## Install script
 
 macOS and Linux:

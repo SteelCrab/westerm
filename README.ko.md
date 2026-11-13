@@ -42,6 +42,14 @@ npm install -g @pistacrab/westerm
 
 `npx @pistacrab/westerm`으로 바로 실행할 수도 있습니다. npm 설치본은 `npm install -g @pistacrab/westerm@latest`로 업데이트합니다.
 
+#### Bun
+
+```bash
+bun add -g @pistacrab/westerm
+```
+
+같은 npm 패키지를 설치합니다. 설치된 `westerm` 명령은 Node.js 22 이상으로 시작합니다. Node.js가 없으면 `bunx @pistacrab/westerm`으로 실행합니다. `bun add -g @pistacrab/westerm@latest`로 업데이트합니다.
+
 #### 설치 스크립트
 
 macOS, Linux:
