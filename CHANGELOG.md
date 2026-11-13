@@ -8,6 +8,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 - Release files have build attestations; check one with `gh attestation verify <file> --repo SteelCrab/westerm`.
 
+### Changed
+
+- The plugin list (**Browse**) comes from [`westerm-dev/plugins`](https://github.com/westerm-dev/plugins).
+
 ## [0.5.0] - 2026-11-13
 
 ### Added

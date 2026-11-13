@@ -32,7 +32,7 @@ pub struct Sources {
 impl Default for Sources {
     fn default() -> Self {
         Self {
-            index_url: "https://raw.githubusercontent.com/SteelCrab/westerm-plugins/main/index.json".into(),
+            index_url: "https://raw.githubusercontent.com/westerm-dev/plugins/main/index.json".into(),
             github_api: "https://api.github.com".into(),
             allow_file: false,
         }

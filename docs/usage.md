@@ -239,7 +239,7 @@ A plugin adds a panel to westerm. Git, Docker, and Databases are built in: insta
 ### The plugin manager
 
 - Open it with the puzzle piece, or with **Plugins…** in the command palette.
-- It is a dialog like Settings. At the top left, **Installed** and **Browse** switch the list, and a search box filters it by name, description, and author (the part of the id before the dot). **Installed** lists what you installed, built-in plugins included. **Browse** lists the plugin list and what you installed. Below the list is **Install from URL or folder…**. The plugin list is a GitHub repository, `SteelCrab/westerm-plugins`, that does not exist yet. Until it does, **Browse** shows "Could not load the plugin list" and **Retry**, and installs from a URL or a folder work as usual.
+- It is a dialog like Settings. At the top left, **Installed** and **Browse** switch the list, and a search box filters it by name, description, and author (the part of the id before the dot). **Installed** lists what you installed, built-in plugins included. **Browse** lists the plugin list and what you installed. Below the list is **Install from URL or folder…**. The plugin list is `index.json` in the [`westerm-dev/plugins`](https://github.com/westerm-dev/plugins) repository.
 - Each plugin has a badge:
 
 | Badge | Meaning |
@@ -254,7 +254,7 @@ A plugin adds a panel to westerm. Git, Docker, and Databases are built in: insta
 - **Install** of a built-in plugin asks for no confirmation. The button appears in the plugin bar and its panel opens. No restart is needed.
 - **Uninstall** removes the button, stops the plugin's background checks, and makes its server routes answer 404 (Git's routes keep answering, because a remote window and a tunnel page use them too). If its panel was open, the sidebar goes back to the sessions list (the top layout closes it). Panes the plugin opened stay, because they are ordinary shells.
 - With only Git installed (the default), the page makes no plugin request except `GET /api/plugins` until you open the Git panel, and westerm runs no `docker` process. Git runs `git` only while its panel is open. westerm downloads the plugin list only when you open the plugin manager. The server also looks for updates once a day, but only when an installed plugin came from the plugin list or a GitHub repository.
-- If the plugin list cannot be loaded (for now it always cannot, because the repository does not exist yet), **Browse** shows "Could not load the plugin list" and **Retry**. Installing from a URL or a folder still works.
+- If the plugin list cannot be loaded, **Browse** shows "Could not load the plugin list" and **Retry**. Installing from a URL or a folder still works.
 
 ### External plugins
 
@@ -263,7 +263,7 @@ An external plugin is a folder of files that someone wrote. westerm shows its pa
 #### Install
 
 1. Open the plugin manager.
-2. From the plugin list (not available until the plugin list repository exists): pick the plugin in **Browse** and press **Install**. From elsewhere: press **Install from URL or folder…**, choose **URL** or **Folder**, enter the address, and press **Next**.
+2. From the plugin list: pick the plugin in **Browse** and press **Install**. From elsewhere: press **Install from URL or folder…**, choose **URL** or **Folder**, enter the address, and press **Next**.
    - **URL**: `https://github.com/<owner>/<repo>` (westerm takes `westerm-plugin.tar.gz` from the latest release), or an `https://` link to a `.tar.gz` file.
    - **Folder**: an absolute path on this computer. westerm uses the folder in place and copies nothing.
 3. westerm downloads and checks the package, then shows its name, version, size, badge, and what it can do. A `run` permission reads "Can run kubectl with any arguments, as you". That means the plugin is as trusted as you are with that program: westerm does not limit the arguments.
