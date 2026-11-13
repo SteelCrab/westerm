@@ -17,9 +17,10 @@ Or run without a global installation:
 npx @pistacrab/westerm
 ```
 
-With Bun:
+With pnpm or Bun:
 
 ```bash
+pnpm add -g @pistacrab/westerm  # needs Node.js 22 or later
 bun add -g @pistacrab/westerm   # the westerm command starts through Node.js
 bunx @pistacrab/westerm         # runs without Node.js
 ```

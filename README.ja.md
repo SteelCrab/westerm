@@ -42,6 +42,16 @@ npm install -g @pistacrab/westerm
 
 `npx @pistacrab/westerm` で直接実行することもできます。npm でインストールした場合は `npm install -g @pistacrab/westerm@latest` で更新します。
 
+#### pnpm
+
+Node.js 22 以降が必要です。
+
+```bash
+pnpm add -g @pistacrab/westerm
+```
+
+`pnpm dlx @pistacrab/westerm` で直接実行することもできます。`pnpm add -g @pistacrab/westerm@latest` で更新します。pnpm は新しいリリースを公開から 1 日たつまでインストールしません(`minimumReleaseAge` 設定)。すぐにインストールするには、`pnpm add -g @pistacrab/westerm@X.Y.Z` のようにバージョンを指定します。
+
 #### Bun
 
 ```bash
