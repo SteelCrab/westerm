@@ -16,6 +16,7 @@ on:
       - ".gitignore"
       - "LICENSE"
       - ".github/workflows/cargo-package.yml"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:

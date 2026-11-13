@@ -306,19 +306,22 @@ npm run test:cargo-install
 
 The install check extracts the `.crate` outside the repository, installs it into a temporary prefix, deletes the extracted web files, and verifies the installed dashboard's HTTP responses against the packaged files. It uses a separate state folder and an automatically assigned port. The Cargo package workflow runs these checks on macOS, Linux, and Windows.
 
-`native/web-dist/` and `native/LICENSE` are generated and ignored by Git, but explicitly included by Cargo. Cargo treats these files as uncommitted changes, so packaging uses `--allow-dirty`. Before publishing, commit the source changes and verify that `git status --porcelain` is empty. The final guard below permits the generated files while rejecting changes reported by Git:
+`native/web-dist/` and `native/LICENSE` are generated and ignored by Git, but explicitly included by Cargo. Cargo treats these files as uncommitted changes, so packaging uses `--allow-dirty`.
+
+The [release workflow](.github/workflows/release.yml) publishes the `westerm` crate after the GitHub release passes its installation checks. It also packages and installs the crate before requesting a short-lived token from crates.io. The [Trusted Publishing configuration](https://crates.io/crates/westerm/settings) uses owner `SteelCrab`, repository `westerm`, workflow `release.yml`, and GitHub environment `crates-io`. The environment allows version tags matching `v*`.
+
+For a manual recovery, check out the reviewed release tag in a clean worktree, then run:
 
 ```bash
-cargo login --registry crates-io
+npm ci
+npm run test:cargo
 npm run pack:cargo
 npm run test:cargo-install
 test -z "$(git status --porcelain)" && \
   cargo publish --dry-run --allow-dirty --locked --registry crates-io --manifest-path native/Cargo.toml
-test -z "$(git status --porcelain)" && \
-  cargo publish --allow-dirty --locked --registry crates-io --manifest-path native/Cargo.toml
 ```
 
-Publishing is manual. Match the package version to the reviewed release commit. Windows Cargo installs do not include the ConPTY helper files; document that limitation until a separate installation path exists for them.
+After the dry run succeeds, authenticate with `cargo login --registry crates-io` and repeat `cargo publish` without `--dry-run`. Windows Cargo installs use the system ConPTY.
 
 ## Security issues
 
