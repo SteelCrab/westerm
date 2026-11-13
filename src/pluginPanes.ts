@@ -1,8 +1,8 @@
 // What a plugin's openPane and folders() do to the dashboard, as pure
 // functions. Core code: plugin folders never import this file.
 
-import type { OpenPaneOptions } from "./plugins/types.ts";
-import { findPluginPane, type Dashboard, type DashboardAction } from "./workspace.ts";
+import type { OpenPaneOptions, OpenShellOptions } from "./plugins/types.ts";
+import { findOpenedBy, findPluginPane, findRunPane, type Dashboard, type DashboardAction } from "./workspace.ts";
 
 const MAX_FOLDERS = 32;
 
@@ -24,6 +24,34 @@ export function planOpenPane(
     title: options.title,
     aspect,
   };
+}
+
+/**
+ * What a plugin's openShell does. With a `replaceKey`, the new shell takes the
+ * place of the one the plugin opened under that key in the workspace in view.
+ * Otherwise `reuse` focuses the pane the same launch opened before.
+ */
+export function planOpenShell(
+  state: Dashboard,
+  plugin: string,
+  { action, target, cwd, name, reuse, replaceKey }: OpenShellOptions,
+  id: string,
+  aspect: number,
+): DashboardAction {
+  const launch = { plugin, action, target };
+  const open: DashboardAction = { type: "open", id, kind: "shell", cwd, plugin: launch, name, aspect };
+  if (replaceKey != null) {
+    const replaceId = findRunPane(state, plugin, replaceKey);
+    const runKey = { plugin, key: replaceKey };
+    return replaceId === null ? { ...open, runKey } : { ...open, runKey, replaceId };
+  }
+  const found = reuse ? findOpenedBy(state, launch) : null;
+  return found ? { type: "focus", id: found } : open;
+}
+
+/** A plain shell in `cwd`, beside the focused pane. */
+export function planOpenFolder(cwd: string, name: string | null, id: string, aspect: number): DashboardAction {
+  return { type: "open", id, kind: "shell", cwd, name, aspect };
 }
 
 /** The folders of the shells in every workspace, in session order, once each. */

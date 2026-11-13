@@ -113,6 +113,7 @@ function fakeCtx(answer: (path: string) => Response): { ctx: PluginContext; call
     openShell() {},
     openBrowser() {},
     openPane() {},
+    openFolder() {},
     folders: () => [],
     fetch: async (path, init) => {
       calls.push({ path, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });

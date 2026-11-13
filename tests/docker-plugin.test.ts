@@ -228,6 +228,7 @@ function fakeCtx(respond: (path: string) => Response | Promise<Response>): FakeC
     openShell() {},
     openBrowser() {},
     openPane() {},
+    openFolder() {},
     folders: () => [],
     fetch: async (path, init) => {
       calls.push({ path, init });
@@ -680,6 +681,7 @@ function plugged(answer: () => Response): Plugged {
       openShell: noop,
       openBrowser: noop,
       openPane: noop,
+      openFolder() {},
       folders: () => [],
       fetch: async (path) => {
         p.fetches.push(path);

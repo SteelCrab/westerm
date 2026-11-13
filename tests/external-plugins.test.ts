@@ -80,6 +80,7 @@ function fakeCtx(answer: (path: string, init?: RequestInit) => Answer = () => ne
     openShell: (options) => record.opened.push(options),
     openBrowser: (url) => record.browsed.push(url),
     openPane: () => {},
+    openFolder() {},
     folders: () => [],
     fetch: (path, init) => {
       record.fetched.push({ path, init });
