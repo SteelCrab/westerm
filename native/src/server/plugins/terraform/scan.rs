@@ -86,8 +86,16 @@ pub struct Project {
 }
 
 /// The id of the project in `path`: the first 16 hex digits of the path's SHA-256.
+///
+/// The path is read part by part, as `Path` compares paths: two spellings of
+/// one folder (`\` and `/` on Windows, a doubled or trailing `/`) give one id.
 pub fn project_id(path: &Path) -> String {
-    Sha256::digest(path.to_string_lossy().as_bytes())[..8].iter().map(|byte| format!("{byte:02x}")).collect()
+    let mut hasher = Sha256::new();
+    for part in path.components() {
+        hasher.update(part.as_os_str().to_string_lossy().as_bytes());
+        hasher.update([0]);
+    }
+    hasher.finalize()[..8].iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// The tool for the project in `dir`, and whether it is installed. The user's
@@ -460,6 +468,18 @@ mod tests {
         let (plain, _) = scan(&[root.join("acme")], &env(&root), &PATIENT);
         assert!(plain[0].needs_init);
         assert_eq!(plain[0].workspace, "default");
+    }
+
+    #[test]
+    fn the_same_path_spelled_another_way_has_the_same_id() {
+        // These are one `Path`; the id must not tell them apart.
+        let id = project_id(Path::new("/w/envs/dev"));
+        for spelled in ["/w/envs//dev", "/w/envs/./dev", "/w/envs/dev/"] {
+            assert_eq!(Path::new(spelled), Path::new("/w/envs/dev"), "{spelled}");
+            assert_eq!(project_id(Path::new(spelled)), id, "{spelled}");
+        }
+        #[cfg(windows)]
+        assert_eq!(project_id(Path::new(r"C:\w\envs\dev")), project_id(Path::new("C:/w/envs/dev")));
     }
 
     #[test]
