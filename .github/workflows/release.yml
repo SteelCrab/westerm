@@ -2,8 +2,9 @@ name: Release
 
 # Push a version tag such as v0.2.0. Each platform is tested and built, the
 # desktop app is bundled for macOS, Windows, and Linux (app.yml), and a GitHub
-# release is published with the archives and their SHA-256 sums.
-# install.sh and install.ps1 download from that release.
+# release is published with the archives, their SHA-256 sums, and a build
+# attestation for each file. install.sh and install.ps1 download from that
+# release.
 on:
   push:
     tags: ["v*"]
@@ -117,6 +118,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Build attestations: a signed record, kept by GitHub, that this
+      # workflow built each file from the tagged commit.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -124,6 +129,17 @@ jobs:
           merge-multiple: true
       - name: Release notes from CHANGELOG.md
         run: sh scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > notes.md
+      # Before Publish, so a release never goes out without them.
+      - name: Attest the release files
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            westerm-*.tar.gz
+            westerm-*.zip
+            westerm-*.dmg
+            westerm-*.exe
+            westerm-*.deb
+            westerm-*.rpm
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -168,8 +184,30 @@ jobs:
             if (-not (Test-Path (Join-Path $env:WESTERM_INSTALL_DIR $name))) { throw "install.ps1 did not install $name" }
           }
 
+  # Checks every published file the way users do, with gh attestation verify.
+  attestations:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - name: gh attestation verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir files && cd files
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern 'westerm-*'
+          rm -f *.sha256
+          ls
+          for file in *; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "$GITHUB_REF"
+          done
+
   npm-publish:
-    needs: verify
+    needs: [verify, attestations]
     if: github.repository == 'SteelCrab/westerm'
     runs-on: ubuntu-latest
     timeout-minutes: 10

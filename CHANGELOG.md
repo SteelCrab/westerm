@@ -4,6 +4,10 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Release files have build attestations; check one with `gh attestation verify <file> --repo SteelCrab/westerm`.
+
 ## [0.5.0] - 2026-11-13
 
 ### Added
