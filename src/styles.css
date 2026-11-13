@@ -21,6 +21,10 @@
   /* The Databases plugin (src/plugins/db/). */
   --db: #4cc9d6;
   --db-soft: rgba(76, 201, 214, 0.14);
+  --tf: #a48cff;
+  --tf-soft: rgba(164, 140, 255, 0.14);
+  --tf-brand: #844fba;
+  --tofu: #e7c200;
   /* AI agents: Claude Code's mark; Gemini CLI's blue; Codex's follows --text. */
   --agent-claude: #e08a65;
   --agent-gemini: #3186ff;
@@ -97,6 +101,10 @@
     --docs-soft: rgba(194, 64, 127, 0.12);
     --db: #0e8a96;
     --db-soft: rgba(14, 138, 150, 0.12);
+    --tf: #6d4bd6;
+    --tf-soft: rgba(109, 75, 214, 0.12);
+    --tf-brand: #844fba;
+    --tofu: #e7c200;
     --agent-claude: #c2603d;
     --agent-gemini: #165fd6;
     --ok: #23a058;
@@ -152,6 +160,10 @@
   --docs-soft: rgba(194, 64, 127, 0.12);
   --db: #0e8a96;
   --db-soft: rgba(14, 138, 150, 0.12);
+  --tf: #6d4bd6;
+  --tf-soft: rgba(109, 75, 214, 0.12);
+  --tf-brand: #844fba;
+  --tofu: #e7c200;
   --agent-claude: #c2603d;
   --agent-gemini: #165fd6;
   --ok: #23a058;
@@ -6882,4 +6894,892 @@ body.resizing-rows .pane {
   margin: 0;
   color: var(--danger);
   font-size: 12.5px;
+}
+
+/* ---- Terraform plugin ------------------------------------------------- */
+
+.tf-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.tf-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tf-logo-box {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--tf-brand);
+  border-radius: 6px;
+  background: var(--tf-soft);
+}
+
+.tf-logo,
+.tf-tofu {
+  flex: none;
+}
+
+.tf-tofu {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--tofu);
+  color: #1a1400;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tf-title {
+  font-weight: 600;
+}
+
+.tf-sub {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tf-header .tf-sub {
+  flex: 1;
+}
+
+.tf-filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 8px 8px 4px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-faint);
+}
+
+.tf-filter:focus-within {
+  border-color: var(--tf);
+}
+
+.tf-filter input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.tf-tree {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 4px 6px 8px;
+  list-style: none;
+}
+
+.tf-tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tf-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 6px;
+}
+
+.tf-row:hover {
+  background: var(--surface-2);
+}
+
+.tf-project-row.selected {
+  background: var(--tf-soft);
+}
+
+.tf-toggle,
+.tf-open,
+.tf-leaf {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.tf-toggle,
+.tf-open {
+  cursor: pointer;
+}
+
+.tf-toggle:focus-visible,
+.tf-open:focus-visible,
+.tf-ws-pick:focus-visible,
+.tf-ws-name:focus-visible {
+  outline: 2px solid var(--tf);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.tf-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+
+.tf-chevron.open {
+  transform: rotate(90deg);
+}
+
+.tf-icon {
+  flex: none;
+  color: var(--text-muted, var(--text-faint));
+}
+
+.tf-name {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tf-project-row .tf-name {
+  flex: none;
+  max-width: 60%;
+  font-weight: 600;
+}
+
+.tf-project-row .tf-sub {
+  flex: 1;
+}
+
+.tf-mono {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 11px;
+}
+
+.tf-diamond {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: 0 3px 0 15px;
+  border: 1.5px solid var(--text-faint);
+  transform: rotate(45deg);
+}
+
+.tf-resource.removed .tf-name {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+.tf-count {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tf-mark {
+  flex: none;
+  width: 12px;
+  margin-left: auto;
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-weight: 700;
+  text-align: center;
+}
+
+.tf-mark-create {
+  color: var(--ok);
+}
+
+.tf-mark-update {
+  color: var(--warn);
+}
+
+.tf-mark-delete,
+.tf-mark-replace {
+  color: var(--danger);
+}
+
+.tf-mark-none {
+  color: var(--text-faint);
+}
+
+.tf-changed {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.tf-tag {
+  flex: none;
+  margin-left: auto;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 4px;
+  color: var(--text-faint);
+  font-size: 9.5px;
+  line-height: 14px;
+}
+
+.tf-tag + .tf-tag {
+  margin-left: 0;
+}
+
+.tf-newer {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+
+.tf-tag-prod {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}
+
+.tf-tag-init {
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  color: var(--warn);
+}
+
+.tf-warn {
+  display: inline-flex;
+  flex: none;
+  color: var(--warn);
+}
+
+.tf-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.tf-dot-none {
+  border: 1.5px solid var(--text-faint);
+}
+
+.tf-dot-clean {
+  background: var(--ok);
+}
+
+.tf-dot-changes {
+  background: var(--warn);
+}
+
+.tf-dot-failed {
+  background: var(--danger);
+}
+
+.tf-dot-running {
+  border: 1.5px solid var(--warn);
+  border-right-color: transparent;
+  animation: tf-spin 1s linear infinite;
+}
+
+@keyframes tf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tf-dot-running {
+    animation: none;
+  }
+}
+
+.tf-actions {
+  display: none;
+  flex: none;
+  gap: 1px;
+  padding-right: 2px;
+}
+
+.tf-row:hover .tf-actions,
+.tf-row:focus-within .tf-actions {
+  display: flex;
+}
+
+.tf-more {
+  flex: none;
+  opacity: 0;
+}
+
+.tf-row:hover .tf-more,
+.tf-more:focus-visible {
+  opacity: 1;
+}
+
+.tf-ws {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 4px 0 22px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.tf-ws-pick {
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tf-ws-pick:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.tf-sum {
+  display: inline-flex;
+  gap: 5px;
+  margin-left: auto;
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.tf-sum.stale {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.tf-ws-list {
+  margin: 0 4px 4px 22px !important;
+  padding: 3px !important;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.tf-ws-name {
+  display: block;
+  width: 100%;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tf-ws-name:hover {
+  background: var(--surface-2);
+}
+
+.tf-ws-name.current {
+  color: var(--tf);
+  font-weight: 600;
+}
+
+.tf-quiet,
+.tf-empty {
+  margin: 0;
+  padding: 8px 14px;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tf-empty {
+  flex: 1;
+  padding: 28px 18px;
+  text-align: center;
+}
+
+.tf-notice,
+.tf-banner {
+  flex: none;
+  margin: 6px 8px 0;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.tf-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tf-banner code {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.tf-confirm {
+  flex: none;
+  margin: 6px 8px 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.tf-confirm p {
+  margin: 0 0 8px;
+}
+
+.tf-confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.tf-runbar {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  padding: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.tf-runbar .button {
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.tf-panel .button.primary {
+  border-color: var(--tf);
+  background: var(--tf);
+  color: #14101f;
+}
+
+.tf-running {
+  flex: 1;
+  padding: 5px 0;
+  color: var(--warn);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.tf-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.tf-footer > :first-child {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.tf-last.ok {
+  color: var(--ok);
+}
+
+.tf-last.failed {
+  color: var(--danger);
+}
+
+/* The plan pane. */
+
+.tf-plan-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  border-top: 2px solid transparent;
+  background: var(--pane-bg);
+  font-size: 12px;
+}
+
+.tf-plan-pane.tf-plan-prod {
+  border-top-color: var(--danger);
+}
+
+.tf-pane-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.tf-pane-header .tf-sub {
+  flex: 1;
+}
+
+.tf-age {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.tf-plan-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tf-plan-bar .button.primary {
+  border-color: var(--tf);
+  background: var(--tf);
+  color: #14101f;
+}
+
+.tf-chip {
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tf-plan-bar .tf-tag {
+  margin-left: 0;
+}
+
+.tf-spacer {
+  flex: 1;
+}
+
+.tf-plan-state {
+  flex: none;
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.tf-plan-list {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding: 2px 8px 8px;
+}
+
+.tf-plan-list.stale {
+  opacity: 0.55;
+}
+
+.tf-plan-group h3 {
+  margin: 10px 2px 4px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.tf-change {
+  overflow: hidden;
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.tf-change-create,
+.tf-change-import {
+  border-left-color: var(--ok);
+}
+
+.tf-change-update {
+  border-left-color: var(--warn);
+}
+
+.tf-change-delete,
+.tf-change-replace {
+  border-left-color: var(--danger);
+}
+
+.tf-change-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tf-change-head:focus-visible {
+  outline: 2px solid var(--tf);
+  outline-offset: -2px;
+}
+
+.tf-change-head .tf-mark {
+  margin-left: 0;
+}
+
+.tf-change-head .tf-name {
+  flex: 1;
+}
+
+.tf-change-action {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.tf-attrs {
+  padding: 5px 8px 6px 26px;
+  border-top: 1px solid var(--border);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.tf-attr-path {
+  color: var(--text-muted);
+}
+
+.tf-attr-before {
+  color: var(--danger);
+}
+
+.tf-attr-after {
+  color: var(--ok);
+}
+
+.tf-forces {
+  color: var(--danger);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.tf-quiet-row {
+  color: var(--text-faint);
+}
+
+.tf-plan-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  height: 24px;
+  padding: 0 8px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.tf-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tf-link:hover {
+  color: var(--text);
+}
+
+/* The Apply confirmation. */
+
+.tf-apply-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--backdrop);
+}
+
+.tf-apply {
+  width: min(460px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 18px 40px var(--shadow);
+  font-size: 12px;
+}
+
+.tf-apply-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tf-apply-header .tf-tag {
+  margin-left: 0;
+}
+
+.tf-apply-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.tf-apply-facts {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 5px 8px;
+  margin: 0;
+}
+
+.tf-apply-facts dt {
+  color: var(--text-muted);
+}
+
+.tf-apply-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.tf-destroys {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  line-height: 1.5;
+}
+
+.tf-destroys ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.tf-destroys li::before {
+  content: "- ";
+  color: var(--danger);
+}
+
+.tf-apply-word {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tf-apply-word input {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  outline: none;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 12px;
+}
+
+.tf-apply-word input:focus {
+  border-color: var(--tf);
+}
+
+.tf-apply .tf-notice {
+  margin: 0;
+}
+
+.tf-apply-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.tf-apply-footer .tf-quiet {
+  flex: 1;
+  padding: 0;
+  font-size: 10.5px;
+}
+
+.tf-apply-footer .button.primary {
+  border-color: var(--tf);
+  background: var(--tf);
+  color: #14101f;
+}
+
+/* A button that is off looks off, in the panel, the plan pane, and the confirmation. */
+
+.tf-panel .button:disabled,
+.tf-plan-pane .button:disabled,
+.tf-apply .button:disabled,
+.tf-panel .icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tf-panel .button:disabled:hover,
+.tf-plan-pane .button:disabled:hover,
+.tf-apply .button:disabled:hover {
+  border-color: var(--border-strong);
 }
