@@ -581,25 +581,26 @@ mod tests {
                 "aws_db_instance.main",
                 &["update"],
                 json!({
-                    "before": { "password": "old-hunter2", "tags": { "secret": "old-s3cr3t" }, "size": 1 },
-                    "after": { "password": "hunter2", "tags": { "secret": "s3cr3t" }, "size": 2 },
-                    "before_sensitive": { "password": true, "tags": true },
-                    "after_sensitive": { "password": true, "tags": true },
+                    "before": { "phrase": "hidden-before-1", "tags": { "inner": "hidden-before-2" }, "size": 1 },
+                    "after": { "phrase": "hidden-after-1", "tags": { "inner": "hidden-after-2" }, "size": 2 },
+                    "before_sensitive": { "phrase": true, "tags": true },
+                    "after_sensitive": { "phrase": true, "tags": true },
                 }),
             ),
-            rc("aws_ssm_parameter.new", &["create"], json!({ "after": { "value": "t0ken", "name": "n" }, "after_sensitive": { "value": true } })),
+            rc("aws_ssm_parameter.new", &["create"], json!({ "after": { "value": "hidden-after-3", "name": "n" }, "after_sensitive": { "value": true } })),
         ]);
         assert_eq!(
             attrs(&reduced.changes[0]),
             json!([
-                { "path": "password", "before": { "kind": "sensitive" }, "after": { "kind": "sensitive" }, "forces": false },
+                { "path": "phrase", "before": { "kind": "sensitive" }, "after": { "kind": "sensitive" }, "forces": false },
                 { "path": "size", "before": value("1"), "after": value("2"), "forces": false },
                 { "path": "tags", "before": { "kind": "sensitive" }, "after": { "kind": "sensitive" }, "forces": false },
             ])
         );
         assert_eq!(attrs(&reduced.changes[1])[1], json!({ "path": "value", "before": null, "after": { "kind": "sensitive" }, "forces": false }));
         let text = serde_json::to_string(&reduced).unwrap();
-        for secret in ["hunter2", "s3cr3t", "t0ken", "secret\""] {
+        // No hidden value, and not the key below the mark ("inner").
+        for secret in ["hidden-", "inner"] {
             assert!(!text.contains(secret), "{secret} left: {text}");
         }
     }
@@ -608,15 +609,13 @@ mod tests {
     fn a_value_marked_sensitive_on_one_side_is_hidden_on_both() {
         // A variable becomes sensitive (or stops being so) in the same change.
         let reduced = reduced(vec![
-            rc("a.becomes", &["update"], json!({ "before": { "password": "old-hunter2", "n": 1 }, "after": { "password": "new-hunter2", "n": 2 }, "before_sensitive": {}, "after_sensitive": { "password": true } })),
-            rc("a.was", &["update"], json!({ "before": { "token": { "id": "old-t0ken" } }, "after": { "token": { "id": "new-t0ken" } }, "before_sensitive": { "token": true }, "after_sensitive": false })),
+            rc("a.becomes", &["update"], json!({ "before": { "phrase": "hidden-before-1", "n": 1 }, "after": { "phrase": "hidden-after-1", "n": 2 }, "before_sensitive": {}, "after_sensitive": { "phrase": true } })),
+            rc("a.was", &["update"], json!({ "before": { "holder": { "id": "hidden-before-2" } }, "after": { "holder": { "id": "hidden-after-2" } }, "before_sensitive": { "holder": true }, "after_sensitive": false })),
         ]);
-        assert_eq!(attrs(&reduced.changes[0])[1], json!({ "path": "password", "before": { "kind": "sensitive" }, "after": { "kind": "sensitive" }, "forces": false }));
-        assert_eq!(attrs(&reduced.changes[1]), json!([{ "path": "token", "before": { "kind": "sensitive" }, "after": { "kind": "sensitive" }, "forces": false }]));
+        assert_eq!(attrs(&reduced.changes[0])[1], json!({ "path": "phrase", "before": { "kind": "sensitive" }, "after": { "kind": "sensitive" }, "forces": false }));
+        assert_eq!(attrs(&reduced.changes[1]), json!([{ "path": "holder", "before": { "kind": "sensitive" }, "after": { "kind": "sensitive" }, "forces": false }]));
         let text = serde_json::to_string(&reduced).unwrap();
-        for secret in ["hunter2", "t0ken"] {
-            assert!(!text.contains(secret), "{secret} left: {text}");
-        }
+        assert!(!text.contains("hidden-"), "a hidden value left: {text}");
     }
 
     #[test]
@@ -641,7 +640,7 @@ mod tests {
         let reduced = reduced(vec![rc(
             "a.b",
             &["update"],
-            json!({ "before": { "password": "same", "n": 1 }, "after": { "password": "same", "n": 2 }, "before_sensitive": { "password": true }, "after_sensitive": { "password": true } }),
+            json!({ "before": { "phrase": "same", "n": 1 }, "after": { "phrase": "same", "n": 2 }, "before_sensitive": { "phrase": true }, "after_sensitive": { "phrase": true } }),
         )]);
         assert_eq!(attrs(&reduced.changes[0]).as_array().unwrap().len(), 1);
     }

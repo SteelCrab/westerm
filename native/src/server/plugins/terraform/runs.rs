@@ -615,7 +615,7 @@ mod tests {
 
     fn env() -> Env {
         let keep = tempfile::tempdir().unwrap();
-        let root = fs::canonicalize(keep.path()).unwrap();
+        let root = tree::canonical(keep.path()).unwrap();
         let path = root.join("w/envs/dev");
         write(&path, "main.tf", "provider \"aws\" {}\nmodule \"eks\" {\n  source = \"./eks\"\n}\n");
         write(&path, "eks/main.tf", "resource \"x\" \"y\" {}\n");
@@ -689,6 +689,7 @@ mod tests {
     }
 
     /// A pid that is not alive: a child that has ended and was waited for.
+    #[cfg(unix)]
     fn dead_pid() -> u32 {
         let mut child = std::process::Command::new("true").spawn().unwrap();
         let pid = child.id();
@@ -1010,6 +1011,8 @@ mod tests {
         }
     }
 
+    // Whether a runner is alive is asked of the system on Unix only; runs are Unix only.
+    #[cfg(unix)]
     #[test]
     fn a_vanished_apply_reads_as_interrupted_and_drops_the_plan() {
         let env = env();
@@ -1033,6 +1036,12 @@ mod tests {
         assert_eq!(env.plan_state(), None);
         assert_eq!(env.run_state(), Some(RunState::Failed));
         assert!(!env.plan_file().with_extension("meta.json").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_vanished_plan_leaves_no_plan() {
+        let env = env();
         let (token, _) = env.start(Action::Plan, None).unwrap();
         take_spec(&env.state(), &token).unwrap();
         write_started(&env.state(), &token, &RunStarted { pid: dead_pid(), started_at: NOW }).unwrap();

@@ -26,7 +26,8 @@ pub async fn select(program: &Path, cwd: &Path, env: &LoginEnv, name: &str, time
     capture(program, &["workspace", "select", name], cwd, env, timeout).await.map(|_| ())
 }
 
-#[cfg(test)]
+// The fake tools of these tests are sh scripts.
+#[cfg(all(test, unix))]
 mod tests {
     use super::super::tests::{write_tool, Env};
     use super::*;

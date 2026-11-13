@@ -493,7 +493,8 @@ pub(in crate::server) fn routes() -> Router<Shared> {
         .route("/api/plugins/terraform/projects/{id}/workspace", post(post_workspace))
 }
 
-#[cfg(test)]
+// The fake tools of these tests are sh scripts, and runs are Unix only.
+#[cfg(all(test, unix))]
 pub(crate) mod tests {
     use super::*;
     use crate::server::plugins::login_env::LoginEnv;
@@ -519,7 +520,7 @@ pub(crate) mod tests {
         /// `tools`: the fake tools on the login PATH.
         pub(crate) async fn new(installed: bool, tools: &[&str]) -> Self {
             let keep = tempfile::tempdir().unwrap();
-            let root = fs::canonicalize(keep.path()).unwrap();
+            let root = tree::canonical(keep.path()).unwrap();
             fs::create_dir_all(root.join("bin")).unwrap();
             fs::create_dir_all(root.join("state")).unwrap();
             for tool in tools {
@@ -802,7 +803,7 @@ pub(crate) mod tests {
 
     fn one_create() -> serde_json::Value {
         json!({ "format_version": "1.2", "resource_changes": [
-            { "address": "aws_vpc.this", "mode": "managed", "type": "aws_vpc", "name": "this", "change": { "actions": ["create"], "before": null, "after": { "cidr": "10.0.0.0/16", "token": "s3cr3t" }, "after_sensitive": { "token": true } } },
+            { "address": "aws_vpc.this", "mode": "managed", "type": "aws_vpc", "name": "this", "change": { "actions": ["create"], "before": null, "after": { "cidr": "10.0.0.0/16", "holder": "hidden-after-1" }, "after_sensitive": { "holder": true } } },
         ] })
     }
 
@@ -887,7 +888,7 @@ pub(crate) mod tests {
         assert_eq!(response.headers()["cache-control"], "no-store");
         let plan = body_json(response).await;
         assert_eq!((plan["state"].as_str(), plan["changes"][0]["address"].as_str()), (Some("current"), Some("aws_vpc.this")));
-        assert!(!plan.to_string().contains("s3cr3t"));
+        assert!(!plan.to_string().contains("hidden-"));
 
         // The code changes: the plan is stale and its marks go.
         write(&env.root, "w/envs/dev/main.tf", "provider \"aws\" {}\nresource \"aws_vpc\" \"this\" {}\n# edited\n");

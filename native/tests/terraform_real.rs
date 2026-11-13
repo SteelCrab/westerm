@@ -55,7 +55,7 @@ fn a_real_plan_is_saved_read_and_applied() {
     let (state, project): (PathBuf, PathBuf) = (root.path().join("state"), root.path().join("my infra"));
     fs::create_dir_all(&project).unwrap();
     fs::create_dir_all(state.join("terraform/plans")).unwrap();
-    fs::write(project.join("main.tf"), "resource \"terraform_data\" \"a\" {\n  input = \"x\"\n}\n\noutput \"secret\" {\n  value     = \"hunter2\"\n  sensitive = true\n}\n").unwrap();
+    fs::write(project.join("main.tf"), "resource \"terraform_data\" \"a\" {\n  input = \"x\"\n}\n\noutput \"hidden\" {\n  value     = \"not-shown\"\n  sensitive = true\n}\n").unwrap();
     let init = Command::new(tool).arg("init").arg("-input=false").current_dir(&project).output().unwrap();
     assert!(init.status.success(), "{}", String::from_utf8_lossy(&init.stderr));
 
@@ -77,7 +77,7 @@ fn a_real_plan_is_saved_read_and_applied() {
     assert_eq!(change["change"]["actions"], serde_json::json!(["create"]));
     assert_eq!(change["change"]["after"]["input"], "x");
     assert_eq!(change["change"]["after_unknown"]["id"], true);
-    assert_eq!(json["output_changes"]["secret"]["actions"], serde_json::json!(["create"]));
+    assert_eq!(json["output_changes"]["hidden"]["actions"], serde_json::json!(["create"]));
 
     let (code, done) = run.start(&"2".repeat(32), "apply", &["apply", &plan.display().to_string()]);
     assert_eq!(code, 0);

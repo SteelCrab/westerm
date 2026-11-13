@@ -127,7 +127,7 @@ pub fn workspace_of(data_dir: &Path, tf_workspace: Option<&str>) -> (String, boo
 fn tilde(path: &Path, home: &Path) -> String {
     match path.strip_prefix(home) {
         Ok(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
-        Ok(rest) => format!("~/{}", rest.to_string_lossy()),
+        Ok(rest) => format!("~/{}", rest.to_string_lossy().replace('\\', "/")),
         Err(_) => path.to_string_lossy().into_owned(),
     }
 }
@@ -167,7 +167,7 @@ pub fn scan(folders: &[PathBuf], env: &ScanEnv, limits: &ScanLimits) -> (Vec<Pro
     let mut truncated = false;
     let mut projects: Vec<Project> = Vec::new();
     'starts: for start in folders {
-        let Ok(start) = fs::canonicalize(start) else { continue };
+        let Some(start) = tree::canonical(start) else { continue };
         let mut entries = 0;
         let mut queue = VecDeque::from([(start.clone(), 0usize)]);
         while let Some((dir, depth)) = queue.pop_front() {
@@ -254,6 +254,8 @@ mod tests {
 
     const PROVIDER: &str = "provider \"aws\" {}\n";
     const RESOURCE: &str = "resource \"x\" \"y\" {}\n";
+    /// The default limits with time to spare: a slow disk must not cut these scans short.
+    const PATIENT: ScanLimits = ScanLimits { time: Duration::from_secs(120), ..ScanLimits::DEFAULT };
 
     fn write(dir: &Path, name: &str, text: &str) {
         let path = dir.join(name);
@@ -264,7 +266,7 @@ mod tests {
     /// A temp folder (canonical) that stands for the home folder.
     fn home() -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
-        let path = fs::canonicalize(dir.path()).unwrap();
+        let path = tree::canonical(dir.path()).unwrap();
         (dir, path)
     }
 
@@ -273,8 +275,9 @@ mod tests {
     }
 
     fn found(root: &Path, start: &str) -> Vec<String> {
-        let (projects, _) = scan(&[root.join(start)], &env(root), &ScanLimits::DEFAULT);
-        projects.iter().map(|project| project.path.strip_prefix(root).unwrap().to_string_lossy().into_owned()).collect()
+        let (projects, _) = scan(&[root.join(start)], &env(root), &PATIENT);
+        // With `/` on every system.
+        projects.iter().map(|project| project.path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/")).collect()
     }
 
     #[test]
@@ -334,11 +337,12 @@ mod tests {
             write(&root, &format!("w/f{i:03}/main.tf"), PROVIDER);
         }
         let started = Instant::now();
-        let limits = ScanLimits { entries: 50, ..ScanLimits::DEFAULT };
+        let limits = ScanLimits { entries: 50, ..PATIENT };
         let (projects, truncated) = scan(&[root.join("w")], &env(&root), &limits);
         assert!(truncated);
         assert!(projects.len() < 50, "{}", projects.len());
-        assert!(started.elapsed() < Duration::from_secs(3));
+        // It stopped at the budget, not at the time limit (which is far away here).
+        assert!(started.elapsed() < Duration::from_secs(60));
     }
 
     #[test]
@@ -359,11 +363,11 @@ mod tests {
         for i in 0..40 {
             write(&root, &format!("w/f{i:03}/main.tf"), PROVIDER);
         }
-        let (projects, truncated) = scan(&[root.join("w")], &env(&root), &ScanLimits::DEFAULT);
+        let (projects, truncated) = scan(&[root.join("w")], &env(&root), &PATIENT);
         assert_eq!(projects.len(), 32);
         assert!(truncated);
         assert_eq!(projects[0].path, root.join("w/f000"));
-        let (few, whole) = scan(&[root.join("w/f000"), root.join("w/f001")], &env(&root), &ScanLimits::DEFAULT);
+        let (few, whole) = scan(&[root.join("w/f000"), root.join("w/f001")], &env(&root), &PATIENT);
         assert_eq!((few.len(), whole), (2, false));
     }
 
@@ -371,7 +375,7 @@ mod tests {
     fn overlapping_folders_list_a_project_once() {
         let (_keep, root) = home();
         write(&root, "w/envs/dev/main.tf", PROVIDER);
-        let (projects, _) = scan(&[root.join("w"), root.join("w/envs/dev"), root.join("w/envs")], &env(&root), &ScanLimits::DEFAULT);
+        let (projects, _) = scan(&[root.join("w"), root.join("w/envs/dev"), root.join("w/envs")], &env(&root), &PATIENT);
         assert_eq!(projects.len(), 1);
     }
 
@@ -424,6 +428,7 @@ mod tests {
         write(&root, "p/.terraform/environment", "  \n");
         assert_eq!(workspace_of(&data, None), ("default".to_owned(), false));
         assert_eq!(data_dir(&root.join("p"), Some(".tfdata")), root.join("p/.tfdata"));
+        #[cfg(unix)]
         assert_eq!(data_dir(&root.join("p"), Some("/abs/data")), PathBuf::from("/abs/data"));
     }
 
@@ -438,7 +443,7 @@ mod tests {
         let mut scan_env = env(&root);
         scan_env.tf_data_dir = Some(".tfdata".to_owned());
         scan_env.overrides.insert(root.join("acme/envs/dev"), Tool::Tofu);
-        let (projects, truncated) = scan(&[root.join("acme")], &scan_env, &ScanLimits::DEFAULT);
+        let (projects, truncated) = scan(&[root.join("acme")], &scan_env, &PATIENT);
         assert!(!truncated);
         let [project] = projects.as_slice() else { panic!("{} projects", projects.len()) };
         assert_eq!(project.path, root.join("acme/envs/dev"));
@@ -452,7 +457,7 @@ mod tests {
         assert_eq!(project.unreadable, ["bad.tf"]);
         assert_eq!(project.local_dirs, [root.join("acme/envs/dev"), root.join("acme/envs/dev/m")]);
         // Without TF_DATA_DIR the project has no data folder.
-        let (plain, _) = scan(&[root.join("acme")], &env(&root), &ScanLimits::DEFAULT);
+        let (plain, _) = scan(&[root.join("acme")], &env(&root), &PATIENT);
         assert!(plain[0].needs_init);
         assert_eq!(plain[0].workspace, "default");
     }

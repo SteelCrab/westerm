@@ -3,7 +3,8 @@
 //! without the tool settings (`KUBECONFIG`, `DOCKER_HOST`, …) that the user's
 //! shell sets. The whole environment is kept; each user picks its keys.
 
-#[cfg(any(feature = "plugin-db", feature = "plugin-terraform"))]
+// Only the Unix check of "is it executable" reads the file's mode.
+#[cfg(all(unix, any(feature = "plugin-db", feature = "plugin-terraform")))]
 use std::fs;
 use std::future::Future;
 #[cfg(any(feature = "plugin-db", feature = "plugin-terraform"))]

@@ -94,7 +94,8 @@ pub(crate) mod test_fetch {
         Some(super::tests::versions(&["9.9.9"]))
     }
 
-    /// How often `url` was asked for.
+    /// How often `url` was asked for. The route tests that count are Unix only.
+    #[cfg_attr(not(unix), allow(dead_code))]
     pub(crate) fn asked(url: &str) -> usize {
         ASKED.lock().unwrap().iter().filter(|asked| *asked == url).count()
     }

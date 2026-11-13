@@ -10,6 +10,14 @@ use serde::Serialize;
 
 use crate::plugins::terraform::Tool;
 
+/// The real path of `path`. On Windows without the `\\?\` prefix that
+/// canonicalize adds: under that prefix `/`, `.`, and `..` are plain letters,
+/// so a module's relative `source` could not be joined to it.
+pub fn canonical(path: &Path) -> Option<PathBuf> {
+    let real = fs::canonicalize(path).ok()?;
+    Some(if cfg!(windows) { PathBuf::from(crate::server::docs::shown_path(&real)) } else { real })
+}
+
 /// A `.tf` file larger than this is not read.
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
@@ -303,7 +311,7 @@ impl Walk<'_> {
                 (SourceKind::Local, Some(source)) => Some(dir.join(source)),
                 _ => installed.map(|installed| installed.dir.clone()),
             };
-            let folder = folder.and_then(|folder| fs::canonicalize(folder).ok()).filter(|folder| folder.is_dir());
+            let folder = folder.and_then(|folder| canonical(&folder)).filter(|folder| folder.is_dir());
             let resolved = installed.and_then(|installed| installed.version.clone());
             let label = match kind {
                 SourceKind::Local => Some("local".to_owned()),
@@ -341,7 +349,7 @@ impl Walk<'_> {
 
 /// The tree of the project in `project`, whose tool keeps its data in `data_dir`.
 pub fn build(project: &Path, data_dir: &Path, tool: Tool, limits: &Limits) -> Tree {
-    let root = fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
+    let root = canonical(project).unwrap_or_else(|| project.to_path_buf());
     let mut walk = Walk {
         tool,
         limits,
@@ -547,7 +555,7 @@ resource "null_resource" "after" {}
     #[test]
     fn the_tree_follows_local_and_installed_modules() {
         let dir = tempfile::tempdir().unwrap();
-        let root = fs::canonicalize(dir.path()).unwrap();
+        let root = canonical(dir.path()).unwrap();
         project(&root);
         write(&root, ".terraform/modules/vpc/main.tf", "resource \"aws_vpc\" \"this\" {}\nresource \"aws_subnet\" \"private\" {}");
         write(
@@ -588,7 +596,7 @@ resource "null_resource" "after" {}
     #[test]
     fn the_tree_serializes_as_the_wire_shape() {
         let dir = tempfile::tempdir().unwrap();
-        let root = fs::canonicalize(dir.path()).unwrap();
+        let root = canonical(dir.path()).unwrap();
         write(&root, "main.tf", "module \"m\" {\n  source = \"./m\"\n}\nresource \"aws_vpc\" \"this\" {}");
         write(&root, "m/main.tf", "");
         let tree = build(&root, &root.join(".terraform"), Tool::Terraform, &Limits::DEFAULT);

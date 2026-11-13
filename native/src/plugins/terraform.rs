@@ -166,6 +166,8 @@ pub fn write_spec(state_dir: &Path, token: &str, spec: &RunSpec) -> io::Result<(
 }
 
 /// The spec of `token`, which is deleted once read; None when it is gone or broken.
+/// Only the runner calls it, and the runner is Unix only (like plugin shells).
+#[cfg_attr(not(unix), allow(dead_code))]
 pub fn take_spec(state_dir: &Path, token: &str) -> Option<RunSpec> {
     let path = spec_path(state_dir, token);
     let bytes = fs::read(&path).ok()?;
@@ -174,6 +176,7 @@ pub fn take_spec(state_dir: &Path, token: &str) -> Option<RunSpec> {
 }
 
 /// Writes a run file whole: a reader sees the old file or the new one.
+#[cfg_attr(not(unix), allow(dead_code))]
 fn write_whole<T: Serialize>(state_dir: &Path, path: &Path, value: &T) -> io::Result<()> {
     runs_dir(state_dir)?;
     let temp = path.with_extension("tmp");
@@ -188,6 +191,7 @@ fn read_whole<T: DeserializeOwned>(path: &Path) -> Option<T> {
     serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 pub fn write_started(state_dir: &Path, token: &str, started: &RunStarted) -> io::Result<()> {
     write_whole(state_dir, &started_path(state_dir, token), started)
 }
@@ -196,6 +200,7 @@ pub fn read_started(state_dir: &Path, token: &str) -> Option<RunStarted> {
     read_whole(&started_path(state_dir, token))
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 pub fn write_done(state_dir: &Path, token: &str, done: &RunDone) -> io::Result<()> {
     write_whole(state_dir, &done_path(state_dir, token), done)
 }
