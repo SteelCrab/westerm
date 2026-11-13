@@ -17,6 +17,14 @@ Or run without a global installation:
 npx @pistacrab/westerm
 ```
 
+With pnpm or Bun:
+
+```bash
+pnpm add -g @pistacrab/westerm  # needs Node.js 22 or later
+bun add -g @pistacrab/westerm   # the westerm command starts through Node.js
+bunx @pistacrab/westerm         # runs without Node.js
+```
+
 Then open http://127.0.0.1:4317.
 
 ```bash
