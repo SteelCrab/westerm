@@ -4,6 +4,11 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Terraform plugin: see the modules and resources of your Terraform and OpenTofu projects in the sidebar, read from the code (no backend is reached when the panel opens). Projects are found in the folders of your shells. **Init**, **Validate**, **Plan**, and **Apply…** run in a terminal pane (one run pane for a project, replaced by its next run); there is no Destroy. A finished plan opens a plan pane that lists the resources that change by module, with their changed attributes (sensitive values are never sent to the page), and the tree marks those resources. **Apply…** applies the saved plan file after a confirmation (a `prod` project asks for its folder's name) and is off once the code changed after the plan. Plan files live in westerm's state folder. The workspace picker asks the tool only when it opens. A module row shows when the public registry has a newer version (this can be turned off). Projects that run remotely (`cloud`, `backend "remote"`) can plan in the pane but not apply from the panel. Builds can leave it out with `--no-default-features` (cargo feature `plugin-terraform`).
+- Plugins can replace the shell they opened before under a key (`replaceKey` of `openShell`) and open a plain shell in a folder (`openFolder`).
+
 ## [0.5.0] - 2026-11-12
 
 ### Added
