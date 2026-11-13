@@ -21,7 +21,7 @@ const SPEC_DIR: &str = "db-consoles";
 
 /// A console token as the server makes it: 32 lowercase hex digits.
 pub fn is_token(text: &str) -> bool {
-    text.len() == 32 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    super::is_lower_hex(text, 32)
 }
 
 /// A console to open. The token is always checked.
