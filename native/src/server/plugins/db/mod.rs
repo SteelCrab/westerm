@@ -80,12 +80,7 @@ impl DbState {
 
 }
 
-/// `bytes` random bytes as lowercase hex.
-pub(super) fn random_hex(bytes: usize) -> String {
-    let mut buffer = vec![0u8; bytes];
-    getrandom::fill(&mut buffer).expect("the OS random source");
-    buffer.iter().map(|b| format!("{b:02x}")).collect()
-}
+pub(super) use super::random_hex;
 
 pub(in crate::server) fn routes() -> Router<Shared> {
     Router::new()

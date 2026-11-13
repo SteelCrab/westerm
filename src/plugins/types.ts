@@ -30,6 +30,13 @@ export interface OpenShellOptions {
   cwd: string | null;
   name: string;
   reuse: boolean;
+  /**
+   * Replace the shell this plugin opened before with the same key in the
+   * workspace in view: that session ends and the new shell takes its place.
+   * Without such a shell, the new one opens beside the focused pane. With a
+   * key, `reuse` is not looked at.
+   */
+  replaceKey?: string | null;
 }
 
 export interface OpenPaneOptions {
@@ -75,6 +82,8 @@ export interface PluginPanelProps {
 export interface PluginContext {
   /** reuse: focus the pane this launch opened before in this workspace, if any. */
   openShell(options: OpenShellOptions): void;
+  /** Opens a plain shell in `cwd`, beside the focused pane; `name` as if the user had named it. */
+  openFolder(cwd: string, name: string | null): void;
   openBrowser(url: string): void;
   /** Opens a pane the plugin draws (`PluginInstance.PaneView`), beside the focused pane. */
   openPane(options: OpenPaneOptions): void;

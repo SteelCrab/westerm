@@ -115,6 +115,7 @@ pub async fn run(options: Options) -> std::io::Result<()> {
     let host = Arc::new(HostClient::default());
     let remote = Arc::new(RemoteManager::new(state_dir()?));
     let plugins = Arc::new(plugins::PluginState::load(&state_dir()?));
+    plugins.on_server_start();
     let tunnel =
         cloudflare::TunnelManager::new(Arc::clone(&host), Arc::clone(&remote), Arc::clone(&plugins), state_dir()?);
     let state = Arc::new(AppState {

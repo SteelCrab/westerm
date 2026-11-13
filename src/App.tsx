@@ -25,7 +25,7 @@ import { PluginManager } from "./plugins/PluginManager.tsx";
 import { BUILTIN_PLUGINS } from "./plugins/registry.ts";
 import type { PluginContext, PluginStatus } from "./plugins/types.ts";
 import { usePlugins } from "./plugins/usePlugins.ts";
-import { planOpenPane, pluginFolders } from "./pluginPanes.ts";
+import { planOpenFolder, planOpenPane, planOpenShell, pluginFolders } from "./pluginPanes.ts";
 import { pluginPlace } from "./pluginPlace.ts";
 import {
   buildCommands,
@@ -58,7 +58,9 @@ import {
   activeTab,
   activeWorkspace,
   createDashboard,
-  findOpenedBy,
+  type DashboardAction,
+  dashboardReducer,
+  endedBy,
   focusedShellId,
   newDocsPane,
   paneToward,
@@ -66,9 +68,7 @@ import {
   stepTab,
   tabByNumber,
   takenOver,
-  dashboardReducer,
   workspaceTabs,
-  type DashboardAction,
 } from "./workspace.ts";
 
 /** Shape of the pane area, to split new panes along their longer side. */
@@ -195,15 +195,9 @@ export function App({ tunnelPage = false }: AppProps = {}) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // Closing a pane, tab, or workspace ends its processes; anything else only detaches.
+  // Closing a pane, tab, or workspace, and replacing a pane, ends its processes; anything else only detaches.
   const dispatch = useCallback((action: DashboardAction) => {
-    if (action.type === "close") markEnding([action.id]);
-    if (action.type === "closeTab") {
-      markEnding(stateRef.current.tabs.find((tab) => tab.id === action.id)?.paneIds ?? []);
-    }
-    if (action.type === "closeWorkspace") {
-      markEnding(workspaceTabs(stateRef.current, action.id).flatMap((tab) => tab.paneIds));
-    }
+    markEnding(endedBy(stateRef.current, action));
     rawDispatch(action);
   }, []);
 
@@ -237,11 +231,12 @@ export function App({ tunnelPage = false }: AppProps = {}) {
   const refreshPlugins = useRef(() => {});
   const pluginContext = useCallback(
     (id: string): PluginContext => ({
-      openShell: ({ action, target, cwd, name, reuse }) => {
-        const plugin = { plugin: id, action, target };
-        const found = reuse ? findOpenedBy(stateRef.current, plugin) : null;
-        if (found) dispatch({ type: "focus", id: found });
-        else dispatch({ type: "open", id: newId("s"), kind: "shell", cwd, plugin, name, aspect: layerAspect() });
+      openShell: (options) => {
+        dispatch(planOpenShell(stateRef.current, id, options, newId("s"), layerAspect()));
+        closeDrawer();
+      },
+      openFolder: (cwd, name) => {
+        dispatch(planOpenFolder(cwd, name, newId("s"), layerAspect()));
         closeDrawer();
       },
       openBrowser: (url) => {

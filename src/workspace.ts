@@ -13,19 +13,7 @@ import {
 } from "../shared/workspace-file.ts";
 import type { AgentDisplay, TabAgentDisplay } from "./agentDisplay.ts";
 import type { Notice } from "./i18n/messages.ts";
-import {
-  dockPane,
-  fromGrid,
-  insertPane,
-  leaves,
-  neighbor,
-  type Direction,
-  removePane,
-  setSizesAt,
-  swapPanes,
-  type LayoutNode,
-  type Side,
-} from "../shared/layout.ts";
+import { dockPane, fromGrid, insertPane, leaves, neighbor, type Direction, removePane, setSizesAt, swapPanes, type LayoutNode, type Side, replacePane } from "../shared/layout.ts";
 
 /** disconnected: the dashboard lost the connection and is reconnecting. */
 export type SessionStatus = "connecting" | "running" | "disconnected" | "exited" | "error";
@@ -42,6 +30,12 @@ export interface DocsPane {
   /** The open file, relative to the root with `/`, or null. */
   file: string | null;
   mode: DocsMode;
+}
+
+/** A plugin and the key it opened a shell under (`OpenShellOptions.replaceKey`). */
+export interface RunKey {
+  plugin: string;
+  key: string;
 }
 
 /** What a plugin pane shows. See `SavedPluginPane` in shared/workspace-file.ts. */
@@ -100,6 +94,8 @@ export interface Session {
   pluginLaunch: PluginLaunch | null;
   /** The plugin launch that opened this session; kept after the attach to find the pane again. Not saved. */
   openedBy: PluginLaunch | null;
+  /** The key a plugin opened this shell under, to replace it with its next one. Not saved. */
+  runKey: RunKey | null;
   /** A restored shell here resumes its agent, when Settings allow it. Saved with the layout. */
   autoResume: boolean;
 }
@@ -163,6 +159,10 @@ export type DashboardAction =
       launch?: AgentLaunch | null;
       /** A new shell starts this plugin command. */
       plugin?: PluginLaunch | null;
+      /** The key the plugin opens this shell under. */
+      runKey?: RunKey;
+      /** This session ends and the new one takes its place in the layout. */
+      replaceId?: string;
       /** The session's name, as if the user had renamed it. */
       name?: string | null;
       target?: string | null;
@@ -368,6 +368,25 @@ export function findOpenedBy(state: Dashboard, launch: PluginLaunch): string | n
   return found?.id ?? null;
 }
 
+/**
+ * The sessions whose processes `action` ends: closing a pane, a tab, or a
+ * workspace, and replacing a pane. Anything else only detaches.
+ */
+export function endedBy(state: Dashboard, action: DashboardAction): string[] {
+  if (action.type === "close") return [action.id];
+  if (action.type === "closeTab") return state.tabs.find((tab) => tab.id === action.id)?.paneIds ?? [];
+  if (action.type === "closeWorkspace") return workspaceTabs(state, action.id).flatMap((tab) => tab.paneIds);
+  if (action.type === "open" && action.replaceId !== undefined) return [action.replaceId];
+  return [];
+}
+
+/** The shell in the workspace in view that this plugin opened under this key, if any. */
+export function findRunPane(state: Dashboard, plugin: string, key: string): string | null {
+  const shown = new Set(workspaceTabs(state, activeWorkspace(state).id).flatMap((tab) => tab.paneIds));
+  const found = state.sessions.find(({ id, runKey }) => shown.has(id) && runKey?.plugin === plugin && runKey.key === key);
+  return found?.id ?? null;
+}
+
 /** The plugin pane in the workspace in view that this plugin opened with this key, if any. */
 export function findPluginPane(state: Dashboard, plugin: string, reuseKey: string): string | null {
   const shown = new Set(workspaceTabs(state, activeWorkspace(state).id).flatMap((tab) => tab.paneIds));
@@ -481,6 +500,7 @@ function newSession(
     launch: null,
     pluginLaunch: null,
     openedBy: null,
+    runKey: null,
     autoResume: true,
   };
 }
@@ -685,8 +705,16 @@ function reduce(state: Dashboard, action: DashboardAction): Dashboard {
         launch: action.launch ?? null,
         pluginLaunch: action.plugin ?? null,
         openedBy: action.plugin ?? null,
+        runKey: action.runKey ?? null,
         name: action.name ?? null,
       };
+      // A replaced session ends, and the new one takes its leaf; its tab shows, as for `focus`.
+      const replaced = action.replaceId === undefined ? undefined : sessionTab(state, action.replaceId);
+      if (replaced && action.replaceId !== undefined) {
+        const sessions = [...state.sessions.filter((item) => item.id !== action.replaceId), session];
+        const swapped = withLayout(replaced, replacePane(replaced.layout, action.replaceId, session.id));
+        return patchTab(showTab({ ...state, sessions }, replaced.id), replaced.id, { ...swapped, focusedId: session.id, maximizedId: null });
+      }
       // A new session leaves maximize so it is visible, beside the focused pane.
       const next = { ...state, sessions: [...state.sessions, session] };
       const placed = withLayout(tab, insertPane(tab.layout, session.id, tab.focusedId, action.aspect ?? DEFAULT_ASPECT));

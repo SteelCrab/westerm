@@ -54,6 +54,14 @@ fn main() {
         let Some(program) = args.next() else { exit_usage() };
         std::process::exit(server::tunnel_guard(program.into(), args.map(Into::into).collect()));
     }
+    // The Terraform plugin's runs go through this, typed into a new shell; USAGE leaves it out too.
+    #[cfg(feature = "plugin-terraform")]
+    if args.peek().map(String::as_str) == Some(plugins::terraform::RUNNER_COMMAND) {
+        args.next();
+        // The host names the state folder: this shell does not have westerm's variables.
+        let (Some(token), Some(dir), None) = (args.next(), args.next(), args.next()) else { exit_usage() };
+        std::process::exit(plugins::terraform_runner::run(std::path::Path::new(&dir), &token));
+    }
     let command = match args.peek().map(String::as_str) {
         Some("serve" | "host" | "stop" | "update" | "gate" | "remote-dashboard" | "remote-setup") => args.next().unwrap(),
         _ => "serve".to_owned(),
