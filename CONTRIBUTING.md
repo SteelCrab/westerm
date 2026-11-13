@@ -1,7 +1,5 @@
 # Contributing to westerm
 
-**English** · [한국어](CONTRIBUTING.ko.md)
-
 Thank you for helping. This guide covers how to set up, what to check before a pull request, and the rules that keep the project working.
 
 westerm is under the [MIT License](LICENSE). By sending a contribution, you agree to license it under the same terms.
@@ -168,7 +166,7 @@ All four must pass. Then check:
 - [ ] UI text is in `src/i18n/messages.ts`, in all four languages.
 - [ ] For a UI change, the pull request has a screenshot. Try light and dark themes.
 - [ ] Docs match the change: `docs/` for behavior, the READMEs for run or develop steps.
-- [ ] `CHANGELOG.md` has a line under `[Unreleased]` for a change that users notice.
+- [ ] `CHANGELOG.md` has one short line under `[Unreleased]` for a change that users notice. Details go in `docs/`.
 
 ## Rules
 

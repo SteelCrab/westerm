@@ -78,6 +78,6 @@ westerm
 
 ## 기여
 
-버그와 아이디어는 [Issues](https://github.com/SteelCrab/westerm/issues)에 올립니다. PR 전에 [CONTRIBUTING.ko.md](CONTRIBUTING.ko.md)를 읽어 주세요.
+버그와 아이디어는 [Issues](https://github.com/SteelCrab/westerm/issues)에 올립니다. PR 전에 [CONTRIBUTING.md](CONTRIBUTING.md)(영어)를 읽어 주세요.
 
 westerm은 [MIT 라이선스](LICENSE)입니다.
