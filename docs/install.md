@@ -65,6 +65,18 @@ The desktop app opens the same dashboard in its own window, on macOS, Windows, a
 - The app is not notarized by Apple, so macOS blocks the first open. Allow it once with `xattr -dr com.apple.quarantine /Applications/westerm.app`, or in System Settings ▸ Privacy & Security ▸ Open Anyway. Windows SmartScreen may also ask once: More info ▸ Run anyway.
 - To build it yourself: `npm run build:app` for this computer's system and CPU (`-- --target universal-apple-darwin` for both Mac CPUs). The files go to `dist-app/`. Linux needs the WebKitGTK 4.1 development packages (on Ubuntu: `libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev libdbus-1-dev`). `npm run app:dev` runs a debug build.
 
+## Check a download
+
+Each release file (archives, desktop apps, and Linux packages) has a build attestation. It is a signed record, kept by GitHub, that this repository's Release workflow built the file from the tagged source. Check a file with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh attestation verify westerm-linux-app-amd64.deb --repo SteelCrab/westerm
+```
+
+- Releases up to v0.5.0 have no attestations.
+- The `.sha256` file next to each release file only catches a broken download. It does not show who built the file.
+- The Linux packages have no GPG signature.
+
 ## Build from source
 
 Building needs Node.js 24 or later and Rust (cargo).
