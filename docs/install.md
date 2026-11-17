@@ -15,6 +15,33 @@ Or run `npx @pistacrab/westerm` without a global installation. The package inclu
 
 Update with `npm install -g @pistacrab/westerm@latest`, then restart westerm. The built-in updater replaces the bundled executable directly; npm updates keep the package version in sync.
 
+## pnpm
+
+pnpm installs the same npm package. It needs Node.js 22 or later:
+
+```bash
+pnpm add -g @pistacrab/westerm
+westerm
+```
+
+- Or run `pnpm dlx @pistacrab/westerm` without a global installation.
+- If pnpm says its global bin folder is not in your PATH, run `pnpm setup` once and open a new terminal.
+- Update with `pnpm add -g @pistacrab/westerm@latest`, then restart westerm.
+- pnpm installs a new release only after it is one day old (`minimumReleaseAge`, 1440 minutes by default). Until then, `latest` gives the previous release. To install a new release sooner, name its version: `pnpm add -g @pistacrab/westerm@X.Y.Z`.
+
+## Bun
+
+Bun installs the same npm package:
+
+```bash
+bun add -g @pistacrab/westerm
+westerm
+```
+
+- The `westerm` command is a small Node.js script (`#!/usr/bin/env node`) that starts the bundled executable, so it needs Node.js 22 or later on your PATH.
+- Without Node.js, run `bunx @pistacrab/westerm`. Bun then runs the script itself.
+- Update with `bun add -g @pistacrab/westerm@latest`, then restart westerm.
+
 ## Install script
 
 macOS and Linux:

@@ -42,6 +42,24 @@ npm install -g @pistacrab/westerm
 
 Or run `npx @pistacrab/westerm`. Update the npm installation with `npm install -g @pistacrab/westerm@latest`.
 
+#### pnpm
+
+Requires Node.js 22 or later.
+
+```bash
+pnpm add -g @pistacrab/westerm
+```
+
+Or run `pnpm dlx @pistacrab/westerm`. Update with `pnpm add -g @pistacrab/westerm@latest`. pnpm installs a new release only after it is one day old (its `minimumReleaseAge` setting); to install it sooner, name the version: `pnpm add -g @pistacrab/westerm@X.Y.Z`.
+
+#### Bun
+
+```bash
+bun add -g @pistacrab/westerm
+```
+
+This installs the same npm package. The installed `westerm` command starts through Node.js 22 or later. Without Node.js, run `bunx @pistacrab/westerm`. Update with `bun add -g @pistacrab/westerm@latest`.
+
 #### Cargo
 
 Requires a current stable Rust toolchain and a C compiler/linker.
