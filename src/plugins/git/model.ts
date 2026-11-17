@@ -20,6 +20,32 @@ export interface GitStatus {
   commits: { hash: string; message: string; author: string; time: string }[];
 }
 
+/** A repository below a folder. A failed status leaves `changes` null and says why in `error`. */
+export interface GitFoundRepository {
+  path: string;
+  /** The path from the folder, with `/`. */
+  name: string;
+  branch: string | null;
+  head: string | null;
+  changes: number | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  error: string | null;
+}
+
+/** The repositories up to two folders below `root`. */
+export interface GitFolder {
+  root: string;
+  /** The worktree that holds `root`; null outside one. */
+  repository: string | null;
+  repos: GitFoundRepository[];
+  truncated: boolean;
+}
+
+/** The last part of a path. */
+export const lastName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+
 export interface GitEntry extends GitFile {
   staged: boolean;
   status: string;

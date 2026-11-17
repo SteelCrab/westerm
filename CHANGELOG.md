@@ -7,6 +7,7 @@ All notable changes to westerm are listed here. The format follows [Keep a Chang
 ### Added
 
 - Release files have build attestations; check one with `gh attestation verify <file> --repo SteelCrab/westerm`.
+- Git plugin: a folder that is not a repository lists the repositories inside it.
 
 ## [0.5.0] - 2026-11-13
 
