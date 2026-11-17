@@ -6,7 +6,7 @@ import type { Locale } from "../../i18n/messages.ts";
 const en = {
   name: "Git",
   description:
-    "See the changes of the repository you work in. Stage, commit, switch branches, pull, and push. Read recent commits and their diffs.",
+    "See the changes of the repository you work in, or of every repository in a folder. Stage, commit, switch branches, pull, and push. Read recent commits and their diffs.",
   permissions: ["Run git commands in the folders of your terminals", "Change the repository: stage, commit, switch branches, pull, push"],
   title: "Git",
   hint: "Git changes and history",
@@ -53,6 +53,15 @@ const en = {
   filePreview: (path: string) => `${path} · Diff preview`,
   fileLabel: (path: string, status: string) => `${path} · ${status}`,
   status: { "M": "Modified", "A": "Added", "?": "Untracked", "D": "Deleted", "R": "Renamed", "C": "Copied", "T": "Type changed", "U": "Conflict" } as Record<string, string>,
+  repositories: "Repositories in this folder",
+  repoCount: (count: number) => `${count} ${count === 1 ? "repository" : "repositories"}`,
+  dirtyCount: (count: number) => `${count} with changes`,
+  openRepo: (name: string) => `Open repository: ${name}`,
+  backToList: (count: number) => `Repositories (${count})`,
+  backToRepo: (name: string) => `Back to ${name}`,
+  nestedRepos: (count: number) => `${count} ${count === 1 ? "repository" : "repositories"} inside`,
+  noRepos: "No Git repositories in this folder",
+  truncated: (count: number) => `Showing the first ${count}`,
 };
 
 export type GitMessages = typeof en;
@@ -60,7 +69,7 @@ export type GitMessages = typeof en;
 const ko: GitMessages = {
   name: "Git",
   description:
-    "작업 중인 저장소의 변경 사항을 봅니다. 스테이징, 커밋, 브랜치 전환, 받기, 보내기를 합니다. 최근 커밋과 그 변경 내용을 봅니다.",
+    "작업 중인 저장소나 폴더 안 저장소들의 변경 사항을 봅니다. 스테이징, 커밋, 브랜치 전환, 받기, 보내기를 합니다. 최근 커밋과 그 변경 내용을 봅니다.",
   permissions: ["터미널의 폴더에서 git 명령 실행", "저장소 변경: 스테이징, 커밋, 브랜치 전환, 받기, 보내기"],
   title: "Git",
   hint: "Git 변경 사항과 기록",
@@ -107,12 +116,21 @@ const ko: GitMessages = {
   filePreview: (path) => `${path} · 변경 미리보기`,
   fileLabel: (path, status) => `${path} · ${status}`,
   status: { "M": "수정", "A": "추가", "?": "추적 안 됨", "D": "삭제", "R": "이름 변경", "C": "복사", "T": "유형 변경", "U": "충돌" },
+  repositories: "이 폴더의 저장소",
+  repoCount: (count) => `저장소 ${count}개`,
+  dirtyCount: (count) => `변경 있음 ${count}`,
+  openRepo: (name) => `저장소 열기: ${name}`,
+  backToList: (count) => `저장소 목록 (${count})`,
+  backToRepo: (name) => `돌아가기: ${name}`,
+  nestedRepos: (count) => `안의 저장소 ${count}개`,
+  noRepos: "이 폴더에는 Git 저장소가 없습니다",
+  truncated: (count) => `처음 ${count}개만 보입니다`,
 };
 
 const ja: GitMessages = {
   name: "Git",
   description:
-    "作業中のリポジトリの変更を表示します。ステージ、コミット、ブランチの切り替え、プル、プッシュができます。最近のコミットとその差分も確認できます。",
+    "作業中のリポジトリや、フォルダー内のリポジトリの変更を表示します。ステージ、コミット、ブランチの切り替え、プル、プッシュができます。最近のコミットとその差分も確認できます。",
   permissions: ["ターミナルのフォルダーで git コマンドを実行", "リポジトリの変更: ステージ、コミット、ブランチの切り替え、プル、プッシュ"],
   title: "Git",
   hint: "Git の変更と履歴",
@@ -159,12 +177,21 @@ const ja: GitMessages = {
   filePreview: (path) => `${path} · 差分プレビュー`,
   fileLabel: (path, status) => `${path} · ${status}`,
   status: { "M": "変更", "A": "追加", "?": "未追跡", "D": "削除", "R": "名前変更", "C": "コピー", "T": "種類変更", "U": "競合" },
+  repositories: "このフォルダーのリポジトリ",
+  repoCount: (count) => `リポジトリ ${count} 件`,
+  dirtyCount: (count) => `変更あり ${count}`,
+  openRepo: (name) => `リポジトリを開く: ${name}`,
+  backToList: (count) => `リポジトリ一覧 (${count})`,
+  backToRepo: (name) => `${name} に戻る`,
+  nestedRepos: (count) => `内部のリポジトリ ${count} 件`,
+  noRepos: "このフォルダーに Git リポジトリはありません",
+  truncated: (count) => `最初の ${count} 件を表示しています`,
 };
 
 const zh: GitMessages = {
   name: "Git",
   description:
-    "查看当前仓库的更改。可以暂存、提交、切换分支、拉取和推送。还可以查看最近的提交及其差异。",
+    "查看当前仓库或文件夹中各仓库的更改。可以暂存、提交、切换分支、拉取和推送。还可以查看最近的提交及其差异。",
   permissions: ["在终端所在的文件夹中运行 git 命令", "更改仓库：暂存、提交、切换分支、拉取、推送"],
   title: "Git",
   hint: "Git 更改和历史",
@@ -211,6 +238,15 @@ const zh: GitMessages = {
   filePreview: (path) => `${path} · 差异预览`,
   fileLabel: (path, status) => `${path} · ${status}`,
   status: { "M": "修改", "A": "新增", "?": "未跟踪", "D": "删除", "R": "重命名", "C": "复制", "T": "类型更改", "U": "冲突" },
+  repositories: "此文件夹中的仓库",
+  repoCount: (count) => `${count} 个仓库`,
+  dirtyCount: (count) => `${count} 个有更改`,
+  openRepo: (name) => `打开仓库：${name}`,
+  backToList: (count) => `仓库列表 (${count})`,
+  backToRepo: (name) => `返回 ${name}`,
+  nestedRepos: (count) => `内部有 ${count} 个仓库`,
+  noRepos: "此文件夹中没有 Git 仓库",
+  truncated: (count) => `仅显示前 ${count} 个`,
 };
 
 export const GIT_TEXT: Record<Locale, GitMessages> = { ko, en, ja, zh };

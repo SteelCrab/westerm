@@ -149,7 +149,7 @@ async fn git_get(
     State(state): State<Shared>, Path((target, name)): Path<(String, String)>,
     RawQuery(query): RawQuery, headers: HeaderMap,
 ) -> Response {
-    if !matches!(name.as_str(), "status" | "diff" | "commit" | "commit-diff") { return StatusCode::NOT_FOUND.into_response(); }
+    if !matches!(name.as_str(), "status" | "repos" | "diff" | "commit" | "commit-diff") { return StatusCode::NOT_FOUND.into_response(); }
     let path = match query { Some(query) => format!("{}{name}?{query}", git::PREFIX), None => format!("{}{name}", git::PREFIX) };
     match checked_get_target(&state, &headers, &target) {
         Ok(target) => forward(&state, &target, "GET", &path, None).await,
@@ -303,6 +303,23 @@ mod tests {
         let mut evil = page_headers();
         evil.insert(header::HOST, "evil.example:4317".parse().unwrap());
         for name in ["history", "worktrees"] {
+            assert_eq!(get(name, evil.clone()).await.status(), StatusCode::FORBIDDEN, "{name}");
+            // The own page, with no link to the server up.
+            assert_eq!(get(name, page_headers()).await.status(), StatusCode::SERVICE_UNAVAILABLE, "{name}");
+        }
+    }
+
+    /// Refusals answer before any link to the server is opened.
+    #[tokio::test]
+    async fn git_routes_refuse_unknown_names_and_other_pages() {
+        let state: Shared = Arc::new(test_state(&["http://127.0.0.1:4317"]));
+        let get = |name: &str, headers: HeaderMap| {
+            git_get(State(state.clone()), Path(("prod".to_owned(), name.to_owned())), RawQuery(None), headers)
+        };
+        assert_eq!(get("secret", page_headers()).await.status(), StatusCode::NOT_FOUND);
+        let mut evil = page_headers();
+        evil.insert(header::HOST, "evil.example:4317".parse().unwrap());
+        for name in ["status", "repos"] {
             assert_eq!(get(name, evil.clone()).await.status(), StatusCode::FORBIDDEN, "{name}");
             // The own page, with no link to the server up.
             assert_eq!(get(name, page_headers()).await.status(), StatusCode::SERVICE_UNAVAILABLE, "{name}");

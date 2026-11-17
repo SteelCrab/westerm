@@ -2,11 +2,11 @@
 // computer, or to the server of a remote window.
 
 import type { PluginContext } from "../types.ts";
-import type { GitCommitDetail, GitEntry, GitOperation, GitStatus } from "./model.ts";
+import type { GitCommitDetail, GitEntry, GitFolder, GitOperation, GitStatus } from "./model.ts";
 
 export type GitResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
-type GitRoute = "status" | "diff" | "action" | "commit" | "commit-diff";
+type GitRoute = "status" | "repos" | "diff" | "action" | "commit" | "commit-diff";
 
 /** The route's path under the plugin, with its query. */
 export function gitPath(route: GitRoute, query?: Record<string, string>): string {
@@ -27,6 +27,9 @@ async function call<T>(ctx: PluginContext, path: string, init?: RequestInit): Pr
 
 export const fetchGitStatus = (ctx: PluginContext, dir: string, signal?: AbortSignal) =>
   call<GitStatus>(ctx, gitPath("status", { dir }), { signal });
+
+export const fetchGitRepos = (ctx: PluginContext, dir: string, signal?: AbortSignal) =>
+  call<GitFolder>(ctx, gitPath("repos", { dir }), { signal });
 
 export const fetchGitDiff = (ctx: PluginContext, dir: string, entry: Pick<GitEntry, "path" | "staged">, signal?: AbortSignal) =>
   call<{ text: string }>(ctx, gitPath("diff", { dir, path: entry.path, staged: String(entry.staged) }), { signal });

@@ -1,13 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, FileCode2, FileText,
+  ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, FileCode2, FileText,
   FolderGit2, GitBranch, GitCommitHorizontal, Minus, Plus, RotateCcw,
 } from "lucide-react";
 import { useI18n } from "../../i18n/index.tsx";
 import type { PluginContext, PluginPanelProps } from "../types.ts";
-import { fetchGitCommit, fetchGitCommitDiff, fetchGitDiff, fetchGitStatus, runGitOperation } from "./api.ts";
+import { fetchGitCommit, fetchGitCommitDiff, fetchGitDiff, fetchGitRepos, fetchGitStatus, runGitOperation } from "./api.ts";
 import { GIT_TEXT } from "./i18n.ts";
-import { gitEntries, sameGitEntry, type GitCommitDetail, type GitEntry, type GitOperation, type GitStatus } from "./model.ts";
+import {
+  gitEntries, lastName, sameGitEntry,
+  type GitCommitDetail, type GitEntry, type GitFolder, type GitFoundRepository, type GitOperation, type GitStatus,
+} from "./model.ts";
+
+/**
+ * auto: the folder's repository, or the list when the folder is not in one.
+ * list: the repositories below the folder. repo: one of them, opened from the list.
+ */
+type GitView = "auto" | "list" | { repo: string };
+
+/** The list runs `git status` in every listed repository, so it refreshes less often than one repository. */
+const LIST_REFRESH_MS = 15000;
 
 /** The panel's text in the UI language. */
 function useGitText() {
@@ -17,30 +29,50 @@ function useGitText() {
 
 /**
  * The repository of the focused pane's folder, or of a folder the user chose:
- * its changes, a commit box, and the recent commits.
+ * its changes, a commit box, and the recent commits. A folder that is not in
+ * a repository lists the repositories below it instead.
  */
 export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: PluginContext }) {
   const { g, locale } = useGitText();
   const folders = place.folders;
   const [chosen, setChosen] = useState<string | null>(null);
   const dir = chosen ?? place.focused;
-  const currentDir = useRef(dir);
-  currentDir.current = dir;
+  // The view belongs to its folder: another folder starts at auto.
+  const [navigation, setNavigation] = useState<{ dir: string | null; view: GitView }>({ dir: null, view: "auto" });
+  const view = navigation.dir === dir ? navigation.view : "auto";
+  const go = (next: GitView) => setNavigation({ dir, view: next });
+  const [folder, setFolder] = useState<{ dir: string; value: GitFolder | null; error: string } | null>(null);
+  const folderNow = folder?.dir === dir ? folder : null;
+  const found = folderNow?.value ?? null;
+  const opened = typeof view === "object" ? view.repo : null;
+  const listing = view === "list" || (view === "auto" && found !== null && found.repository === null);
+  // Until the folder answers, it is not known whether it has a status to read.
+  const statusDir = opened ?? (!listing && folderNow ? dir : null);
+  const listingRef = useRef(listing);
+  listingRef.current = listing;
+  const currentDir = useRef(statusDir);
+  currentDir.current = statusDir;
   const [folderInput, setFolderInput] = useState("");
   const [loaded, setLoaded] = useState<{ dir: string; repo: GitStatus } | null>(null);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(false);
   const [revision, setRevision] = useState(0);
+  // The folder scan has its own count: an action in one repository does not scan the folder again.
+  const [folderRevision, setFolderRevision] = useState(0);
   const [selected, setSelected] = useState<Pick<GitEntry, "path" | "staged"> | null>(null);
   const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  const repo = loaded?.dir === dir ? loaded.repo : null;
+  const repo = loaded?.dir === statusDir ? loaded.repo : null;
   const { staged, changes } = gitEntries(repo?.files ?? []);
   const current = [...staged, ...changes].find((file) => sameGitEntry(selected, file)) ?? null;
+
+  useEffect(() => {
+    setFolderInput(dir ?? "");
+  }, [dir]);
 
   useEffect(() => {
     setSelected(null);
@@ -48,12 +80,11 @@ export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: Plug
     setMessage("");
     setNotice("");
     setError("");
-    setFolderInput(dir ?? "");
-  }, [dir]);
+  }, [statusDir]);
 
   useEffect(() => {
     setLoadError("");
-    if (!dir) { setLoading(false); return; }
+    if (!statusDir) { setLoading(false); return; }
     let cancelled = false;
     let reading = false;
     const controller = new AbortController();
@@ -61,10 +92,10 @@ export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: Plug
       if (reading || busyRef.current) return;
       reading = true;
       setLoading(true);
-      const result = await fetchGitStatus(ctx, dir, controller.signal);
+      const result = await fetchGitStatus(ctx, statusDir, controller.signal);
       if (!cancelled) {
         if (result.ok) {
-          setLoaded({ dir, repo: result.value });
+          setLoaded({ dir: statusDir, repo: result.value });
           setLoadError("");
         } else {
           setLoadError(result.error);
@@ -84,7 +115,32 @@ export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: Plug
       window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [ctx, dir, revision]);
+  }, [ctx, statusDir, revision]);
+
+  // The repositories below the folder. Only the list refreshes them; a repository's view refreshes its status.
+  useEffect(() => {
+    if (!dir) return;
+    let cancelled = false;
+    let reading = false;
+    const controller = new AbortController();
+    const refresh = async () => {
+      if (reading) return;
+      reading = true;
+      const result = await fetchGitRepos(ctx, dir, controller.signal);
+      if (!cancelled) setFolder(result.ok ? { dir, value: result.value, error: "" } : { dir, value: null, error: result.error });
+      reading = false;
+    };
+    void refresh();
+    const interval = window.setInterval(() => { if (!document.hidden && listingRef.current) void refresh(); }, LIST_REFRESH_MS);
+    const onFocus = () => { if (listingRef.current) void refresh(); };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [ctx, dir, folderRevision]);
 
   const perform = async (operation: GitOperation) => {
     if (!repo || busyRef.current || loading) return;
@@ -95,7 +151,7 @@ export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: Plug
     const result = await runGitOperation(ctx, repo.root, operation);
     busyRef.current = false;
     setBusy(false);
-    if (currentDir.current !== dir) return;
+    if (currentDir.current !== statusDir) return;
     if (result.ok) {
       setNotice(operation.action === "commit" ? g.commitDone : g.operationDone);
       if (operation.action === "commit") setMessage("");
@@ -107,20 +163,26 @@ export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: Plug
     setRevision((value) => value + 1);
   };
   const disabled = busy || loading;
-  const refresh = () => setRevision((value) => value + 1);
+  const refreshFolder = () => setFolderRevision((value) => value + 1);
+  const refresh = () => { setRevision((value) => value + 1); refreshFolder(); };
   const changeFiles = (files: GitEntry[], value: boolean) => {
     void perform({ action: value ? "stage" : "unstage", paths: files.map((file) => file.path) });
   };
+  const repoCount = found?.repos.length ?? 0;
+  // Waiting for the folder to say whether it is in a repository.
+  const deciding = Boolean(dir) && !opened && !folderNow;
+  const shownError = listing ? folderNow?.error ?? "" : error || loadError;
+  const changeCount = listing ? (found?.repos ?? []).reduce((sum, item) => sum + (item.changes ?? 0), 0) : repo?.files.length ?? 0;
 
   if (compact) {
     return (
       <aside className="session-panel git-panel git-compact" aria-label={g.title}>
         <FolderGit2 size={19} strokeWidth={1.75} aria-hidden="true" />
-        <span className="git-count" title={g.fileCount(repo?.files.length ?? 0)}>{repo?.files.length ?? 0}</span>
+        <span className="git-count" title={g.fileCount(changeCount)}>{changeCount}</span>
         <button type="button" className="icon-button" title={g.refresh} aria-label={g.refresh} onClick={refresh} disabled={disabled}>
           <RotateCcw size={15} />
         </button>
-        {(error || loadError) && <span role="alert" className="git-error" title={error || loadError}>!</span>}
+        {shownError && <span role="alert" className="git-error" title={shownError}>!</span>}
       </aside>
     );
   }
@@ -153,9 +215,21 @@ export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: Plug
               {[...new Set([...folders, ...(chosen ? [chosen] : [])])].map((path) => <option key={path} value={path}>{path}</option>)}
             </select>
           )}
+          {opened && <button type="button" className="git-nav-link" aria-label={g.backToList(repoCount)} disabled={busy}
+            onClick={() => { go("list"); refreshFolder(); }}>
+            <ArrowLeft size={12} aria-hidden="true" />{g.backToList(repoCount)}
+          </button>}
+          {listing && found?.repository && <button type="button" className="git-nav-link" aria-label={g.backToRepo(lastName(found.repository))}
+            onClick={() => go("auto")}>
+            <ArrowLeft size={12} aria-hidden="true" />{g.backToRepo(lastName(found.repository))}
+          </button>}
+          {view === "auto" && !listing && repoCount > 0 && <button type="button" className="git-nav-link" aria-label={g.nestedRepos(repoCount)}
+            disabled={busy} onClick={() => go("list")}>
+            <FolderGit2 size={12} aria-hidden="true" />{g.nestedRepos(repoCount)}<ChevronRight size={12} aria-hidden="true" />
+          </button>}
           {repo && <>
             <div className="git-repo-name">
-              <strong title={repo.root}>{repo.root.split(/[\\/]/).filter(Boolean).pop() ?? repo.root}</strong>
+              <strong title={repo.root}>{lastName(repo.root)}</strong>
               <span title={repo.root}>{repo.root}</span>
             </div>
             <div className="git-branch-row">
@@ -181,8 +255,9 @@ export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: Plug
             </div>
           </>}
         </section>
-        {(error || loadError) && <p className="git-error" role="alert">{g.error}: {error || loadError}</p>}
-        {!repo && <p className="git-group-empty">{loading ? g.loading : g.chooseFolder}</p>}
+        {shownError && <p className="git-error" role="alert">{g.error}: {shownError}</p>}
+        {listing && found && <RepositoryList folder={found} onOpen={(path) => go({ repo: path })} />}
+        {!repo && !(listing && found) && <p className="git-group-empty">{loading || deciding ? g.loading : g.chooseFolder}</p>}
         {repo && <>
           <form className="git-commit-form" onSubmit={(event) => {
             event.preventDefault();
@@ -219,8 +294,51 @@ export function GitPanel({ ctx, compact, place }: PluginPanelProps & { ctx: Plug
           </details>
         </>}
       </div>
-      <footer className="git-footer"><span role="status">{busy ? g.working : loading ? g.loading : notice || (repo ? g.ready : g.chooseFolder)}</span></footer>
+      <footer className="git-footer"><span role="status">
+        {busy ? g.working : loading || deciding ? g.loading : notice || (listing && found ? g.repoCount(repoCount) : repo ? g.ready : g.chooseFolder)}
+      </span></footer>
     </aside>
+  );
+}
+
+/** The repositories below a folder, grouped by the folder that holds them, in the server's order. */
+function RepositoryList({ folder, onOpen }: { folder: GitFolder; onOpen: (path: string) => void }) {
+  const { g } = useGitText();
+  const groups = new Map<string, GitFoundRepository[]>();
+  for (const item of folder.repos) {
+    const slash = item.name.lastIndexOf("/");
+    const parent = item.name.slice(0, slash + 1);
+    groups.set(parent, [...(groups.get(parent) ?? []), item]);
+  }
+  const dirty = folder.repos.filter((item) => item.changes).length;
+  return (
+    <section className="git-repo-list" aria-label={g.repositories}>
+      <div className="git-repo-list-heading">
+        <span>{g.repoCount(folder.repos.length)}</span>
+        {dirty > 0 && <span className="git-repo-dirty">{g.dirtyCount(dirty)}</span>}
+      </div>
+      {folder.repos.length === 0 && <p className="git-group-empty">{g.noRepos}</p>}
+      {[...groups].map(([parent, items]) => <div key={parent} className="git-repo-group">
+        {parent && <div className="git-repo-group-name">{parent}</div>}
+        <ul>{items.map((item) => <li key={item.path}>
+          <button type="button" className="git-repo-row" aria-label={g.openRepo(item.name)} title={item.error ?? item.path}
+            onClick={() => onOpen(item.path)}>
+            <span className="git-repo-row-name">{lastName(item.name)}</span>
+            <span className="git-repo-row-branch"><GitBranch size={11} aria-hidden="true" />{item.branch ?? item.head ?? "—"}</span>
+            <span className="git-repo-row-state">
+              {item.error ? <span className="git-repo-broken">!</span>
+                : item.changes ? <span className="git-repo-changes" title={g.fileCount(item.changes)}>● {item.changes}</span>
+                : <Check size={12} className="git-repo-clean" aria-hidden="true" />}
+              {(item.behind > 0 || item.ahead > 0) && <span className="git-sync">
+                {item.behind > 0 && <><ArrowDown size={11} aria-hidden="true" />{item.behind}</>}
+                {item.ahead > 0 && <><ArrowUp size={11} aria-hidden="true" />{item.ahead}</>}
+              </span>}
+            </span>
+          </button>
+        </li>)}</ul>
+      </div>)}
+      {folder.truncated && <p className="git-group-empty">{g.truncated(folder.repos.length)}</p>}
+    </section>
   );
 }
 

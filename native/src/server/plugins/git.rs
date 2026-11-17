@@ -8,6 +8,7 @@
 
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Bytes;
@@ -20,6 +21,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 use crate::server::{docs, host_allowed, is_json, no_store, origin_allowed, read_allowed, Shared};
 
@@ -27,6 +30,16 @@ pub(in crate::server) const MAX_BODY_BYTES: usize = 64 * 1024;
 const MAX_OUTPUT: u64 = 2 * 1024 * 1024;
 const MAX_FILES: usize = 2000;
 const TIMEOUT: Duration = Duration::from_secs(30);
+/// How many folder levels below a folder `repos` looks, and how many repositories it lists.
+const SCAN_DEPTH: usize = 2;
+const MAX_REPOSITORIES: usize = 50;
+/// Folders `repos` looks into at most, so a large home folder still answers quickly.
+const MAX_SCANNED: usize = 5000;
+/// Folders that hold dependencies or build output, never repositories worth listing.
+const SKIPPED_FOLDERS: [&str; 2] = ["node_modules", "target"];
+/// Repositories whose status `repos` reads at the same time.
+const PARALLEL_STATUS: usize = 8;
+const SHORT_HASH: usize = 7;
 
 #[derive(Debug)]
 pub(in crate::server) struct GitError(pub(in crate::server) StatusCode, pub(in crate::server) String);
@@ -51,6 +64,7 @@ pub(in crate::server) const PREFIX: &str = "/api/plugins/git/";
 pub(in crate::server) fn routes() -> Router<Shared> {
     Router::new()
         .route("/api/plugins/git/status", get(status))
+        .route("/api/plugins/git/repos", get(repos))
         .route("/api/plugins/git/diff", get(diff))
         .route("/api/plugins/git/commit", get(commit_detail))
         .route("/api/plugins/git/commit-diff", get(commit_diff))
@@ -67,6 +81,16 @@ async fn status(State(state): State<Shared>, headers: HeaderMap, Query(query): Q
         return StatusCode::FORBIDDEN.into_response();
     }
     match repository_status(&query.dir).await {
+        Ok(body) => no_store(Json(body)),
+        Err(error) => error.into_response(),
+    }
+}
+
+async fn repos(State(state): State<Shared>, headers: HeaderMap, Query(query): Query<DirectoryQuery>) -> Response {
+    if !read_allowed(&state, &headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    match folder_repositories(&query.dir).await {
         Ok(body) => no_store(Json(body)),
         Err(error) => error.into_response(),
     }
@@ -169,11 +193,7 @@ impl Repository {
     }
 
     pub(in crate::server) async fn open(dir: &str) -> Result<Self, GitError> {
-        if dir.len() > 4096 || dir.contains('\0') || !Path::new(dir).is_absolute() {
-            return Err(invalid("Choose an absolute repository folder"));
-        }
-        let folder = tokio::fs::canonicalize(dir).await.map_err(|_| invalid("Folder does not exist"))?;
-        let repo = Self(folder);
+        let repo = Self(canonical_folder(dir).await?);
         let output = repo.run(&["rev-parse", "--show-toplevel"]).await?;
         if !output.status.success() {
             return Err(GitError(StatusCode::NOT_FOUND, "This folder is not in a Git worktree".to_owned()));
@@ -246,6 +266,52 @@ impl Repository {
     async fn files(&self) -> Result<Vec<ChangedFile>, GitError> {
         parse_status(&self.checked(&["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"]).await?)
     }
+
+    /// The branch and change count of a repository the scan found. The user never
+    /// opened it, so its own config must start no program: fsmonitor and filter
+    /// drivers are what `git status` can run, and checking a submodule's files
+    /// would run Git there, under the submodule's config. So a submodule counts
+    /// only when its commit changes.
+    async fn summary(&self) -> Result<Summary, GitError> {
+        let drivers = self.run(&["config", "--null", "--name-only", "--get-regexp", r"^filter\."]).await?;
+        // 1: no filter is set.
+        if !matches!(drivers.status.code(), Some(0 | 1)) {
+            return Err(GitError(StatusCode::CONFLICT, String::from_utf8_lossy(&drivers.stderr).trim().to_owned()));
+        }
+        let mut args = vec!["-c".to_owned(), "core.fsmonitor=false".to_owned()];
+        for name in filter_drivers(&drivers.stdout)? {
+            for setting in ["clean=", "process=", "required=false"] {
+                args.extend(["-c".to_owned(), format!("filter.{name}.{setting}")]);
+            }
+        }
+        let status = ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--ignore-submodules=dirty"];
+        args.extend(status.map(str::to_owned));
+        Ok(parse_summary(&self.checked(&args.iter().map(String::as_str).collect::<Vec<_>>()).await?))
+    }
+}
+
+/// The filter driver names in `git config --null --name-only` output, once each.
+/// A name that `-c` cannot set (it splits at the first `=`) is refused.
+fn filter_drivers(bytes: &[u8]) -> Result<Vec<String>, GitError> {
+    let mut names: Vec<String> = Vec::new();
+    for key in bytes.split(|byte| *byte == 0).filter(|key| !key.is_empty()) {
+        let key = std::str::from_utf8(key).map_err(|_| invalid("A filter of this repository has a name that is not UTF-8"))?;
+        let Some((name, _)) = key.strip_prefix("filter.").and_then(|rest| rest.rsplit_once('.')) else { continue };
+        if name.contains('=') {
+            return Err(invalid("A filter of this repository has a name that cannot be turned off"));
+        }
+        if !names.iter().any(|known| known == name) {
+            names.push(name.to_owned());
+        }
+    }
+    Ok(names)
+}
+
+async fn canonical_folder(dir: &str) -> Result<PathBuf, GitError> {
+    if dir.len() > 4096 || dir.contains('\0') || !Path::new(dir).is_absolute() {
+        return Err(invalid("Choose an absolute repository folder"));
+    }
+    tokio::fs::canonicalize(dir).await.map_err(|_| invalid("Folder does not exist"))
 }
 
 async fn read_output(reader: impl AsyncRead + Unpin) -> Result<Vec<u8>, GitError> {
@@ -366,6 +432,173 @@ async fn repository_status(dir: &str) -> Result<RepositoryStatus, GitError> {
         });
     }
     Ok(result)
+}
+
+#[derive(Serialize)]
+struct FolderRepositories {
+    root: String,
+    /// The worktree that holds `root`; None outside one.
+    repository: Option<String>,
+    repos: Vec<FoundRepository>,
+    truncated: bool,
+}
+
+/// A repository below the folder. A failed status leaves `changes` empty and says why in `error`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FoundRepository {
+    path: String,
+    /// The path from the folder, with `/`.
+    name: String,
+    branch: Option<String>,
+    head: Option<String>,
+    changes: Option<usize>,
+    upstream: Option<String>,
+    ahead: usize,
+    behind: usize,
+    error: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct Summary {
+    branch: Option<String>,
+    head: Option<String>,
+    upstream: Option<String>,
+    ahead: usize,
+    behind: usize,
+    changes: usize,
+}
+
+async fn folder_repositories(dir: &str) -> Result<FolderRepositories, GitError> {
+    let folder = canonical_folder(dir).await?;
+    let repository = match Repository::open(dir).await {
+        Ok(repo) => Some(docs::shown_path(repo.root())),
+        Err(GitError(StatusCode::NOT_FOUND, _)) => None,
+        Err(error) => return Err(error),
+    };
+    let scanned = folder.clone();
+    let (found, truncated) =
+        tokio::task::spawn_blocking(move || find_repositories(&scanned)).await.map_err(|_| failed("Cannot read the folder"))?;
+    let limit = Arc::new(Semaphore::new(PARALLEL_STATUS));
+    let mut tasks = JoinSet::new();
+    for (index, path) in found.into_iter().enumerate() {
+        let limit = limit.clone();
+        tasks.spawn(async move {
+            let _permit = limit.acquire_owned().await;
+            let repo = Repository(path);
+            let summary = repo.summary().await;
+            (index, repo.0, summary)
+        });
+    }
+    let mut read = Vec::new();
+    while let Some(joined) = tasks.join_next().await {
+        read.push(joined.map_err(|_| failed("Cannot read a repository"))?);
+    }
+    read.sort_by_key(|(index, _, _)| *index);
+    let repos = read
+        .into_iter()
+        .map(|(_, path, summary)| {
+            let parts: Vec<_> = path.strip_prefix(&folder).unwrap_or(&path).components().map(|part| part.as_os_str().to_string_lossy()).collect();
+            let name = parts.join("/");
+            let (summary, error) = match summary {
+                Ok(summary) => (summary, None),
+                Err(error) => (Summary::default(), Some(error.1.trim().to_owned())),
+            };
+            FoundRepository {
+                path: docs::shown_path(&path),
+                name,
+                branch: summary.branch,
+                head: summary.head,
+                changes: error.is_none().then_some(summary.changes),
+                upstream: summary.upstream,
+                ahead: summary.ahead,
+                behind: summary.behind,
+                error,
+            }
+        })
+        .collect();
+    Ok(FolderRepositories { root: docs::shown_path(&folder), repository, repos, truncated })
+}
+
+/// The repositories and linked worktrees at most SCAN_DEPTH folders below
+/// `root`, nearest first; true when the list stopped early. Hidden and heavy
+/// folders are skipped, and a repository is not searched inside. A link to a
+/// repository is listed, but no link is searched inside, so links cannot loop.
+fn find_repositories(root: &Path) -> (Vec<PathBuf>, bool) {
+    let mut found = Vec::new();
+    let mut level = vec![root.to_path_buf()];
+    let mut scanned = 0;
+    for depth in 1..=SCAN_DEPTH {
+        let mut next = Vec::new();
+        for folder in level {
+            for (child, linked) in child_folders(&folder) {
+                scanned += 1;
+                if scanned > MAX_SCANNED {
+                    return (found, true);
+                }
+                if std::fs::metadata(child.join(".git")).is_ok() {
+                    if found.len() == MAX_REPOSITORIES {
+                        return (found, true);
+                    }
+                    found.push(child);
+                } else if depth < SCAN_DEPTH && !linked {
+                    next.push(child);
+                }
+            }
+        }
+        level = next;
+    }
+    (found, false)
+}
+
+/// The folders in `folder` worth searching, sorted, each with whether it is a link to a folder.
+fn child_folders(folder: &Path) -> Vec<(PathBuf, bool)> {
+    let Ok(entries) = std::fs::read_dir(folder) else { return Vec::new() };
+    let mut children: Vec<(PathBuf, bool)> = entries
+        .flatten()
+        .filter(|entry| entry.file_name().to_str().is_some_and(|name| !name.starts_with('.') && !SKIPPED_FOLDERS.contains(&name)))
+        .filter_map(|entry| {
+            // `file_type` does not follow links; `metadata` of the path does.
+            let kind = entry.file_type().ok()?;
+            let linked = kind.is_symlink();
+            let folder = kind.is_dir() || (linked && std::fs::metadata(entry.path()).is_ok_and(|meta| meta.is_dir()));
+            folder.then(|| (entry.path(), linked))
+        })
+        .collect();
+    children.sort();
+    children
+}
+
+/// What `git status --porcelain=v2 --branch -z` says about a repository.
+fn parse_summary(bytes: &[u8]) -> Summary {
+    let mut summary = Summary::default();
+    let mut fields = bytes.split(|byte| *byte == 0).filter(|field| !field.is_empty());
+    while let Some(field) = fields.next() {
+        match field[0] {
+            b'#' => {
+                let line = String::from_utf8_lossy(field);
+                if let Some(oid) = line.strip_prefix("# branch.oid ") {
+                    summary.head = (oid != "(initial)").then(|| oid.chars().take(SHORT_HASH).collect());
+                } else if let Some(name) = line.strip_prefix("# branch.head ") {
+                    summary.branch = (name != "(detached)").then(|| name.to_owned());
+                } else if let Some(name) = line.strip_prefix("# branch.upstream ") {
+                    summary.upstream = Some(name.to_owned());
+                } else if let Some(counts) = line.strip_prefix("# branch.ab ") {
+                    let mut counts = counts.split_whitespace();
+                    summary.ahead = counts.next().and_then(|count| count.strip_prefix('+')?.parse().ok()).unwrap_or(0);
+                    summary.behind = counts.next().and_then(|count| count.strip_prefix('-')?.parse().ok()).unwrap_or(0);
+                }
+            }
+            // A rename or copy names its source in the next field.
+            b'2' => {
+                summary.changes += 1;
+                fields.next();
+            }
+            b'1' | b'u' | b'?' => summary.changes += 1,
+            _ => {}
+        }
+    }
+    summary
 }
 
 #[derive(Debug, Serialize)]
@@ -587,7 +820,14 @@ mod tests {
     fn init() -> (tempfile::TempDir, String) {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("repo");
-        fs::create_dir(&root).unwrap();
+        init_at(&root);
+        (temp, root.to_str().unwrap().to_owned())
+    }
+
+    /// A repository with a test identity at `root`, which is created.
+    fn init_at(root: &Path) {
+        fs::create_dir_all(root).unwrap();
+        let root = root.to_path_buf();
         git(&root, &["init", "--quiet", "--initial-branch=main"]);
         for (key, value) in [
             ("user.name", "Sidebar Test"),
@@ -598,7 +838,161 @@ mod tests {
         ] {
             git(&root, &["config", key, value]);
         }
-        (temp, root.to_str().unwrap().to_owned())
+    }
+
+    /// The paths of `found`, relative to `root`, with `/`.
+    fn relative(root: &Path, found: &[PathBuf]) -> Vec<String> {
+        found.iter().map(|path| path.strip_prefix(root).unwrap().to_str().unwrap().replace('\\', "/")).collect()
+    }
+
+    #[test]
+    fn find_repositories_scans_two_levels_and_skips_heavy_folders() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        for dir in ["a/.git", "group/c/d/.git", ".hidden/e/.git", "node_modules/f/.git", "target/g/.git", "a/inner/.git"] {
+            fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        // A linked worktree has a `.git` file.
+        fs::create_dir_all(root.join("group/b")).unwrap();
+        fs::write(root.join("group/b/.git"), "gitdir: /nowhere\n").unwrap();
+        let (found, truncated) = find_repositories(&root);
+        assert_eq!(relative(&root, &found), ["a", "group/b"]);
+        assert!(!truncated);
+    }
+
+    /// A link to a repository is listed, as people link their projects into one
+    /// folder; a link is never searched inside, so links cannot loop.
+    #[cfg(unix)]
+    #[test]
+    fn find_repositories_lists_linked_repositories_without_following_links() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap().join("projects");
+        let outside = temp.path().canonicalize().unwrap().join("outside");
+        fs::create_dir_all(outside.join(".git")).unwrap();
+        fs::create_dir_all(root.join("group/b/.git")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("linked")).unwrap();
+        std::os::unix::fs::symlink(root.join("group"), root.join("group-link")).unwrap();
+        std::os::unix::fs::symlink(&root, root.join("group/loop")).unwrap();
+        let (found, truncated) = find_repositories(&root);
+        assert_eq!(relative(&root, &found), ["linked", "group/b"]);
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn find_repositories_stops_at_the_limit() {
+        let temp = tempfile::tempdir().unwrap();
+        for index in 0..=MAX_REPOSITORIES {
+            fs::create_dir_all(temp.path().join(format!("r{index:02}/.git"))).unwrap();
+        }
+        let (found, truncated) = find_repositories(temp.path());
+        assert_eq!(found.len(), MAX_REPOSITORIES);
+        assert!(truncated);
+    }
+
+    #[test]
+    fn summary_reads_branch_head_upstream_and_counts() {
+        // A rename names its source next; a source that looks like an entry is still skipped.
+        let summary = parse_summary(
+            b"# branch.oid 6aa46e7da9da249007e75ccce739313ccc023023\0# branch.head feat/x\0# branch.upstream origin/feat/x\0\
+              # branch.ab +2 -9\x002 R. N... 100644 100644 100644 7898 7898 R100 c\0? 1st\0? b\0",
+        );
+        assert_eq!(summary.branch.as_deref(), Some("feat/x"));
+        assert_eq!(summary.head.as_deref(), Some("6aa46e7"));
+        assert_eq!(summary.upstream.as_deref(), Some("origin/feat/x"));
+        assert_eq!((summary.ahead, summary.behind, summary.changes), (2, 9, 2));
+        let detached = parse_summary(b"# branch.oid 6aa46e7da9da249007e75ccce739313ccc023023\0# branch.head (detached)\0");
+        assert_eq!(detached.branch, None);
+        assert_eq!(detached.head.as_deref(), Some("6aa46e7"));
+        let unborn = parse_summary(b"# branch.oid (initial)\0# branch.head main\0");
+        assert_eq!(unborn.head, None);
+        assert_eq!(unborn.branch.as_deref(), Some("main"));
+        assert_eq!(unborn.changes, 0);
+    }
+
+    #[tokio::test]
+    async fn folder_repositories_lists_children_and_the_enclosing_worktree() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().canonicalize().unwrap().join("projects");
+        for name in ["clean", "group/dirty"] {
+            init_at(&folder.join(name));
+            git(&folder.join(name), &["commit", "--quiet", "--allow-empty", "-m", "first"]);
+        }
+        let dirty = folder.join("group/dirty");
+        fs::write(dirty.join("new.txt"), "new\n").unwrap();
+        fs::create_dir(dirty.join("sub")).unwrap();
+        fs::write(dirty.join("sub/deep.txt"), "untracked folders count each file\n").unwrap();
+        let listed = folder_repositories(folder.to_str().unwrap()).await.unwrap();
+        assert_eq!(listed.root, docs::shown_path(&folder));
+        // A parent of the temp folder may be a repository.
+        let outside = !std::process::Command::new("git").current_dir(&folder).args(["rev-parse"]).output().unwrap().status.success();
+        if outside {
+            assert_eq!(listed.repository, None);
+        }
+        let names: Vec<_> = listed.repos.iter().map(|repo| repo.name.as_str()).collect();
+        assert_eq!(names, ["clean", "group/dirty"]);
+        let clean = &listed.repos[0];
+        assert_eq!(clean.path, docs::shown_path(&folder.join("clean")));
+        assert_eq!((clean.branch.as_deref(), clean.changes, clean.error.as_deref()), (Some("main"), Some(0), None));
+        assert_eq!(clean.head.as_ref().map(String::len), Some(7));
+        assert_eq!(listed.repos[1].changes, Some(2));
+        assert!(!listed.truncated);
+
+        let inside = folder_repositories(dirty.join("sub").to_str().unwrap()).await.unwrap();
+        assert_eq!(inside.repository, Some(docs::shown_path(&dirty)));
+        assert!(inside.repos.is_empty());
+    }
+
+    /// An unpacked archive can carry a `.git/config` that names programs. The
+    /// list reads repositories the user never opened, so it must start none.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_list_runs_no_program_named_by_a_scanned_repository() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().canonicalize().unwrap().join("downloads");
+        let repo = folder.join("unpacked");
+        init_at(&repo);
+        fs::write(repo.join("file.txt"), "content\n").unwrap();
+        fs::write(repo.join(".gitattributes"), "file.txt filter=planted\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "--quiet", "-m", "first"]);
+        let marker = temp.path().join("ran");
+        let script = temp.path().join("planted.sh");
+        fs::write(&script, format!("#!/bin/sh\necho \"$*\" >> '{}'\ncat\n", marker.display())).unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+        git(&repo, &["config", "core.fsmonitor", script.to_str().unwrap()]);
+        git(&repo, &["config", "filter.planted.clean", script.to_str().unwrap()]);
+        git(&repo, &["config", "filter.planted.required", "true"]);
+        // Same size, new time: Git must read the file again, through its clean filter.
+        let file = fs::File::options().write(true).open(repo.join("file.txt")).unwrap();
+        file.set_modified(std::time::SystemTime::now() + Duration::from_secs(60)).unwrap();
+        let listed = folder_repositories(folder.to_str().unwrap()).await.unwrap();
+        assert_eq!(listed.repos[0].error, None);
+        assert_eq!(listed.repos[0].changes, Some(0));
+        assert!(!marker.exists(), "ran: {}", fs::read_to_string(&marker).unwrap_or_default());
+    }
+
+    #[test]
+    fn filter_drivers_are_named_once_and_odd_names_are_refused() {
+        let names = filter_drivers(b"filter.lfs.clean\0filter.lfs.smudge\0filter.a.b.process\0").unwrap();
+        assert_eq!(names, ["lfs", "a.b"]);
+        assert!(filter_drivers(b"").unwrap().is_empty());
+        // `-c name=value` splits at the first `=`, so such a name cannot be turned off.
+        assert!(filter_drivers(b"filter.x=y.clean\0").is_err());
+    }
+
+    #[tokio::test]
+    async fn a_broken_repository_is_listed_with_its_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("projects");
+        fs::create_dir_all(folder.join("broken")).unwrap();
+        fs::write(folder.join("broken/.git"), "gitdir: /no/such/place\n").unwrap();
+        let listed = folder_repositories(folder.to_str().unwrap()).await.unwrap();
+        assert_eq!(listed.repos.len(), 1);
+        assert_eq!(listed.repos[0].name, "broken");
+        assert_eq!(listed.repos[0].changes, None);
+        assert!(listed.repos[0].error.as_deref().is_some_and(|error| !error.is_empty()));
+        assert!(folder_repositories("relative/folder").await.is_err());
     }
 
     async fn stage(root: &str, paths: &[&str]) {
@@ -876,6 +1270,10 @@ mod tests {
         headers.insert(header::ORIGIN, "http://evil.example".parse().unwrap());
         assert_eq!(
             status(State(state.clone()), headers.clone(), Query(DirectoryQuery { dir: root.clone() })).await.status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            repos(State(state.clone()), headers.clone(), Query(DirectoryQuery { dir: root.clone() })).await.status(),
             StatusCode::FORBIDDEN
         );
         assert_eq!(action(State(state.clone()), headers.clone(), body.clone()).await.status(), StatusCode::FORBIDDEN);

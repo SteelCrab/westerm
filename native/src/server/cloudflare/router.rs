@@ -391,6 +391,7 @@ mod tests {
             "/api/agents/history",
             "/api/agents/worktrees",
             "/api/plugins/git/status",
+            "/api/plugins/git/repos",
             "/api/plugins/git/action",
         ] {
             assert_eq!(access(path), Access::Cookie, "{path}");
