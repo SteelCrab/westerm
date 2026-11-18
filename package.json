@@ -22,10 +22,10 @@
     "test": "node --import tsx --test tests/*.test.ts && cargo test --manifest-path native/Cargo.toml"
   },
   "dependencies": {
-    "@wterm/core": "^0.5.9",
-    "@wterm/dom": "^0.5.9",
-    "@wterm/ghostty": "^0.5.9",
-    "@wterm/react": "^0.5.9",
+    "@wterm/core": "^0.5.10",
+    "@wterm/dom": "^0.5.10",
+    "@wterm/ghostty": "^0.5.10",
+    "@wterm/react": "^0.5.10",
     "lucide-react": "^1.70.0",
     "markdown-it": "^15.0.3",
     "react": "^19.3.1",
