@@ -131,6 +131,13 @@ export function insertPane(root: LayoutNode | null, id: string, nearId: string |
   return dockPane(root, id, target, wide ? "right" : "bottom");
 }
 
+/** The layout with the pane `from` named `to`, in the same place. */
+export function replacePane(node: LayoutNode | null, from: string, to: string): LayoutNode | null {
+  if (node === null) return null;
+  if (node.type === "pane") return node.id === from ? { type: "pane", id: to } : node;
+  return { ...node, children: node.children.map((child) => replacePane(child, from, to) as LayoutNode) };
+}
+
 export function swapPanes(node: LayoutNode | null, a: string, b: string): LayoutNode | null {
   if (!node) return null;
   if (node.type === "pane") return node.id === a ? pane(b) : node.id === b ? pane(a) : node;

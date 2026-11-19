@@ -54,6 +54,7 @@ function fake(route: Route): Fake {
     openShell: (options) => result.shells.push(options),
     openBrowser() {},
     openPane: (options) => result.panes.push(options),
+    openFolder() {},
     folders: () => [],
     fetch: async (path, init) => {
       const method = init?.method ?? "GET";
@@ -348,7 +349,8 @@ test("a SQLite connection asks only for a file", async () => {
 // ---- Plugin ----
 
 test("the plugin bar shows the db plugin after docker", () => {
-  assert.deepEqual(BUILTIN_PLUGINS.map((plugin) => plugin.id), ["git", "docker", "db"]);
+  // Later plugins follow it.
+  assert.deepEqual(BUILTIN_PLUGINS.map((plugin) => plugin.id).slice(0, 3), ["git", "docker", "db"]);
   assert.equal(dbPlugin.version, "0.1.0");
   assert.equal(dbPlugin.text.en.name, "Databases");
   assert.equal(dbPlugin.text.en.permissions.length, 4);
@@ -356,7 +358,7 @@ test("the plugin bar shows the db plugin after docker", () => {
 
 test("a build without the db plugin hides it from the manager", () => {
   assert.deepEqual(availableBuiltins(BUILTIN_PLUGINS, ["git", "docker"]).map((plugin) => plugin.id), ["git", "docker"]);
-  assert.deepEqual(availableBuiltins(BUILTIN_PLUGINS, null).map((plugin) => plugin.id), ["git", "docker", "db"], "an older server lists none: all show");
+  assert.deepEqual(availableBuiltins(BUILTIN_PLUGINS, null), [...BUILTIN_PLUGINS], "an older server lists none: all show");
 });
 
 test("the badge counts open connections and hides at zero", async () => {

@@ -39,6 +39,7 @@ const ctx: PluginContext = {
   openShell() {},
   openBrowser() {},
   openPane() {},
+  openFolder() {},
   folders: () => [],
   fetch: (path, init) => fetch(`/api/plugins/git${path}`, init),
   refreshInstalled() {},

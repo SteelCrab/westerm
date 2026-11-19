@@ -6,21 +6,33 @@
 pub mod db;
 pub mod docker;
 pub mod external;
+#[cfg(feature = "plugin-terraform")]
+pub mod terraform;
+#[cfg(feature = "plugin-terraform")]
+pub mod terraform_runner;
 
 use crate::quote::ShellKind;
 
 /// The plugins this build knows, in plugin bar order. Git has no launches:
 /// it opens no shells.
-#[cfg(feature = "plugin-db")]
-pub const PLUGIN_IDS: &[&str] = &["git", "docker", db::ID];
-/// The plugins this build knows, in plugin bar order. Git has no launches:
-/// it opens no shells.
-#[cfg(not(feature = "plugin-db"))]
-pub const PLUGIN_IDS: &[&str] = &["git", "docker"];
+pub const PLUGIN_IDS: &[&str] = &[
+    "git",
+    "docker",
+    #[cfg(feature = "plugin-db")]
+    db::ID,
+    #[cfg(feature = "plugin-terraform")]
+    terraform::ID,
+];
 
 /// The plugins that are on until the user turns them off. Git was a fixed
 /// panel before it was a plugin, so it stays where it was after an update.
 pub const DEFAULT_ON: &[&str] = &["git"];
+
+/// Whether `text` is `len` lowercase hex digits: the shape of the ids and tokens the server makes.
+#[cfg_attr(not(any(feature = "plugin-db", feature = "plugin-terraform")), allow(dead_code))]
+pub fn is_lower_hex(text: &str, len: usize) -> bool {
+    text.len() == len && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
 
 /// A checked plugin launch.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,6 +41,9 @@ pub enum PluginLaunch {
     /// A Databases console the server prepared.
     #[cfg(feature = "plugin-db")]
     Db(db::Launch),
+    /// A Terraform run the server prepared.
+    #[cfg(feature = "plugin-terraform")]
+    Terraform(terraform::Launch),
     /// An installed plugin's program and arguments.
     External(external::Launch),
 }
@@ -41,7 +56,7 @@ pub enum LaunchError {
     /// A word holds a control character. `parse_argv` refuses these first.
     ControlCharacter,
     /// What the launch would type is gone (a console spec read before, or never written).
-    #[cfg_attr(not(feature = "plugin-db"), allow(dead_code))]
+    #[cfg_attr(not(any(feature = "plugin-db", feature = "plugin-terraform")), allow(dead_code))]
     Expired,
 }
 
@@ -57,6 +72,9 @@ impl PluginLaunch {
             #[cfg(feature = "plugin-db")]
             db::ID => (action == db::CONSOLE_ACTION && db::is_token(target))
                 .then(|| Self::Db(db::Launch { token: target.to_owned() })),
+            #[cfg(feature = "plugin-terraform")]
+            terraform::ID => (action == terraform::RUN_ACTION && terraform::is_token(target))
+                .then(|| Self::Terraform(terraform::Launch { token: target.to_owned() })),
             id if external::is_external_id(id) && action == external::RUN_ACTION => {
                 let argv = external::parse_argv(target)?;
                 Some(Self::External(external::Launch { id: id.to_owned(), argv }))
@@ -71,6 +89,8 @@ impl PluginLaunch {
             Self::Docker(_) => "docker",
             #[cfg(feature = "plugin-db")]
             Self::Db(_) => db::ID,
+            #[cfg(feature = "plugin-terraform")]
+            Self::Terraform(_) => terraform::ID,
             Self::External(launch) => &launch.id,
         }
     }
@@ -81,6 +101,8 @@ impl PluginLaunch {
             Self::Docker(launch) => launch.action.as_str(),
             #[cfg(feature = "plugin-db")]
             Self::Db(_) => db::CONSOLE_ACTION,
+            #[cfg(feature = "plugin-terraform")]
+            Self::Terraform(_) => terraform::RUN_ACTION,
             Self::External(_) => external::RUN_ACTION,
         }
     }
@@ -91,6 +113,8 @@ impl PluginLaunch {
             Self::Docker(launch) => launch.container.clone(),
             #[cfg(feature = "plugin-db")]
             Self::Db(launch) => launch.token.clone(),
+            #[cfg(feature = "plugin-terraform")]
+            Self::Terraform(launch) => launch.token.clone(),
             Self::External(launch) => serde_json::to_string(&launch.argv).expect("strings serialize"),
         }
     }
@@ -102,6 +126,8 @@ impl PluginLaunch {
             Self::Docker(launch) => Ok(docker::command(launch)),
             #[cfg(feature = "plugin-db")]
             Self::Db(launch) => db::command(launch, shell.ok_or(LaunchError::UnsupportedShell)?),
+            #[cfg(feature = "plugin-terraform")]
+            Self::Terraform(launch) => terraform::command(launch, shell.ok_or(LaunchError::UnsupportedShell)?),
             Self::External(launch) => {
                 let shell = shell.ok_or(LaunchError::UnsupportedShell)?;
                 external::command(launch, shell).map_err(|_| LaunchError::ControlCharacter)
@@ -147,6 +173,7 @@ mod tests {
     fn sample(id: &str) -> (&'static str, String) {
         match id {
             "db" => ("console", "a".repeat(32)),
+            "terraform" => ("run", "a".repeat(32)),
             _ => ("logs", "0123456789ab".to_owned()),
         }
     }

@@ -4,6 +4,7 @@
 import { dbPlugin } from "./db/index.tsx";
 import { dockerPlugin } from "./docker/index.tsx";
 import { gitPlugin } from "./git/index.tsx";
+import { terraformPlugin } from "./terraform/index.tsx";
 import type { WestermPlugin } from "./types.ts";
 
-export const BUILTIN_PLUGINS: readonly WestermPlugin[] = [gitPlugin, dockerPlugin, dbPlugin];
+export const BUILTIN_PLUGINS: readonly WestermPlugin[] = [gitPlugin, dockerPlugin, dbPlugin, terraformPlugin];

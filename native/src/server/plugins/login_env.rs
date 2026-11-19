@@ -3,7 +3,12 @@
 //! without the tool settings (`KUBECONFIG`, `DOCKER_HOST`, …) that the user's
 //! shell sets. The whole environment is kept; each user picks its keys.
 
+// Only the Unix check of "is it executable" reads the file's mode.
+#[cfg(all(unix, any(feature = "plugin-db", feature = "plugin-terraform")))]
+use std::fs;
 use std::future::Future;
+#[cfg(any(feature = "plugin-db", feature = "plugin-terraform"))]
+use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::Stdio;
 #[cfg(unix)]
@@ -167,6 +172,25 @@ impl LoginEnvCache {
     pub(super) async fn reset(&self) {
         *self.env.lock().await = None;
     }
+}
+
+/// `name` on the PATH of `env`: an executable file (`.exe` on Windows).
+#[cfg(any(feature = "plugin-db", feature = "plugin-terraform"))]
+pub fn find_program(env: &LoginEnv, name: &str) -> Option<PathBuf> {
+    let path = env.vars.iter().rev().find(|(key, _)| key == "PATH").map(|(_, value)| value)?;
+    let file = if cfg!(windows) { format!("{name}.exe") } else { name.to_owned() };
+    std::env::split_paths(path).map(|dir| dir.join(&file)).find(|candidate| is_executable(candidate))
+}
+
+#[cfg(all(unix, any(feature = "plugin-db", feature = "plugin-terraform")))]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(all(not(unix), any(feature = "plugin-db", feature = "plugin-terraform")))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 #[cfg(test)]

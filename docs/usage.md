@@ -204,7 +204,7 @@ Each agent row shows the agent's logo, its name (as in the session list), how lo
 
 ## Plugins
 
-A plugin adds a panel to westerm. Git, Docker, and Databases are built in: installing one turns it on, and nothing is downloaded. [Git](#git) is installed from the start. Other plugins come from outside (the plugin list, a GitHub repository, a `.tar.gz` link, or a folder on your computer) and run in an isolated frame with only the permissions you confirm. See [External plugins](#external-plugins). To write one, see [Writing plugins](plugins.md).
+A plugin adds a panel to westerm. Git, Docker, Databases, and Terraform are built in: installing one turns it on, and nothing is downloaded. [Git](#git) is installed from the start. Other plugins come from outside (the plugin list, a GitHub repository, a `.tar.gz` link, or a folder on your computer) and run in an isolated frame with only the permissions you confirm. See [External plugins](#external-plugins). To write one, see [Writing plugins](plugins.md).
 
 ### The plugin bar
 
@@ -227,7 +227,7 @@ A plugin adds a panel to westerm. Git, Docker, and Databases are built in: insta
 
 | Badge | Meaning |
 |---|---|
-| `built-in` | Part of westerm (Docker, Databases). |
+| `built-in` | Part of westerm (Git, Docker, Databases, Terraform). |
 | `verified` | Installed from the plugin list. |
 | `unverified` | Installed from a URL. |
 | `local` | Installed from a folder, for developing a plugin. |
@@ -393,6 +393,40 @@ The page reads the connection list every 10 seconds while the panel is open and 
 #### Uninstalling
 
 Uninstalling closes the pools and tunnels and removes the console password files. The saved connections and keychain entries stay, so installing again brings them back. **Forget all connections…** removes them all.
+
+### Terraform
+
+Install **Terraform** to see the modules and resources of your Terraform and OpenTofu projects in the sidebar, run plan in a terminal pane, read the result as a list, and apply the plan you saw.
+
+- **Projects** are found by themselves: a project is a folder with `.tf` (or `.tofu`) files that has a `.terraform` folder, a lock file, a `backend` or `cloud` block, or a `provider` block, or that is the folder of one of your shells. westerm looks in the folders of your shells and three levels below them (not in hidden folders, `node_modules`, `vendor`, `target`, or `dist`), and lists at most 32. A folder that another project uses as a local module is not a project. It looks when the panel opens, on refresh, when a run ends, and when the page shows again.
+- **Tree**: project → module → resource, read from the code. Opening the panel reaches no backend and needs no credentials (the only tool call is `version`, for the footer). A module row shows its version (`local`, `git · <ref>`, or the installed registry version) and `↑ <version>` when the public registry has a newer release. Modules from a registry or git show their own rows after **Init** has installed them. A file that cannot be read is skipped and named on the project row.
+- **A project row** shows the Terraform logo (or `OT` for an OpenTofu project), its path in the repository, `prod` when its name or workspace has `prod`, `production`, `prd`, or `live` as a whole piece, `cloud` for a project that runs remotely, `init needed`, `Code changed`, and a dot: yellow for a plan with changes, green for a plan without, red when the last run failed, hollow without a plan. Its menu has Init, Validate, Plan, Apply…, Open terminal here, Use OpenTofu or Use Terraform (when both are installed), and Copy path.
+- **Workspace**: the current one comes from `.terraform/environment` (or `TF_WORKSPACE`, which locks the picker). The list is asked from the tool only when you open the picker, because `workspace list` can reach the backend; it runs with your login shell's environment.
+- **The filter** keeps the modules and resources whose name matches.
+
+#### Runs
+
+- **Init**, **Validate**, **Plan**, and **Apply…** run for the selected project in a terminal pane, so you see the tool's own output and can answer its questions. There is no Destroy.
+- A project has one run pane. A new run replaces it: **what you were doing in that pane ends with it.** A project runs one thing at a time; stop a run with Ctrl+C in its pane.
+- The run pane is a new shell. It has the environment of your shell's startup files, **not** what you exported in another pane. Sign in to your cloud in a way a new shell sees (a profile, `aws sso login`, a variable in `.zshrc`).
+- **Plan** saves the plan file in westerm's state folder, never in your repository. A module's ▷ button plans that module alone (`-target`).
+- A project with a `cloud` block or `backend "remote"` runs elsewhere: its plan cannot be saved, so Plan only runs in the pane, and the panel cannot apply it.
+
+#### The plan pane
+
+- When a plan you started ends, its plan pane opens: the resources that change, grouped by module, each with the attributes that change. The tree shows `+`, `~`, `-`, or `±` on those resources, and the Terraform button counts them.
+- Values the tool marks sensitive are never sent to the page; the pane says "(sensitive)". A value that is only known after the apply says so.
+- **Apply…** applies the saved plan file, so what you saw is what is applied. It asks first, lists what will be destroyed, and for a `prod` project you type the folder's name. westerm decides "prod" by the name only: a production project without such a name is applied with one click.
+- When a `.tf`, `.tofu`, `.tfvars`, or lock file of the project or its local modules changes after the plan started, the plan is stale: its marks go and Apply is off until you plan again. The tool itself also refuses a plan when the state changed.
+- A restored plan pane never plans by itself. A saved plan shows again after westerm restarts. **Apply** applies the plan on your screen: when another window has planned since, it is refused and you plan again.
+
+#### New versions
+
+westerm asks `registry.terraform.io` (or `registry.opentofu.org` for an OpenTofu project) for the versions of the public registry modules a project uses: only the module's namespace, name, and provider are sent, at most once a day for each module, and only when the panel opens or refreshes. Private registries are not asked. Turn it off with **Check for new module versions** in the ⋯ menu. The panel never changes your code: to take a new version, change `version` if needed and run `terraform init -upgrade` in a terminal.
+
+#### Uninstalling
+
+Uninstalling removes the plugin's folder in the state folder: the saved plans and its settings. **Delete saved plans…** in the ⋯ menu removes the plans only. Plans older than seven days are removed when westerm starts.
 
 ## terminal-browser and terminal-code
 

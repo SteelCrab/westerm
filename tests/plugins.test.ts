@@ -74,6 +74,7 @@ const ctxFor = (id: string): PluginContext => ({
   openShell: noop,
   openBrowser: noop,
   openPane: noop,
+  openFolder: () => {},
   folders: () => [],
   fetch: () => Promise.reject(new Error(`no fetch for ${id}`)),
   refreshInstalled: noop,

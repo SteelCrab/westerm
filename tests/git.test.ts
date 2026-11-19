@@ -19,6 +19,7 @@ const context = (fetch: PluginContext["fetch"]): PluginContext => ({
   openShell() {},
   openBrowser() {},
   openPane() {},
+  openFolder() {},
   folders: () => [],
   fetch,
   refreshInstalled() {},

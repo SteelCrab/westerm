@@ -39,23 +39,7 @@ pub fn find_clients(env: &LoginEnv, consoles: bool) -> Clients {
     }
 }
 
-/// `name` on the PATH of `env`: an executable file (`.exe` on Windows).
-pub fn find_program(env: &LoginEnv, name: &str) -> Option<PathBuf> {
-    let path = env.vars.iter().rev().find(|(key, _)| key == "PATH").map(|(_, value)| value)?;
-    let file = if cfg!(windows) { format!("{name}.exe") } else { name.to_owned() };
-    std::env::split_paths(path).map(|dir| dir.join(&file)).find(|candidate| is_executable(candidate))
-}
-
-#[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-}
-
-#[cfg(not(unix))]
-fn is_executable(path: &Path) -> bool {
-    path.is_file()
-}
+pub use super::super::login_env::find_program;
 
 /// One line of a PostgreSQL password file: `host:port:db:user:password`,
 /// with `\` and `:` escaped.

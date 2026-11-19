@@ -14,10 +14,13 @@ edition = "2024"
 rust-version = "1.89"
 
 [features]
-default = ["plugin-db"]
+default = ["plugin-db", "plugin-terraform"]
 # The Databases plugin (src/plugins/db.rs, src/server/plugins/db/): its
 # database drivers and keychain access. Builds without it leave the plugin out.
 plugin-db = ["dep:keyring", "dep:sqlx", "dep:tokio-util", "dep:url"]
+# The Terraform plugin (src/plugins/terraform.rs, src/plugins/terraform_runner.rs,
+# src/server/plugins/terraform/): its HCL parser. Builds without it leave the plugin out.
+plugin-terraform = ["dep:hcl-rs", "dep:url"]
 
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }
@@ -34,6 +37,8 @@ fontdb = "0.24.0"
 # The tunnel's access code, cookie tokens, and the names of saved pictures
 # come from the OS random source.
 getrandom = "0.4"
+# Reads `.tf` files for the Terraform plugin.
+hcl-rs = { version = "0.20", optional = true }
 # The Databases plugin keeps passwords in the OS keychain. Linux uses the
 # Secret Service over a pure-Rust D-Bus (zbus), so static musl builds work.
 keyring = { version = "3.6", optional = true, default-features = false, features = ["apple-native", "windows-native", "async-secret-service", "async-io", "crypto-rust"] }

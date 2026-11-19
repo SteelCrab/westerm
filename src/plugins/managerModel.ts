@@ -81,7 +81,8 @@ function builtinEntry(plugin: WestermPlugin, installed: readonly string[], local
     permissions: null,
     source: null,
     version: plugin.version,
-    iconUrl: null,
+    // A built-in plugin with its own image (a brand logo) shows it here too.
+    iconUrl: plugin.iconUrl ?? null,
   };
 }
 

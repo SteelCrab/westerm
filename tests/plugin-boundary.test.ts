@@ -10,6 +10,7 @@ const SRC = resolve(import.meta.dirname, "../src");
 const DOCKER = join(SRC, "plugins/docker");
 const DB = join(SRC, "plugins/db");
 const GIT = join(SRC, "plugins/git");
+const TERRAFORM = join(SRC, "plugins/terraform");
 const EXTERNAL = join(SRC, "plugins/external");
 const REGISTRY = join(SRC, "plugins/registry.ts");
 const CORE_STATE = ["workspace.ts", "agents.ts", "App.tsx"].map((file) => join(SRC, file));
@@ -64,6 +65,16 @@ test("core files reach the git plugin only through the registry", () => {
   assert.ok(imports(REGISTRY).some((target) => inside(target, GIT)), "the registry lists the plugin");
 });
 
+test("core files reach the terraform plugin only through the registry", () => {
+  const core = sources(SRC).filter((file) => !inside(file, TERRAFORM) && file !== REGISTRY);
+  for (const file of core) {
+    for (const target of imports(file)) {
+      assert.ok(!inside(target, TERRAFORM), `${relative(SRC, file)} imports ${relative(SRC, target)}`);
+    }
+  }
+  assert.ok(imports(REGISTRY).some((target) => inside(target, TERRAFORM)), "the registry lists the plugin");
+});
+
 /** Fails when a file in `dir` reaches core state through any chain of relative imports. */
 function assertNoCoreState(dir: string, atLeast: number) {
   const plugin = sources(dir);
@@ -95,6 +106,10 @@ test("the db plugin does not reach core state, even through other files", () => 
 test("the git plugin does not reach core state, even through other files", () => {
   // It learns the focused folder from its panel's props, not from the dashboard.
   assertNoCoreState(GIT, 5);
+});
+
+test("the terraform plugin does not reach core state, even through other files", () => {
+  assertNoCoreState(TERRAFORM, 9);
 });
 
 test("the external plugin runtime does not reach core state, even through other files", () => {

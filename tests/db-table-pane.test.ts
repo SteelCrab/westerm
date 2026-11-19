@@ -81,6 +81,7 @@ function fake(answer: (method: string, path: string, body: unknown) => Response 
     openShell() {},
     openBrowser() {},
     openPane() {},
+    openFolder() {},
     folders: () => [],
     fetch: async (path, init) => {
       const method = init?.method ?? "GET";

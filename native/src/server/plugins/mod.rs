@@ -6,6 +6,8 @@
 
 #[cfg(feature = "plugin-db")]
 pub(super) mod db;
+#[cfg(feature = "plugin-terraform")]
+pub(super) mod terraform;
 mod docker;
 mod external;
 pub(super) mod git;
@@ -53,6 +55,17 @@ pub(super) struct PluginState {
     /// The Databases plugin's connections, passwords, and pools.
     #[cfg(feature = "plugin-db")]
     pub(super) db: db::DbState,
+    /// The Terraform plugin's projects, settings, runs, and plans.
+    #[cfg(feature = "plugin-terraform")]
+    pub(super) terraform: terraform::TerraformState,
+}
+
+#[cfg(any(feature = "plugin-db", feature = "plugin-terraform"))]
+/// `bytes` random bytes as lowercase hex.
+pub(super) fn random_hex(bytes: usize) -> String {
+    let mut buffer = vec![0u8; bytes];
+    getrandom::fill(&mut buffer).expect("the OS random source");
+    buffer.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// The shape of the `PUT` body.
@@ -94,7 +107,16 @@ impl PluginState {
             externals: external::ExternalState::default(),
             #[cfg(feature = "plugin-db")]
             db: db::DbState::load(state_dir),
+            #[cfg(feature = "plugin-terraform")]
+            terraform: terraform::TerraformState::load(state_dir),
         }
+    }
+
+    /// The server starts (not the dashboard of a remote window, which loads
+    /// the same state folder beside a running server).
+    pub(super) fn on_server_start(&self) {
+        #[cfg(feature = "plugin-terraform")]
+        self.terraform.on_server_start();
     }
 
     /// Whether the plugin is on (built-in) or has a record (external).
@@ -217,6 +239,9 @@ pub(super) fn session_allowed(request: &AttachRequest, plugins: &PluginState) ->
                 // A console needs the spec the Databases routes wrote for it.
                 #[cfg(feature = "plugin-db")]
                 PluginLaunch::Db(launch) => crate::plugins::db::spec_path(&plugins.state_dir, &launch.token).is_file(),
+                // A run needs the spec the Terraform routes wrote for it.
+                #[cfg(feature = "plugin-terraform")]
+                PluginLaunch::Terraform(launch) => crate::plugins::terraform::spec_path(&plugins.state_dir, &launch.token).is_file(),
             }
     })
 }
@@ -229,6 +254,8 @@ pub(super) fn routes() -> Router<Shared> {
         .merge(external::routes());
     #[cfg(feature = "plugin-db")]
     let router = router.merge(db::routes());
+    #[cfg(feature = "plugin-terraform")]
+    let router = router.merge(terraform::routes());
     router
 }
 
@@ -269,11 +296,17 @@ async fn put_plugins(State(state): State<Shared>, headers: HeaderMap, body: Byte
     let had_docker = state.plugins.is_installed("docker");
     #[cfg(feature = "plugin-db")]
     let had_db = state.plugins.is_installed(db::ID);
+    #[cfg(feature = "plugin-terraform")]
+    let had_terraform = state.plugins.is_installed(terraform::ID);
     match state.plugins.set_builtin(&installed) {
         Ok(_) => {
             #[cfg(feature = "plugin-db")]
             if had_db && !state.plugins.is_installed(db::ID) {
                 state.plugins.db.on_uninstall().await;
+            }
+            #[cfg(feature = "plugin-terraform")]
+            if had_terraform && !state.plugins.is_installed(terraform::ID) {
+                state.plugins.terraform.on_uninstall().await;
             }
             // Installing reads the login shell's environment again.
             if !had_docker && state.plugins.is_installed("docker") {
